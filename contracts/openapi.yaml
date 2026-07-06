@@ -1,0 +1,1445 @@
+openapi: 3.1.0
+info:
+  title: Troya e-Ticketing API
+  version: 0.1.0
+  description: |
+    **Troya Modern Biletleme Platformu** — IATA Ticketing Handbook'tan türetilen
+    elektronik biletleme (ET) ve EMD modülünün REST kontratı.
+
+    Bu spec **tek doğruluk kaynağıdır** (CLAUDE.md kural 12). Frontend TS tipleri
+    `openapi-typescript` ile buradan ÜRETİLİR; elle tip yazılmaz.
+
+    ## Mimari ilkeler (kontrata yansıyan)
+    - **Sunum adaptörü (kural 8):** İş kuralı backend otoritesindedir. Client-side
+      Zod doğrulaması sadece hızlı geri bildirim içindir.
+    - **Para işleminde optimistic UI yok (kural 9):** Issue / exchange / refund /
+      void / endorse / EMD / IRROP / PTA komutları sunucu sonucunu bekler.
+    - **Idempotency (kural 5):** Para/statü değiştiren her komut bir
+      `idempotencyKey` taşır (mock `api.ts` ile uyumlu olarak **request body**
+      içinde). Aynı key ile tekrar çağrı = **aynı sonuç, yeni yan etki yok**
+      (çift-issue / çift-refund kesinlikle olmaz). Geriye dönük uyum için aynı
+      değer `Idempotency-Key` header'ı ile de gönderilebilir.
+    - **Coupon Status = explicit FSM (kural 3):** Geçişler `CouponStatus` enum'unda
+      tanımlı; izin verilmeyen geçiş `422` problem detayı döndürür. Final statüler
+      (`E F G R V P X Z T`) terminaldir.
+
+    ## Domain dili (GLOSSARY)
+    Ticket, Coupon, CouponStatus, Validating / Marketing / Operating Carrier,
+    Airport Control, EMD, Fare Calculation, TFC (Tax / Fee / Charge), PTA, IRROP / FIM.
+  contact:
+    name: Troya Engine Team
+  license:
+    name: Proprietary
+
+servers:
+  - url: /api
+    description: Varsayılan API kökü (backend gelince gerçek host eklenir)
+
+tags:
+  - name: Tickets
+    description: Bilet (ET) kesimi, arama, görüntüleme ve yaşam döngüsü komutları
+  - name: Coupons
+    description: Kupon statü makinesi (FSM) geçişleri
+  - name: EMD
+    description: Electronic Miscellaneous Document (Handbook Ch 5)
+  - name: Interline
+    description: Interline mesajlaşma ve bilateral anlaşmalar (Handbook Ch 6)
+  - name: Orders
+    description: ONE Order görünümü (Handbook order-native, FE-7)
+  - name: PTA
+    description: Prepaid Ticket Advice (Handbook Ch 9)
+  - name: Dashboard
+    description: Panel istatistikleri
+  - name: Revenue
+    description: Revenue Protection anomali bayrakları (Handbook 14.7)
+
+paths:
+  # ===================== Tickets =====================
+  /tickets:
+    get:
+      tags: [Tickets]
+      operationId: listTickets
+      summary: Bilet özetlerini listele
+      description: Tüm biletlerin özet (TicketSummary) listesini döndürür.
+      responses:
+        "200":
+          description: Bilet özet listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TicketSummary" }
+    post:
+      tags: [Tickets]
+      operationId: issueTicket
+      summary: Bilet kes (issue)
+      description: |
+        Yeni bir elektronik bilet (ET) keser. Para işlemidir → optimistic UI yok,
+        sunucu sonucu beklenir (kural 9). **Idempotent:** aynı `idempotencyKey`
+        ile tekrar = aynı bilet, yeni yan etki yok (kural 5).
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueTicketInput" }
+      responses:
+        "201":
+          description: Bilet kesildi (veya idempotent tekrar)
+          headers:
+            Location:
+              description: Kesilen biletin kaynak URL'i
+              schema: { type: string }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "400": { $ref: "#/components/responses/BadRequest" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/search:
+    get:
+      tags: [Tickets]
+      operationId: searchTickets
+      summary: Bilet ara
+      description: |
+        Bilet numarası, yolcu soyad/ad, PNR ya da segment origin/destination
+        (IATA havalimanı kodu) üzerinden arar. Boş `q` → tüm biletler.
+      parameters:
+        - name: q
+          in: query
+          required: false
+          description: Serbest metin sorgu (case-insensitive)
+          schema: { type: string }
+      responses:
+        "200":
+          description: Eşleşen bilet özetleri
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TicketSummary" }
+
+  /tickets/{ticketNumber}:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+    get:
+      tags: [Tickets]
+      operationId: getTicket
+      summary: Bilet detayını getir
+      description: Tam bilet kaydını (kuponlar, fare, control, history) döndürür.
+      responses:
+        "200":
+          description: Bilet kaydı
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /tickets/{ticketNumber}/exchange:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [Tickets]
+      operationId: exchangeTicket
+      summary: Bilet değişimi / reissue (exchange)
+      description: |
+        Eski biletin açık (`O`) kuponlarını `E` (Exchanged) yapar ve yeni bir bilet
+        keser. `adc` = ek tahsilat (Additional Collection); negatif değer residual'i
+        ifade eder. Para işlemi → idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExchangeInput" }
+      responses:
+        "200":
+          description: Eski ve yeni bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExchangeResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/refund:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [Tickets]
+      operationId: refundTicket
+      summary: Bilet iadesi (refund)
+      description: |
+        Seçili açık (`O`) kuponları `R` (Refunded) yapar. Vefat/hastalık waiver'ı
+        (Handbook 13.9/13.10, 15.4) iptal cezasını muaf tutabilir. Para işlemi →
+        idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefundInput" }
+      responses:
+        "200":
+          description: Güncellenmiş bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/void:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [Tickets]
+      operationId: voidTicket
+      summary: Bilet iptali (void)
+      description: |
+        Satış kaydını iptal eder. İnvariant: void için **tüm kuponlar `O`** olmalı;
+        değilse `422` döner. Tüm kuponlar `V` (Void) olur. Para işlemi → idempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/VoidInput" }
+      responses:
+        "200":
+          description: Void edilmiş bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/endorse:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [Tickets]
+      operationId: endorseTicket
+      summary: Ciro / kısıtlama notu (endorsement)
+      description: |
+        "Endorsements / Restrictions" kutusunu (Handbook 2.19 / 12.2) günceller;
+        opsiyonel olarak başka bir carrier'a ciro eder. İdempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EndorseInput" }
+      responses:
+        "200":
+          description: Güncellenmiş bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/irrop:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [Tickets]
+      operationId: irropReroute
+      summary: IRROP / Involuntary Rerouting + FIM (Handbook Ch 13)
+      description: |
+        Aksayan kupon(lar)ı `O`/`A` → `I` → `G` ilerletir, başka carrier'a ciro eder
+        ve bir FIM (Flight Interruption Manifest) referansı üretir. Uygun kupon
+        statüsü `O`/`A`/`I` olmalıdır; aksi `422`. İdempotent (aynı key → aynı FIM).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IrropInput" }
+      responses:
+        "200":
+          description: Güncellenmiş bilet + FIM referansı
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IrropResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/emds:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+    get:
+      tags: [EMD]
+      operationId: listEmdsForTicket
+      summary: Bilete bağlı EMD'leri listele
+      description: Verilen bilete associated (EMD-A) belgeleri döndürür.
+      responses:
+        "200":
+          description: EMD listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Emd" }
+    post:
+      tags: [EMD]
+      operationId: addEmd
+      summary: EMD kes (Handbook Ch 5)
+      description: |
+        Bilet bağlamında bir EMD (Electronic Miscellaneous Document) keser.
+        `type` `A` = Associated (bir ET kuponuna bağlı), `S` = Standalone.
+        `rfisc` = Reason For Issuance Sub-Code. Para işlemi → idempotent.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddEmdInput" }
+      responses:
+        "201":
+          description: Kesilen EMD
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Emd" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /tickets/{ticketNumber}/coupons/{seq}/status:
+    parameters:
+      - $ref: "#/components/parameters/TicketNumberPath"
+      - name: seq
+        in: path
+        required: true
+        description: Kupon sıra numarası (1-tabanlı)
+        schema: { type: integer, minimum: 1 }
+    post:
+      tags: [Coupons]
+      operationId: advanceCouponStatus
+      summary: Kupon statüsünü ilerlet (FSM)
+      description: |
+        Kupon statüsünü FSM kuralları ile ilerletir (örn. QuickCheck-in akışı
+        `O→A→C→L→F`). İzin verilmeyen geçiş `422` (`InvalidTransition`) döndürür.
+        Cross-modül "tek motor" linkage örneği.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdvanceCouponStatusInput" }
+      responses:
+        "200":
+          description: Güncellenmiş bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Ticket" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  # ===================== EMD (global) =====================
+  /emds:
+    get:
+      tags: [EMD]
+      operationId: listEmds
+      summary: EMD'leri listele
+      description: |
+        Tüm EMD belgelerini döndürür. `associatedTicket` query parametresi ile
+        belirli bir bilete filtrelenebilir (mock `listEmdsForTicket` karşılığı).
+      parameters:
+        - name: associatedTicket
+          in: query
+          required: false
+          description: Sadece bu bilete bağlı (EMD-A) belgeleri döndür
+          schema: { type: string }
+      responses:
+        "200":
+          description: EMD listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Emd" }
+
+  # ===================== Dashboard =====================
+  /dashboard/stats:
+    get:
+      tags: [Dashboard]
+      operationId: getDashboardStats
+      summary: Panel istatistikleri
+      description: Statü dağılımı, haftalık kesim sayıları ve son aktivite.
+      responses:
+        "200":
+          description: Dashboard istatistikleri
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DashboardStats" }
+
+  # ===================== Interline =====================
+  /messages:
+    get:
+      tags: [Interline]
+      operationId: listMessages
+      summary: Interline mesajlarını listele
+      description: |
+        EDIFACT / NDC / ONE Order interline mesajlarını (TKTREQ, TKTRES, ETSU,
+        OrderCreate, OrderView…) zaman sırasına göre döndürür.
+      responses:
+        "200":
+          description: Mesaj listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/InterlineMessage" }
+
+  /agreements:
+    get:
+      tags: [Interline]
+      operationId: listAgreements
+      summary: Bilateral anlaşmaları listele
+      description: Partner carrier'larla bilateral interline anlaşmaları.
+      responses:
+        "200":
+          description: Anlaşma listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/BilateralAgreement" }
+
+  # ===================== Orders =====================
+  /orders:
+    get:
+      tags: [Orders]
+      operationId: listOrders
+      summary: Order'ları listele (ONE Order)
+      responses:
+        "200":
+          description: Order listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Order" }
+
+  /orders/{orderId}:
+    parameters:
+      - name: orderId
+        in: path
+        required: true
+        description: ONE Order kimliği (örn. "ORD-...")
+        schema: { type: string }
+    get:
+      tags: [Orders]
+      operationId: getOrder
+      summary: Order detayını getir
+      responses:
+        "200":
+          description: Order kaydı
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  # ===================== PTA =====================
+  /ptas:
+    get:
+      tags: [PTA]
+      operationId: listPtas
+      summary: PTA'ları listele (Prepaid Ticket Advice)
+      responses:
+        "200":
+          description: PTA listesi
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Pta" }
+    post:
+      tags: [PTA]
+      operationId: createPta
+      summary: PTA oluştur (Handbook Ch 9)
+      description: |
+        Bilet bedeli bir istasyonda/kişi tarafından ödenir; yolcu başka istasyonda
+        bileti alır. Para işlemi → idempotent.
+      parameters:
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePtaInput" }
+      responses:
+        "201":
+          description: Oluşturulan PTA
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Pta" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  /ptas/{ptaReference}/issue:
+    parameters:
+      - name: ptaReference
+        in: path
+        required: true
+        description: PTA referansı (örn. "PTA5530")
+        schema: { type: string }
+      - $ref: "#/components/parameters/IdempotencyKeyHeader"
+    post:
+      tags: [PTA]
+      operationId: issueAgainstPta
+      summary: PTA'ya karşı bilet kes
+      description: |
+        Açık (`open`) bir PTA'ya karşı bilet keser; PTA `used` olur ve
+        `issuedTicketNumber` set edilir. `open` değilse `422`. İdempotent.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IssueAgainstPtaInput" }
+      responses:
+        "200":
+          description: Güncellenmiş PTA + kesilen bilet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IssueAgainstPtaResult" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/UnprocessableEntity" }
+
+  # ===================== Revenue =====================
+  /revenue/alerts:
+    get:
+      tags: [Revenue]
+      operationId: listRevenueAlerts
+      summary: Revenue Protection anomalilerini listele (Handbook 14.7)
+      responses:
+        "200":
+          description: Anomali bayrakları
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/RevenueAlert" }
+
+components:
+  parameters:
+    TicketNumberPath:
+      name: ticketNumber
+      in: path
+      required: true
+      description: 13 haneli bilet numarası (3 airline + 9 serial + 1 check digit)
+      schema:
+        type: string
+        pattern: "^\\d{13}$"
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Çift-submit koruması (kural 5). Body içindeki `idempotencyKey` ile aynı
+        amaca hizmet eder; geriye dönük uyum / standart uyumu için header olarak da
+        kabul edilir. Aynı key ile tekrar = aynı sonuç, yeni yan etki yok.
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: Geçersiz istek
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    Unauthorized:
+      description: Kimlik doğrulama gerekli
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    NotFound:
+      description: Kaynak bulunamadı
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    Conflict:
+      description: Çakışma (örn. idempotency çatışması)
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+    UnprocessableEntity:
+      description: |
+        İş kuralı / FSM ihlali (örn. geçersiz kupon geçişi, void için tüm kuponlar
+        `O` değil). Domain hatası burada raporlanır.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/ProblemDetails" }
+
+  schemas:
+    # ---------- Enums ----------
+    CouponStatus:
+      type: string
+      description: |
+        Coupon Status Indicator — IATA Handbook 1.1.4 (resmî 17 kod).
+        Final statüler (`E F G R V P X Z`) terminaldir; bir kupon final statüye
+        ulaştıktan sonra değişmez (ARCHITECTURE §4 / kural 3). Not: "T (Paper
+        Ticket)" resmî 1.1.4 listelerinde yoktur; kâğıda dönüşümü P/X karşılar.
+      enum:
+        - O
+        - A
+        - C
+        - L
+        - I
+        - S
+        - U
+        - N
+        - Y
+        - F
+        - E
+        - G
+        - R
+        - V
+        - P
+        - X
+        - Z
+      x-enum-descriptions:
+        O: Open For Use (interim — kupon açık)
+        A: Airport Control (interim)
+        C: Checked-In (interim)
+        L: Lifted / Boarded (interim)
+        I: Irregular Operations (interim)
+        S: Suspended (interim)
+        U: Unavailable (interim)
+        N: Notification (interim)
+        Y: Refund TFC (interim)
+        F: Flown / Used (final)
+        E: Exchanged / Reissued (final)
+        G: Exchanged / FIM (final)
+        R: Refunded (final)
+        V: Void (final)
+        P: Printed (final)
+        X: Print Exchange (final)
+        Z: Closed (final)
+
+    CarrierRole:
+      type: string
+      description: Carrier'ın bir bilet/segment üzerindeki rolü (GLOSSARY).
+      enum: [validating, marketing, operating, billing]
+
+    FormOfPaymentType:
+      type: string
+      description: Ödeme şekli (uatp = Universal Air Travel Plan, Handbook Ch 10).
+      enum: [cash, credit, other, uatp]
+
+    LifecycleEventType:
+      type: string
+      description: Bilet/kupon yaşam döngüsü event tipleri (event sourcing audit izi).
+      enum:
+        - TicketIssued
+        - CouponAdded
+        - ControlGranted
+        - ControlReturned
+        - CouponCheckedIn
+        - CouponLifted
+        - CouponFlown
+        - TicketVoided
+        - CouponExchanged
+        - TicketReissued
+        - CouponRefunded
+        - CouponSuspended
+        - IrregularOpsApplied
+        - EndorsementApplied
+        - PtaIssued
+        - EmdIssued
+
+    EmdType:
+      type: string
+      description: A = Associated (bir ET kuponuna bağlı), S = Standalone.
+      enum: [A, S]
+
+    MessageStandard:
+      type: string
+      enum: [EDIFACT, NDC, ONE_ORDER]
+
+    MessageDirection:
+      type: string
+      enum: [outbound, inbound]
+
+    OrderStatus:
+      type: string
+      enum: [Created, Confirmed, Fulfilled, Closed, Cancelled]
+
+    FulfillmentKind:
+      type: string
+      enum: [ticket, emd]
+
+    PtaStatus:
+      type: string
+      enum: [open, used, refunded, expired]
+
+    RevenueAlertKind:
+      type: string
+      enum: [out_of_sequence, duplicate, status_mismatch, control_overdue]
+
+    RevenueSeverity:
+      type: string
+      enum: [high, medium, low]
+
+    # ---------- Value objects ----------
+    Money:
+      type: object
+      required: [amount, currency]
+      properties:
+        amount:
+          type: number
+          description: Tutar (gösterim için number; backend'de minor units olabilir)
+        currency:
+          type: string
+          description: ISO 4217 para birimi kodu
+          pattern: "^[A-Z]{3}$"
+      additionalProperties: false
+
+    Segment:
+      type: object
+      description: Yolculuk segmenti (kupon ile 1:1).
+      required:
+        - origin
+        - destination
+        - marketingCarrier
+        - flightNumber
+        - rbd
+        - departure
+        - arrival
+        - fareBasis
+        - reservationStatus
+      properties:
+        origin:
+          type: string
+          description: Kalkış havalimanı (IATA 3 harf)
+          pattern: "^[A-Z]{3}$"
+        destination:
+          type: string
+          description: Varış havalimanı (IATA 3 harf)
+          pattern: "^[A-Z]{3}$"
+        marketingCarrier:
+          type: string
+          description: Marketing Carrier (IATA 2 harf)
+        operatingCarrier:
+          type: string
+          description: Operating Carrier (IATA 2 harf)
+        flightNumber:
+          type: string
+        rbd:
+          type: string
+          description: Booking class (Reservation Booking Designator)
+        departure:
+          type: string
+          format: date-time
+        arrival:
+          type: string
+          format: date-time
+        fareBasis:
+          type: string
+        notValidBefore:
+          type: string
+          format: date-time
+        notValidAfter:
+          type: string
+          format: date-time
+        reservationStatus:
+          type: string
+          description: 'Rezervasyon statüsü (örn. "HK")'
+      additionalProperties: false
+
+    Coupon:
+      type: object
+      required: [seq, status, segment]
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+          description: Kupon sıra numarası
+        status: { $ref: "#/components/schemas/CouponStatus" }
+        segment: { $ref: "#/components/schemas/Segment" }
+      additionalProperties: false
+
+    TaxFeeCharge:
+      type: object
+      description: TFC — Tax / Fee / Charge (GLOSSARY).
+      required: [code, amount]
+      properties:
+        code:
+          type: string
+          description: 'TFC kodu (örn. "YQ", "TR")'
+        amount: { $ref: "#/components/schemas/Money" }
+      additionalProperties: false
+
+    FareCalculation:
+      type: object
+      description: Fare Calculation — baz ücret + TFC toplamı + linear fare calc string.
+      required: [baseFare, totalTfc, total, tfcs]
+      properties:
+        baseFare: { $ref: "#/components/schemas/Money" }
+        totalTfc: { $ref: "#/components/schemas/Money" }
+        total: { $ref: "#/components/schemas/Money" }
+        nuc:
+          type: number
+          description: Neutral Unit of Construction
+        roe:
+          type: number
+          description: Rate of Exchange
+        fareCalcString:
+          type: string
+          description: Linear fare calculation string
+        tfcs:
+          type: array
+          items: { $ref: "#/components/schemas/TaxFeeCharge" }
+      additionalProperties: false
+
+    Passenger:
+      type: object
+      required: [surname, givenName]
+      properties:
+        surname: { type: string }
+        givenName: { type: string }
+        title: { type: string }
+        foid:
+          type: string
+          description: Form of Identification
+      additionalProperties: false
+
+    FormOfPayment:
+      type: object
+      required: [type]
+      properties:
+        type: { $ref: "#/components/schemas/FormOfPaymentType" }
+        detail:
+          type: string
+          description: Maskelenmiş kart, UATP hesap no vb.
+      additionalProperties: false
+
+    ControlAuthority:
+      type: object
+      description: |
+        Airport / Coupon Control — kupon control'ünü aynı anda tek carrier tutar;
+        sadece Validating Carrier grant/revoke eder (kural 7). Delegasyonda TTL'li lease.
+      required: [holder, isValidatingCarrier]
+      properties:
+        holder:
+          type: string
+          description: Control'ü tutan carrier kodu
+        isValidatingCarrier:
+          type: boolean
+        leaseExpiresAt:
+          type: string
+          format: date-time
+          description: Lease bitiş zamanı (sadece delege edildiğinde)
+      additionalProperties: false
+
+    LifecycleEvent:
+      type: object
+      description: Yaşam döngüsü event'i (history endpoint'ini ve timeline'ı besler).
+      required: [id, type, occurredAt, actor]
+      properties:
+        id: { type: string }
+        type: { $ref: "#/components/schemas/LifecycleEventType" }
+        occurredAt:
+          type: string
+          format: date-time
+        actor:
+          type: string
+          description: İşlemi yapan carrier / agent
+        couponSeq:
+          type: integer
+        detail:
+          type: string
+        linkedTicketNumber:
+          type: string
+          description: Exchange linkage — ilgili diğer bilet numarası
+        status:
+          $ref: "#/components/schemas/CouponStatus"
+      additionalProperties: false
+
+    Ticket:
+      type: object
+      description: Elektronik bilet (ET) tam kaydı.
+      required:
+        - ticketNumber
+        - passenger
+        - validatingCarrier
+        - coupons
+        - fare
+        - formOfPayment
+        - control
+        - issuedAt
+        - history
+      properties:
+        ticketNumber:
+          type: string
+          description: 13 hane (3 airline + 9 serial + 1 check digit)
+          pattern: "^\\d{13}$"
+        passenger: { $ref: "#/components/schemas/Passenger" }
+        validatingCarrier:
+          type: string
+          description: Validating Carrier kodu
+        coupons:
+          type: array
+          items: { $ref: "#/components/schemas/Coupon" }
+        fare: { $ref: "#/components/schemas/FareCalculation" }
+        formOfPayment: { $ref: "#/components/schemas/FormOfPayment" }
+        control: { $ref: "#/components/schemas/ControlAuthority" }
+        issuedAt:
+          type: string
+          format: date-time
+        pnr:
+          type: string
+        endorsement:
+          type: string
+          description: "Endorsements / Restrictions kutusu (2.19) + ciro notu"
+        history:
+          type: array
+          items: { $ref: "#/components/schemas/LifecycleEvent" }
+      additionalProperties: false
+
+    TicketSummary:
+      type: object
+      required:
+        - ticketNumber
+        - passengerName
+        - route
+        - validatingCarrier
+        - issuedAt
+        - total
+        - overallStatus
+      properties:
+        ticketNumber: { type: string }
+        passengerName: { type: string }
+        route:
+          type: string
+          description: 'Örn. "IST → NRT"'
+        validatingCarrier: { type: string }
+        issuedAt:
+          type: string
+          format: date-time
+        total: { $ref: "#/components/schemas/Money" }
+        overallStatus:
+          $ref: "#/components/schemas/CouponStatus"
+      additionalProperties: false
+
+    # ---------- EMD ----------
+    EmdCoupon:
+      type: object
+      required: [seq, status, rfisc, description, value]
+      properties:
+        seq:
+          type: integer
+          minimum: 1
+        status: { $ref: "#/components/schemas/CouponStatus" }
+        rfisc:
+          type: string
+          description: Reason For Issuance Sub-Code
+        description:
+          type: string
+        value: { $ref: "#/components/schemas/Money" }
+      additionalProperties: false
+
+    Emd:
+      type: object
+      description: Electronic Miscellaneous Document (Handbook Ch 5).
+      required:
+        - emdNumber
+        - type
+        - passenger
+        - issuingCarrier
+        - issuedAt
+        - coupons
+        - total
+      properties:
+        emdNumber:
+          type: string
+          description: 13 hane
+          pattern: "^\\d{13}$"
+        type: { $ref: "#/components/schemas/EmdType" }
+        passenger: { $ref: "#/components/schemas/Passenger" }
+        issuingCarrier: { type: string }
+        issuedAt:
+          type: string
+          format: date-time
+        associatedTicket:
+          type: string
+          description: EMD-A ise bağlı bilet numarası
+        associatedCouponSeq:
+          type: integer
+        coupons:
+          type: array
+          items: { $ref: "#/components/schemas/EmdCoupon" }
+        total: { $ref: "#/components/schemas/Money" }
+      additionalProperties: false
+
+    RficsOption:
+      type: object
+      description: RFISC kataloğu seçeneği (örnek alt küme; gerçekte ATPCO/airline).
+      required: [rfisc, group, label]
+      properties:
+        rfisc: { type: string }
+        group:
+          type: string
+          description: RFIC group
+        label: { type: string }
+      additionalProperties: false
+
+    # ---------- Interline ----------
+    InterlineMessage:
+      type: object
+      required:
+        - id
+        - standard
+        - messageType
+        - direction
+        - partnerCarrier
+        - occurredAt
+        - status
+        - summary
+        - payloadPreview
+      properties:
+        id: { type: string }
+        standard: { $ref: "#/components/schemas/MessageStandard" }
+        messageType:
+          type: string
+          description: 'TKTREQ, TKTRES, ETSU (status update), OrderCreate, OrderView…'
+        direction: { $ref: "#/components/schemas/MessageDirection" }
+        partnerCarrier: { type: string }
+        ticketNumber: { type: string }
+        occurredAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [sent, acked, received, failed]
+        summary: { type: string }
+        payloadPreview:
+          type: string
+          description: Ham mesaj örneği
+      additionalProperties: false
+
+    BilateralAgreement:
+      type: object
+      required:
+        - partnerCarrier
+        - partnerName
+        - capabilities
+        - controlTransfer
+        - status
+        - since
+      properties:
+        partnerCarrier: { type: string }
+        partnerName: { type: string }
+        capabilities:
+          type: array
+          items: { $ref: "#/components/schemas/MessageStandard" }
+        controlTransfer:
+          type: boolean
+          description: Control devri destekleniyor mu
+        status:
+          type: string
+          enum: [active, pending, suspended]
+        since:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    # ---------- Orders ----------
+    OrderItem:
+      type: object
+      required: [kind, reference, serviceLabel, amount, statusSummary]
+      properties:
+        kind: { $ref: "#/components/schemas/FulfillmentKind" }
+        reference:
+          type: string
+          description: Ticket veya EMD numarası
+        serviceLabel:
+          type: string
+          description: 'Örn. "IST→NRT C" veya "Extra Baggage 23kg"'
+        amount: { $ref: "#/components/schemas/Money" }
+        statusSummary:
+          $ref: "#/components/schemas/CouponStatus"
+      additionalProperties: false
+
+    Order:
+      type: object
+      description: ONE Order — system of record (FE-7).
+      required:
+        - orderId
+        - passenger
+        - owningCarrier
+        - createdAt
+        - status
+        - items
+        - total
+      properties:
+        orderId:
+          type: string
+          description: 'ONE Order id (örn. "ORD-...")'
+        passenger: { $ref: "#/components/schemas/Passenger" }
+        owningCarrier: { type: string }
+        createdAt:
+          type: string
+          format: date-time
+        status: { $ref: "#/components/schemas/OrderStatus" }
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/OrderItem" }
+        total: { $ref: "#/components/schemas/Money" }
+        offerRef:
+          type: string
+          description: Kaynaklandığı Offer
+      additionalProperties: false
+
+    # ---------- PTA ----------
+    Pta:
+      type: object
+      description: Prepaid Ticket Advice (Handbook Ch 9).
+      required:
+        - ptaReference
+        - sponsorName
+        - sponsorLocation
+        - beneficiaryName
+        - pickupLocation
+        - route
+        - amount
+        - formOfPayment
+        - status
+        - createdAt
+      properties:
+        ptaReference: { type: string }
+        sponsorName:
+          type: string
+          description: Ödeyen taraf
+        sponsorLocation:
+          type: string
+          description: Ödemenin yapıldığı istasyon
+        beneficiaryName:
+          type: string
+          description: Bileti alacak yolcu (SOYAD/AD)
+        pickupLocation:
+          type: string
+          description: Biletin teslim alınacağı istasyon
+        route:
+          type: string
+          description: 'Örn. "IST → JFK"'
+        amount: { $ref: "#/components/schemas/Money" }
+        formOfPayment: { $ref: "#/components/schemas/FormOfPayment" }
+        status: { $ref: "#/components/schemas/PtaStatus" }
+        createdAt:
+          type: string
+          format: date-time
+        issuedTicketNumber:
+          type: string
+          description: PTA'ya karşı kesilen bilet
+      additionalProperties: false
+
+    # ---------- Revenue ----------
+    RevenueAlert:
+      type: object
+      description: Revenue Protection anomali bayrağı (Handbook 14.7).
+      required: [id, kind, severity, ticketNumber, detail, detectedAt]
+      properties:
+        id: { type: string }
+        kind: { $ref: "#/components/schemas/RevenueAlertKind" }
+        severity: { $ref: "#/components/schemas/RevenueSeverity" }
+        ticketNumber: { type: string }
+        detail: { type: string }
+        detectedAt:
+          type: string
+          format: date-time
+      additionalProperties: false
+
+    # ---------- Dashboard ----------
+    DashboardStats:
+      type: object
+      required: [statusDist, weekly, activity]
+      properties:
+        statusDist:
+          type: array
+          description: Kupon statü dağılımı
+          items:
+            type: object
+            required: [status, count]
+            properties:
+              status: { $ref: "#/components/schemas/CouponStatus" }
+              count:
+                type: integer
+                minimum: 0
+            additionalProperties: false
+        weekly:
+          type: array
+          description: Son 7 gün kesilen bilet sayıları
+          items:
+            type: integer
+            minimum: 0
+        activity:
+          type: array
+          description: Son aktivite (en fazla 6)
+          items:
+            type: object
+            required: [id, type, label, ref, occurredAt]
+            properties:
+              id: { type: string }
+              type: { $ref: "#/components/schemas/LifecycleEventType" }
+              label: { type: string }
+              ref:
+                type: string
+                description: Bilet numarası
+              occurredAt:
+                type: string
+                format: date-time
+              status:
+                $ref: "#/components/schemas/CouponStatus"
+            additionalProperties: false
+      additionalProperties: false
+
+    # ---------- Command inputs ----------
+    IssueTicketInput:
+      type: object
+      required: [passenger, validatingCarrier, segments, fare, formOfPayment, idempotencyKey]
+      properties:
+        passenger: { $ref: "#/components/schemas/Passenger" }
+        validatingCarrier:
+          type: string
+          description: Validating Carrier kodu
+        pnr:
+          type: string
+        segments:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Segment" }
+        fare: { $ref: "#/components/schemas/FareCalculation" }
+        formOfPayment: { $ref: "#/components/schemas/FormOfPayment" }
+        idempotencyKey:
+          $ref: "#/components/schemas/IdempotencyKey"
+      additionalProperties: false
+
+    VoidInput:
+      type: object
+      required: [ticketNumber, idempotencyKey]
+      properties:
+        ticketNumber: { type: string }
+        reason: { type: string }
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    RefundInput:
+      type: object
+      required: [ticketNumber, couponSeqs, refundAmount, idempotencyKey]
+      properties:
+        ticketNumber: { type: string }
+        couponSeqs:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 1
+        refundAmount: { $ref: "#/components/schemas/Money" }
+        residual: { $ref: "#/components/schemas/Money" }
+        waiver:
+          type: string
+          description: Vefat/hastalık muafiyeti (Handbook 13.9/13.10, 15.4)
+          enum: [death, illness]
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    ExchangeInput:
+      type: object
+      required: [oldTicketNumber, newSegments, adc, idempotencyKey]
+      properties:
+        oldTicketNumber: { type: string }
+        newSegments:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/Segment" }
+        adc:
+          allOf:
+            - $ref: "#/components/schemas/Money"
+          description: Additional Collection — ek tahsilat; negatif = residual
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    ExchangeResult:
+      type: object
+      required: [oldTicket, newTicket]
+      properties:
+        oldTicket: { $ref: "#/components/schemas/Ticket" }
+        newTicket: { $ref: "#/components/schemas/Ticket" }
+      additionalProperties: false
+
+    EndorseInput:
+      type: object
+      required: [ticketNumber, endorsement, idempotencyKey]
+      properties:
+        ticketNumber: { type: string }
+        endorsement: { type: string }
+        endorseToCarrier:
+          type: string
+          description: Ciro edilen carrier kodu (opsiyonel)
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    IrropInput:
+      type: object
+      required: [ticketNumber, couponSeqs, reason, endorseTo, newFlight, idempotencyKey]
+      properties:
+        ticketNumber: { type: string }
+        couponSeqs:
+          type: array
+          minItems: 1
+          items:
+            type: integer
+            minimum: 1
+        reason:
+          type: string
+          description: weather / technical / atc / strike …
+        endorseTo:
+          type: string
+          description: Reaccommodating carrier (2 harf)
+        newFlight:
+          type: object
+          required: [carrier, flightNumber, date]
+          properties:
+            carrier: { type: string }
+            flightNumber: { type: string }
+            date:
+              type: string
+              description: Yeni uçuş tarihi
+          additionalProperties: false
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    IrropResult:
+      type: object
+      required: [ticket, fim]
+      properties:
+        ticket: { $ref: "#/components/schemas/Ticket" }
+        fim:
+          type: string
+          description: Flight Interruption Manifest referansı
+      additionalProperties: false
+
+    AddEmdInput:
+      type: object
+      required: [ticketNumber, type, rfisc, description, value, idempotencyKey]
+      properties:
+        ticketNumber: { type: string }
+        couponSeq:
+          type: integer
+          minimum: 1
+          description: EMD-A için bağlanacak kupon sırası
+        type: { $ref: "#/components/schemas/EmdType" }
+        rfisc:
+          type: string
+          description: Reason For Issuance Sub-Code
+        description: { type: string }
+        value: { $ref: "#/components/schemas/Money" }
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    AdvanceCouponStatusInput:
+      type: object
+      required: [to]
+      properties:
+        to:
+          allOf:
+            - $ref: "#/components/schemas/CouponStatus"
+          description: Hedef statü; FSM geçişi geçerli olmalı
+        idempotencyKey:
+          $ref: "#/components/schemas/IdempotencyKey"
+      additionalProperties: false
+
+    CreatePtaInput:
+      type: object
+      required:
+        - sponsorName
+        - sponsorLocation
+        - beneficiaryName
+        - pickupLocation
+        - route
+        - amount
+        - formOfPayment
+        - idempotencyKey
+      properties:
+        sponsorName: { type: string }
+        sponsorLocation: { type: string }
+        beneficiaryName: { type: string }
+        pickupLocation: { type: string }
+        route: { type: string }
+        amount: { $ref: "#/components/schemas/Money" }
+        formOfPayment: { $ref: "#/components/schemas/FormOfPayment" }
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    IssueAgainstPtaInput:
+      type: object
+      required: [ptaReference, idempotencyKey]
+      properties:
+        ptaReference: { type: string }
+        idempotencyKey: { $ref: "#/components/schemas/IdempotencyKey" }
+      additionalProperties: false
+
+    IssueAgainstPtaResult:
+      type: object
+      required: [pta, ticket]
+      properties:
+        pta: { $ref: "#/components/schemas/Pta" }
+        ticket: { $ref: "#/components/schemas/Ticket" }
+      additionalProperties: false
+
+    IdempotencyKey:
+      type: string
+      minLength: 1
+      description: |
+        Çift-submit koruması (kural 5). Frontend üretir (örn. "idem-<uuid>").
+        Aynı key ile tekrar = aynı sonuç, yeni yan etki yok.
+
+    # ---------- Errors ----------
+    ProblemDetails:
+      type: object
+      description: RFC 7807 Problem Details — hata gövdesi (DomainError dahil).
+      properties:
+        type:
+          type: string
+          format: uri
+          description: Hata tipini tanımlayan URI
+          default: about:blank
+        title:
+          type: string
+          description: Kısa, insan-okur özet
+        status:
+          type: integer
+          description: HTTP statü kodu
+        detail:
+          type: string
+          description: Bu spesifik oluşuma dair açıklama (örn. domain hata mesajı)
+        instance:
+          type: string
+          format: uri
+          description: Hatanın oluştuğu kaynak
+        code:
+          type: string
+          description: |
+            Makine-okur domain hata kodu (örn. "InvalidTransition",
+            "VoidRequiresAllOpen", "TicketNotFound", "PtaNotOpen").
+        from:
+          $ref: "#/components/schemas/CouponStatus"
+        to:
+          $ref: "#/components/schemas/CouponStatus"
+      additionalProperties: true
+
+  securitySchemes:
+    oidc:
+      type: openIdConnect
+      description: Keycloak OIDC (react-oidc-context ile uçtan uca)
+      openIdConnectUrl: /.well-known/openid-configuration
+    bearer:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+security:
+  - bearer: []

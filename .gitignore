@@ -1,0 +1,20 @@
+# Bağımlılıklar / build çıktıları
+node_modules/
+dist/
+build/
+.gradle/
+.kotlin/
+*.tsbuildinfo
+
+# Test / araç çıktıları (yeniden üretilebilir)
+frontend/test-results/
+frontend/playwright-report/
+frontend/tour/
+
+# Ortam / editör / dağıtım
+.DS_Store
+.env
+.env.*
+.vercel/
+nohup.out
+*.log

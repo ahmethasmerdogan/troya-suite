@@ -1,0 +1,296 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+/* =====================================================================
+   Troya Design Tokens v2 — "Enterprise Ops Console"
+   Kaynak: DESIGN_SYSTEM.md (tek doğruluk; bu sürümle güncellendi).
+   Katmanlar:
+     1) Nötr yüzeyler  — soğuk gri rampa (light) / mavi-tonlu konsol (dark)
+     2) Yapısal kabuk  — THY lacivertinden türetilen tema-sabit rail tokenları
+     3) Tek fonksiyonel accent — THY kırmızısı
+     4) Semantik statü — soft bg + text + dot + border (pill'ler)
+   ===================================================================== */
+:root {
+  /* === Surfaces — soğuk gri rampa === */
+  --bg-page: #f5f6f8;
+  --bg-surface: #ffffff;
+  --bg-surface-alt: #f9fafb;
+  --bg-sunken: #eef0f3;
+
+  /* === Inverse / Dark (toast, tooltip, popover) === */
+  --bg-inverse: #101828;
+  --bg-inverse-alt: #1d2939;
+  --text-on-inverse: #ffffff;
+  --text-on-inverse-2: #98a2b3;
+
+  /* === Text === */
+  --text-primary: #101828;
+  --text-secondary: #475467;
+  --text-tertiary: #98a2b3;
+  --text-disabled: #d0d5dd;
+
+  /* === Borders === */
+  --border-subtle: #edeff2;
+  --border-default: #e0e4ea;
+  --border-strong: #c6ccd6;
+
+  /* === Accent (tek fonksiyonel) — THY kırmızısı === */
+  --accent: #c70a0c;
+  --accent-hover: #ab0709;
+  --accent-pressed: #8f0507;
+  --accent-soft: #fcecec;
+  --accent-ring: rgba(199, 10, 12, 0.16);
+
+  /* === Yapısal kabuk (rail/topbar koyu alanları) — THY laciverti, tema-sabit === */
+  --thy-navy: #1a2a4f;
+  --shell-bg: #0c1526;
+  --shell-bg-deep: #091020;
+  --shell-surface: rgba(255, 255, 255, 0.06);
+  --shell-hover: rgba(255, 255, 255, 0.08);
+  --shell-active: rgba(255, 255, 255, 0.12);
+  --shell-border: rgba(255, 255, 255, 0.09);
+  --shell-text: #edf1f7;
+  --shell-dim: #8b96ab;
+  --shell-glow: rgba(199, 10, 12, 0.35);
+
+  /* === Semantik — Status Pills (soft + border) === */
+  --success-bg: #ecfdf3;  --success-text: #067647;  --success-dot: #17b26a;  --success-border: #abefc6;
+  --warning-bg: #fffaeb;  --warning-text: #b54708;  --warning-dot: #f79009;  --warning-border: #fedf89;
+  --danger-bg: #fef3f2;   --danger-text: #b42318;   --danger-dot: #f04438;   --danger-border: #fecdca;
+  --info-bg: #eff8ff;     --info-text: #175cd3;     --info-dot: #2e90fa;     --info-border: #b2ddff;
+  --neutral-bg: #f2f4f7;  --neutral-text: #475467;  --neutral-border: #e4e7ec;
+
+  /* === Elevation — katmanlı, ultra-subtle === */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.08);
+  --shadow-md: 0 2px 4px -2px rgba(16, 24, 40, 0.06), 0 4px 8px -2px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 16px -4px rgba(16, 24, 40, 0.1);
+  --shadow-xl: 0 8px 8px -4px rgba(16, 24, 40, 0.04), 0 20px 24px -4px rgba(16, 24, 40, 0.1);
+
+  /* skeleton shimmer rengi */
+  --shimmer: rgba(255, 255, 255, 0.5);
+
+  --radius: 0.625rem;
+}
+
+/* === Koyu tema — mavi-tonlu konsol (accent THY kırmızısı, parlatılmış) === */
+.dark {
+  --bg-page: #0b0e14;
+  --bg-surface: #12161f;
+  --bg-surface-alt: #161b26;
+  --bg-sunken: #0e1219;
+
+  --text-primary: #f2f4f8;
+  --text-secondary: #9aa4b5;
+  --text-tertiary: #667085;
+  --text-disabled: #3e4557;
+
+  --border-subtle: #1d2330;
+  --border-default: #252c3b;
+  --border-strong: #3a4356;
+
+  --accent: #f1494b;
+  --accent-hover: #e93d3f;
+  --accent-pressed: #d92f31;
+  --accent-soft: #391416;
+  --accent-ring: rgba(241, 73, 75, 0.22);
+
+  /* kabuk koyu temada sayfayla kaynaşır (daha nötr, daha derin) */
+  --shell-bg: #090d15;
+  --shell-bg-deep: #06090f;
+  --shell-surface: rgba(255, 255, 255, 0.05);
+  --shell-hover: rgba(255, 255, 255, 0.07);
+  --shell-active: rgba(255, 255, 255, 0.11);
+  --shell-border: rgba(255, 255, 255, 0.08);
+  --shell-text: #edf1f7;
+  --shell-dim: #79839a;
+
+  --success-bg: #10241a; --success-text: #4ade80; --success-dot: #22c55e; --success-border: #1d4230;
+  --warning-bg: #271e0c; --warning-text: #fbbf24; --warning-dot: #f59e0b; --warning-border: #4a3a13;
+  --danger-bg: #2b1414;  --danger-text: #f87171;  --danger-dot: #ef4444;  --danger-border: #4f1f1f;
+  --info-bg: #12203a;    --info-text: #7fa8f5;    --info-dot: #3b82f6;    --info-border: #1e3a66;
+  --neutral-bg: #1c2230; --neutral-text: #9aa4b5; --neutral-border: #2a3345;
+
+  /* inverse (toast/popover) koyu zeminde açık görünsün ki ayrışsın */
+  --bg-inverse: #f5f6f8; --bg-inverse-alt: #e0e4ea;
+  --text-on-inverse: #101828; --text-on-inverse-2: #475467;
+
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 2px 4px -2px rgba(0, 0, 0, 0.35), 0 4px 8px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 4px 6px -2px rgba(0, 0, 0, 0.3), 0 12px 16px -4px rgba(0, 0, 0, 0.45);
+  --shadow-xl: 0 8px 8px -4px rgba(0, 0, 0, 0.3), 0 20px 24px -4px rgba(0, 0, 0, 0.5);
+
+  --shimmer: rgba(255, 255, 255, 0.06);
+}
+
+@layer base {
+  * {
+    border-color: var(--border-default);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  body {
+    margin: 0;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    font-family: "Geist Variable", "Geist Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  ::selection {
+    background: var(--accent-soft);
+  }
+  /* Tutarlı klavye odak halkası — link/sekme/tıklanabilir öğeler (a11y).
+     Native button/input/select kendi component focus stilini kullanır. */
+  :where(a, [role="button"], [tabindex="0"], summary):focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 8px;
+  }
+  /* fare odağında outline gösterme (yalnızca klavye) */
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* ince kaydırma çubuğu */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-default); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--border-strong); }
+
+/* tablo/dashboard sayıları için tabular */
+.tabular-nums { font-variant-numeric: tabular-nums; }
+/* Tek font: 'mono' etiketli veri (TKT no, kod, tarih) Geist ile ama hizalı rakam */
+.font-mono { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+
+@layer components {
+  /* === Status Pill — DESIGN_SYSTEM §8.2 (v2: ince ring ile tanımlı kenar) === */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    padding: 0 10px;
+    border-radius: 9999px;
+    font: 500 12.5px/1 "Geist Variable", "Geist Sans", -apple-system, sans-serif;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+  }
+  .pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill--success { background: var(--success-bg); color: var(--success-text); box-shadow: inset 0 0 0 1px var(--success-border); }
+  .pill--success::before { background: var(--success-dot); }
+  .pill--info { background: var(--info-bg); color: var(--info-text); box-shadow: inset 0 0 0 1px var(--info-border); }
+  .pill--info::before { background: var(--info-dot); }
+  .pill--warning { background: var(--warning-bg); color: var(--warning-text); box-shadow: inset 0 0 0 1px var(--warning-border); }
+  .pill--warning::before { background: var(--warning-dot); }
+  .pill--danger { background: var(--danger-bg); color: var(--danger-text); box-shadow: inset 0 0 0 1px var(--danger-border); }
+  .pill--danger::before { background: var(--danger-dot); }
+  .pill--neutral { background: var(--neutral-bg); color: var(--neutral-text); box-shadow: inset 0 0 0 1px var(--neutral-border); }
+  .pill--neutral::before { background: var(--neutral-text); opacity: 0.6; }
+
+  /* === Big-number two-tone — DESIGN_SYSTEM §3 === */
+  .amount { font-family: "Geist Variable", "Geist Sans", -apple-system, sans-serif; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .amount .int { color: var(--text-primary); font-weight: 600; letter-spacing: -0.02em; }
+  .amount .dec, .amount .cur { color: var(--text-tertiary); font-weight: 400; }
+
+  /* === Kabuk (rail) yüzeyi — ince doku + üst kırmızı marka çizgisi === */
+  .shell-panel {
+    background:
+      radial-gradient(1200px 400px at -20% -10%, rgba(199, 10, 12, 0.12), transparent 55%),
+      linear-gradient(180deg, var(--shell-bg) 0%, var(--shell-bg-deep) 100%);
+  }
+}
+
+/* skeleton shimmer — DESIGN_SYSTEM §8.10 */
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* motion — DESIGN_SYSTEM §10 */
+@keyframes drawerIn { from { transform: translateX(16px); opacity: 0.4; } to { transform: translateX(0); opacity: 1; } }
+@keyframes drawerInLeft { from { transform: translateX(-100%); } to { transform: translateX(0); } }
+@keyframes slideInRight { from { transform: translateX(100%); } to { transform: translateX(0); } }
+.anim-slide-right { animation: slideInRight 260ms cubic-bezier(0.16, 1, 0.3, 1); }
+/* liste/filtre giriş — kademeli fade (smooth filter animations) */
+@keyframes listIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.list-in { animation: listIn 240ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+@keyframes modalIn { from { transform: scale(0.98) translateY(4px); opacity: 0; } to { transform: scale(1) translateY(0); opacity: 1; } }
+@keyframes toastIn { from { transform: translateY(12px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+.animate-in { animation: fadeIn 200ms ease-out; }
+@keyframes pageIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.page-in { animation: pageIn 240ms cubic-bezier(0.16, 1, 0.3, 1); }
+
+/* Bilet kesme başarı animasyonu */
+@keyframes popIn { 0% { opacity: 0; transform: scale(0.6); } 60% { transform: scale(1.08); } 100% { opacity: 1; transform: scale(1); } }
+@keyframes ringPulse { 0% { transform: scale(0.7); opacity: 0.55; } 70% { transform: scale(2); opacity: 0; } 100% { opacity: 0; } }
+@keyframes checkDraw { to { stroke-dashoffset: 0; } }
+@keyframes riseIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: none; } }
+.anim-pop { animation: popIn 420ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.anim-ring { animation: ringPulse 1.4s ease-out 0.2s infinite; }
+.anim-check { stroke-dasharray: 30; stroke-dashoffset: 30; animation: checkDraw 360ms ease-out 0.35s forwards; }
+.anim-rise { animation: riseIn 460ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+/* Bilet koparma (stub tear-off) — perforasyondan ayrılıp düşer */
+@keyframes tearOff {
+  0% { transform: none; opacity: 1; }
+  18% { transform: translateX(3px) rotate(0.5deg); }
+  100% { transform: translateX(54px) translateY(70px) rotate(13deg); opacity: 0; }
+}
+.tc-tear { animation: tearOff 0.95s cubic-bezier(0.55, 0, 0.85, 0.2) 1.15s forwards; transform-origin: top left; }
+/* ana gövdenin koparma anındaki hafif sarsıntısı */
+@keyframes tearShake {
+  0%, 100% { transform: none; }
+  40% { transform: translateX(-2px); }
+  55% { transform: translateX(2px); }
+  70% { transform: translateX(-1px); }
+}
+.tc-shake { animation: tearShake 0.5s ease-in-out 1.15s; }
+/* makas perforasyon hattı boyunca yukarıdan aşağı keser */
+@keyframes scissorCut {
+  0% { top: -10px; opacity: 0; }
+  12% { opacity: 1; }
+  88% { opacity: 1; }
+  100% { top: calc(100% + 10px); opacity: 0; }
+}
+.anim-scissor { animation: scissorCut 1.0s ease-in-out 0.2s forwards; }
+
+/* yazıcıdan kağıt çıkışı */
+@keyframes printFeed { 0% { transform: translateY(-100%); } 100% { transform: translateY(0); } }
+.anim-print-feed { animation: printFeed 1.2s cubic-bezier(0.2, 0.6, 0.3, 1) 0.1s both; }
+
+/* EPSON termal fiş — yavaş, kademeli besleme (uzun fiş) */
+@keyframes receiptFeed { 0% { transform: translateY(-100%); } 100% { transform: translateY(0); } }
+.anim-receipt-feed { animation: receiptFeed 2s steps(24, end) 0.25s both; }
+
+/* Custom TK180 — bilet/kart önden yatay çıkış */
+@keyframes ticketEject { 0% { transform: translateX(-86%); } 70% { transform: translateX(2%); } 100% { transform: translateX(0); } }
+.anim-ticket-eject { animation: ticketEject 1.7s cubic-bezier(0.2, 0.7, 0.25, 1) 0.3s both; }
+
+/* yazıcı kafa/LED yanıp sönmesi */
+@keyframes printerBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+.anim-printer-blink { animation: printerBlink 0.5s ease-in-out 6; }
+
+/* koltuk doluş animasyonu (kademeli) */
+@keyframes seatIn { from { opacity: 0; transform: scale(0.6); } to { opacity: 1; transform: scale(1); } }
+.seat-in { animation: seatIn 320ms cubic-bezier(0.16,1,0.3,1) both; }
+@keyframes seatPulse { 0% { box-shadow: 0 0 0 0 rgba(37,99,235,0.45); } 100% { box-shadow: 0 0 0 7px rgba(37,99,235,0); } }
+.seat-pulse { animation: seatPulse 600ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+}

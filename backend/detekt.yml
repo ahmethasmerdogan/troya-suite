@@ -1,0 +1,26 @@
+# Troya detekt — varsayılan kuralların üstüne makul override'lar (buildUponDefaultConfig=true).
+# Gerekçe: domain'de meşru sayısal mantık (mod-7 check digit, 13 hane bilet no, 18 statü),
+# Spring Boot deyimleri ve uzun enum geçiş tabloları var.
+
+style:
+  MaxLineLength:
+    maxLineLength: 180
+  MagicNumber:
+    # Bilet numarası algoritması / FSM gibi domain'de sayılar anlamlı ve yereldir.
+    active: false
+  ReturnCount:
+    # Guard clause (erken ?: return) sayılmasın — controller'larda deyimsel.
+    excludeGuardClauses: true
+
+performance:
+  SpreadOperator:
+    # runApplication<TroyaApplication>(*args) — Spring Boot Kotlin deyimi.
+    active: false
+
+complexity:
+  LongParameterList:
+    # Aggregate/command/event'lerde alan sayısı domain gereği yüksek (ET 33 veri elemanı).
+    functionThreshold: 10
+    constructorThreshold: 16
+  LongMethod:
+    threshold: 80
