@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, Plus, Trash2, ArrowLeft, ArrowRight, Plane, Loader2, User, Ticket, CreditCard, Banknote, Wallet, ShieldCheck, Accessibility, X } from "lucide-react";
+import { Check, Plus, Trash2, ArrowLeft, ArrowRight, Plane, Loader2, User, Ticket, CreditCard, Banknote, Wallet, ShieldCheck, Accessibility, Eye, Stethoscope, LifeBuoy, PawPrint, Baby, Lightbulb, FileSignature, type LucideIcon } from "lucide-react";
 import { issueTicket, newIdempotencyKey, type IssueTicketInput } from "@/domain/api";
 import type { Ticket as TicketT } from "@/domain/types";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -19,6 +19,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { HelpHint } from "@/components/HelpHint";
 import { useT } from "@/i18n";
 import { Card, CardContent } from "@/components/ui/card";
+import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
@@ -109,6 +110,9 @@ export function IssueWizard() {
   const [step, setStep] = useState(0);
   const [idempotencyKey] = useState(newIdempotencyKey);
   const [successTicket, setSuccessTicket] = useState<TicketT | null>(null);
+  // Kesim onayı — form geçerliyse önce kurumsal onay modalı açılır; kesim orada onaylanır.
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [pendingValues, setPendingValues] = useState<FormValues | null>(null);
   const navigate = useNavigate();
   const pushRecent = useUI((s) => s.pushRecent);
   const t = useT();
@@ -132,6 +136,7 @@ export function IssueWizard() {
   const mutation = useMutation({
     mutationFn: (input: IssueTicketInput) => issueTicket(input),
     onSuccess: (ticket) => {
+      setConfirmOpen(false);
       pushRecent(ticket.ticketNumber);
       setSuccessTicket(ticket); // kutlama overlay'i; "Bilete git" ile yönlenir
     },
@@ -147,7 +152,13 @@ export function IssueWizard() {
   const next = async () => { if (await trigger(fieldsByStep[step] as never)) setStep((s) => Math.min(s + 1, STEPS.length - 1)); };
   const back = () => setStep((s) => Math.max(s - 1, 0));
 
+  // Form geçerli → kurumsal onay modalı (kesim ancak beyan onaylanınca yapılır).
   const onSubmit = (v: FormValues) => {
+    setPendingValues(v);
+    setConfirmOpen(true);
+  };
+
+  const issueNow = (v: FormValues) => {
     const input: IssueTicketInput = {
       passenger: {
         surname: v.surname, givenName: v.givenName, title: v.title, foid: v.foid || undefined,
@@ -182,7 +193,23 @@ export function IssueWizard() {
       {successTicket && (
         <IssueSuccess ticket={successTicket} onGo={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: successTicket.ticketNumber } })} />
       )}
+      {pendingValues && (
+        <IssueConfirmModal
+          open={confirmOpen}
+          values={pendingValues}
+          total={(Number(pendingValues.baseFare) || 0) + (Number(pendingValues.totalTfc) || 0)}
+          pending={mutation.isPending}
+          onCancel={() => { if (!mutation.isPending) setConfirmOpen(false); }}
+          onConfirm={() => issueNow(pendingValues)}
+        />
+      )}
       <PageHeader title={t("nav.issue")} description={t("ticket.issue.desc")} help={<HelpHint>{t("ticket.issue.help")}</HelpHint>} />
+
+      {/* Yeni personel ipucu — form terminolojisi için (i) yönlendirmesi */}
+      <div className="mb-4 flex items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-surface-alt px-3 py-2 text-[12px] text-secondary">
+        <Lightbulb size={14} strokeWidth={1.75} className="flex-shrink-0 text-[var(--warning-dot)]" />
+        <span>Bir alanın ne olduğundan emin değilseniz etiketin yanındaki <b>(i)</b> simgesine dokunun — açıklama, örnek ve kaynak görünür. <b>*</b> işaretli alanlar zorunludur; kesim öncesi ayrıca onayınız istenir.</span>
+      </div>
 
       {/* Adım göstergesi — başlık + alt açıklama + ikon */}
       <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -223,7 +250,7 @@ export function IssueWizard() {
             <form onSubmit={handleSubmit(onSubmit)}>
               {/* STEP 0 — Yolcu */}
               {step === 0 && (
-                <Section title="Yolcu Bilgileri" hint="Pasaporttaki ile birebir; soyadı en az 2 karakter (Handbook Ch 2).">
+                <Section title="Yolcu Bilgileri" hint="Ad ve soyadı pasaporttaki ile BİREBİR yazın (Türkçe karakter kullanmayın, sistem büyük harfe çevirir). Soyadı en az 2 karakter olmalıdır.">
                   <div className="grid grid-cols-2 gap-4">
                     <Field label="Soyadı *" info={FIELD_HELP.surname} error={errors.surname?.message}>
                       <Input {...register("surname")} aria-invalid={!!errors.surname} placeholder="ERDOGAN" className="uppercase" />
@@ -231,17 +258,17 @@ export function IssueWizard() {
                     <Field label="Ad *" info={FIELD_HELP.givenName} error={errors.givenName?.message}>
                       <Input {...register("givenName")} aria-invalid={!!errors.givenName} placeholder="AHMET" className="uppercase" />
                     </Field>
-                    <Field label="Ünvan" info={FIELD_HELP.title}>
+                    <Field label="Ünvan / Cinsiyet" info={FIELD_HELP.title}>
                       <Select {...register("title")}><option>MR</option><option>MRS</option><option>MS</option><option>CHD</option></Select>
                     </Field>
-                    <Field label="FOID" info={FIELD_HELP.foid}>
+                    <Field label="Kimlik Belgesi (FOID)" info={FIELD_HELP.foid}>
                       <Input {...register("foid")} placeholder="PP/U12345678" />
                     </Field>
                   </div>
                 </Section>
               )}
               {step === 0 && (
-                <Section title="Özel Yolcu Hizmetleri (SSR)" hint="Engelli/özel ihtiyaç — IATA standart kodları (Reso 1700). El ile yazma; seç, açıklama otomatik dolar." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+                <Section title="Özel Yolcu Hizmetleri (SSR)" hint="Tekerlekli sandalye, refakat, evcil hayvan gibi hizmetler. Kod ezberlemeniz gerekmez — açıklamasını okuyup listeden seçin; ücretli olanlar sonradan EMD olarak düzenlenir." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
                   <SsrPicker selected={values.ssr ?? []} onToggle={(code) => {
                     const cur = values.ssr ?? [];
                     setValue("ssr", cur.includes(code) ? cur.filter((c) => c !== code) : [...cur, code], { shouldValidate: false });
@@ -249,7 +276,7 @@ export function IssueWizard() {
                 </Section>
               )}
               {step === 0 && (
-                <Section title="Kucak Bebeği (Infant)" hint="In connection with — yetişkine bağlı, koltuksuz (Handbook 1.1.8)." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+                <Section title="Kucak Bebeği (Infant)" hint="2 yaş altı, koltuk verilmeyen bebek. Yetişkinin biletine bağlanır ('in connection with') ve çıkış sırası koltuklarında oturamaz." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
                   <label className="flex cursor-pointer items-center gap-2 text-[13px] text-primary">
                     <input type="checkbox" {...register("hasInfant")} className="h-4 w-4 rounded border-[var(--border-strong)] accent-[var(--accent)]" />
                     Bu yolcuya bağlı bir kucak bebeği var (INF)
@@ -270,12 +297,12 @@ export function IssueWizard() {
                 </Section>
               )}
               {step === 0 && (
-                <Section title="Kesim" hint="Bileti kesen taşıyıcı ve (varsa) bağlı rezervasyon." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
+                <Section title="Kesim" hint="Kesen taşıyıcı: bileti düzenleyen ve kaydın tek otoritesi olan havayolu (bizde TK). PNR varsa bilet rezervasyona bağlanır." className="mt-6 border-t border-[var(--border-subtle)] pt-6">
                   <div className="grid grid-cols-2 gap-4">
-                    <Field label="Validating Carrier *" info={FIELD_HELP.validatingCarrier} error={errors.validatingCarrier?.message}>
+                    <Field label="Kesen Taşıyıcı (Validating Carrier) *" info={FIELD_HELP.validatingCarrier} error={errors.validatingCarrier?.message}>
                       <Input {...register("validatingCarrier")} aria-invalid={!!errors.validatingCarrier} placeholder="TK" className="uppercase" />
                     </Field>
-                    <Field label="PNR" info={FIELD_HELP.pnr}>
+                    <Field label="Rezervasyon Kodu (PNR)" info={FIELD_HELP.pnr}>
                       <Input {...register("pnr")} placeholder="XQ7T2M" className="uppercase" />
                     </Field>
                   </div>
@@ -284,7 +311,7 @@ export function IssueWizard() {
 
               {/* STEP 1 — Segmentler */}
               {step === 1 && (
-                <Section title="Uçuş Segmentleri" hint="Her bacak bir flight coupon olur; kuponlar sırayla honor edilir.">
+                <Section title="Uçuş Segmentleri" hint="Her uçuş bacağı bir kupon olur ve SIRAYLA kullanılır. Kolay yol: önce 'Sınıf / Bilet Tipi' seçin — teknik kodlar (RBD, Fare Basis) otomatik dolar.">
                   <div className="flex flex-col gap-4">
                     {fields.map((f, idx) => {
                       const seg = values.segments?.[idx];
@@ -333,19 +360,19 @@ export function IssueWizard() {
                                 <AirportCombobox value={field.value} onChange={field.onChange} placeholder="Tokyo / NRT" invalid={!!errors.segments?.[idx]?.destination} />
                               )} />
                             </Field>
-                            <Field label="Carrier *" info={FIELD_HELP.carrier} error={errors.segments?.[idx]?.marketingCarrier?.message}>
+                            <Field label="Havayolu (Carrier) *" info={FIELD_HELP.carrier} error={errors.segments?.[idx]?.marketingCarrier?.message}>
                               <Input {...register(`segments.${idx}.marketingCarrier`)} placeholder="TK" className="uppercase" />
                             </Field>
                             <Field label="Uçuş No *" info={FIELD_HELP.flightNumber} error={errors.segments?.[idx]?.flightNumber?.message}>
                               <Input {...register(`segments.${idx}.flightNumber`)} placeholder="TK198" className="uppercase" />
                             </Field>
-                            <Field label="RBD *" info={FIELD_HELP.rbd} error={errors.segments?.[idx]?.rbd?.message}>
+                            <Field label="Rezervasyon Sınıfı (RBD) *" info={FIELD_HELP.rbd} error={errors.segments?.[idx]?.rbd?.message}>
                               <Input {...register(`segments.${idx}.rbd`)} placeholder="C" maxLength={1} className="uppercase" />
                             </Field>
-                            <Field label="Fare Basis *" info={FIELD_HELP.fareBasis} error={errors.segments?.[idx]?.fareBasis?.message}>
+                            <Field label="Ücret Kodu (Fare Basis) *" info={FIELD_HELP.fareBasis} error={errors.segments?.[idx]?.fareBasis?.message}>
                               <Input {...register(`segments.${idx}.fareBasis`)} placeholder="CFLEX" className="uppercase" />
                             </Field>
-                            <Field label="Kalkış *" info={FIELD_HELP.departure} error={errors.segments?.[idx]?.departure?.message} className="md:col-span-2">
+                            <Field label="Kalkış Tarihi & Saati *" info={FIELD_HELP.departure} error={errors.segments?.[idx]?.departure?.message} className="md:col-span-2">
                               <Controller control={control} name={`segments.${idx}.departure`} render={({ field }) => (
                                 <DateTimeField value={field.value} onChange={field.onChange} invalid={!!errors.segments?.[idx]?.departure} />
                               )} />
@@ -364,9 +391,9 @@ export function IssueWizard() {
               {/* STEP 2 — Fare & Ödeme */}
               {step === 2 && (
                 <>
-                  <Section title="Ücret (Fare / TFC)" hint="Pricing motoru bu modülün işi değil; tutarı acente/sistem girer.">
+                  <Section title="Ücret (Fare / TFC)" hint="Toplam = çıplak ücret (base fare) + vergi ve harçlar (TFC). Tutarları tarife/pricing sisteminden alıp buraya girin — bu ekran hesaplamaz, kaydeder.">
                     <div className="grid grid-cols-2 gap-4">
-                      <Field label="Base Fare *" info={FIELD_HELP.baseFare} error={errors.baseFare?.message}>
+                      <Field label="Çıplak Ücret (Base Fare) *" info={FIELD_HELP.baseFare} error={errors.baseFare?.message}>
                         <Controller control={control} name="baseFare" render={({ field }) => (
                           <DecimalInput value={field.value} onChange={field.onChange} aria-invalid={!!errors.baseFare} placeholder="1285000" className="font-mono" fxCurrency={values.currency} />
                         )} />
@@ -376,7 +403,7 @@ export function IssueWizard() {
                           {FX_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </Select>
                       </Field>
-                      <Field label="Toplam TFC" info={FIELD_HELP.tfc} error={errors.totalTfc?.message}>
+                      <Field label="Vergi & Harçlar (TFC)" info={FIELD_HELP.tfc} error={errors.totalTfc?.message}>
                         <Controller control={control} name="totalTfc" render={({ field }) => (
                           <DecimalInput value={field.value} onChange={field.onChange} placeholder="38400" className="font-mono" fxCurrency={values.currency} />
                         )} />
@@ -395,7 +422,7 @@ export function IssueWizard() {
                         </div>
                       </div>
                       {/* Equivalent Fare Paid (2.11) — ödeme fare'den farklı para biriminde yapıldıysa */}
-                      <Field label="Eşdeğer Ödenen (ops.)" hint="Ödeme fare para biriminden farklıysa (Handbook 2.11)">
+                      <Field label="Eşdeğer Ödenen (ops.)" hint="Yalnızca ödeme, ücretin para biriminden FARKLI bir birimde alındıysa doldurun (Handbook 2.11)">
                         <Controller control={control} name="equivFarePaid" render={({ field }) => (
                           <DecimalInput value={field.value} onChange={field.onChange} placeholder="298500" className="font-mono" />
                         )} />
@@ -544,50 +571,70 @@ export function IssueWizard() {
   );
 }
 
-// SSR seçici — engelli/özel ihtiyaç hizmetleri (IATA Reso 1700). Kategori bazlı toggle çipler;
-// seçilince resmî açıklama + ücretsiz/EMD göstergesi otomatik gösterilir (el ile yazılmaz).
+// SSR seçici — engelli/özel ihtiyaç hizmetleri (IATA Reso 1700).
+// Yeni personel kodu bilmek zorunda değil: her hizmet, SEÇMEDEN ÖNCE görünen Türkçe
+// açıklaması ve ücret bilgisiyle (Ücretsiz / Ücretli→EMD) satır olarak listelenir.
+const SSR_CAT_ICON: Record<SsrCategory, LucideIcon> = {
+  mobility: Accessibility, sensory: Eye, medical: Stethoscope,
+  assistance: LifeBuoy, infant: Baby, animal: PawPrint,
+};
+
 function SsrPicker({ selected, onToggle }: { selected: string[]; onToggle: (code: string) => void }) {
   const cats = Array.from(new Set(SSR_CATALOG.map((s) => s.category))) as SsrCategory[];
+  const hasPaid = selected.some((c) => !ssrByCode(c)?.free);
   return (
-    <div className="flex flex-col gap-3">
-      {cats.map((cat) => (
-        <div key={cat}>
-          <div className="mb-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-tertiary">{SSR_CATEGORY_LABEL[cat]}</div>
-          <div className="flex flex-wrap gap-1.5">
-            {SSR_CATALOG.filter((s) => s.category === cat).map((s) => {
-              const on = selected.includes(s.code);
-              return (
-                <button
-                  key={s.code} type="button" onClick={() => onToggle(s.code)} title={s.label}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[12px] transition-colors",
-                    on ? "border-accent bg-accent-soft text-accent" : "border-border-default bg-surface text-secondary hover:bg-sunken",
-                  )}
-                >
-                  <Accessibility size={13} strokeWidth={1.75} />
-                  <span className="font-mono font-semibold">{s.code}</span>
-                  {on && <X size={12} strokeWidth={2.25} />}
-                </button>
-              );
-            })}
+    <div className="flex flex-col gap-4">
+      {cats.map((cat) => {
+        const CatIcon = SSR_CAT_ICON[cat] ?? Accessibility;
+        return (
+          <div key={cat}>
+            <div className="mb-1.5 flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-[0.06em] text-tertiary">
+              <CatIcon size={13} strokeWidth={1.75} /> {SSR_CATEGORY_LABEL[cat]}
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+              {SSR_CATALOG.filter((s) => s.category === cat).map((s) => {
+                const on = selected.includes(s.code);
+                return (
+                  <button
+                    key={s.code}
+                    type="button"
+                    onClick={() => onToggle(s.code)}
+                    aria-pressed={on}
+                    className={cn(
+                      "flex items-start gap-2.5 rounded-md border px-3 py-2 text-left transition-colors",
+                      on ? "border-accent bg-accent-soft" : "border-[var(--border-subtle)] bg-surface hover:border-border-default hover:bg-sunken",
+                    )}
+                  >
+                    <span className={cn(
+                      "mt-0.5 flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border",
+                      on ? "border-accent bg-accent text-white" : "border-[var(--border-strong)] bg-surface",
+                    )}>
+                      {on && <Check size={11} strokeWidth={3} />}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-center gap-2">
+                        <span className={cn("font-mono text-[12px] font-semibold", on ? "text-accent" : "text-primary")}>{s.code}</span>
+                        <span className={cn(
+                          "rounded-pill px-1.5 py-0.5 text-[9px] font-semibold",
+                          s.free ? "bg-[var(--success-bg)] text-[var(--success-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]",
+                        )}>
+                          {s.free ? "ÜCRETSİZ" : `ÜCRETLİ · EMD ${s.emd?.rfisc ?? ""}`}
+                        </span>
+                      </span>
+                      {/* Açıklama HER ZAMAN görünür — kodun ne olduğu seçmeden önce anlaşılır */}
+                      <span className="mt-0.5 block text-[12px] leading-snug text-secondary">{s.label}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
-      {selected.length > 0 && (
-        <div className="mt-1 flex flex-col gap-1 rounded-md border border-[var(--border-subtle)] bg-surface-alt p-3">
-          <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-secondary">Otomatik dolduruldu</div>
-          {selected.map((c) => {
-            const def = ssrByCode(c);
-            if (!def) return null;
-            return (
-              <div key={c} className="flex items-center justify-between gap-2 text-[12px]">
-                <span className="text-primary"><span className="font-mono font-semibold">{def.code}</span> — {def.label}</span>
-                <span className={cn("flex-shrink-0 rounded-pill px-2 py-0.5 text-[10px] font-semibold", def.free ? "bg-[var(--success-bg)] text-[var(--success-text)]" : "bg-[var(--warning-bg)] text-[var(--warning-text)]")}>
-                  {def.free ? "Ücretsiz" : `EMD · ${def.emd?.rfisc ?? ""}`}
-                </span>
-              </div>
-            );
-          })}
+        );
+      })}
+      {hasPaid && (
+        <div className="flex items-center gap-2 rounded-md border border-[var(--warning-border)] bg-[var(--warning-bg)] px-3 py-2 text-[12px] text-[var(--warning-text)]">
+          <ShieldCheck size={14} strokeWidth={1.75} className="flex-shrink-0" />
+          Seçilen ücretli hizmet(ler) bilet kesiminden sonra ayrı bir EMD belgesi olarak düzenlenir; ücret orada tahsil edilir.
         </div>
       )}
     </div>
@@ -662,5 +709,73 @@ function LiveSummary({ values, total, step }: { values: FormValues; total: numbe
         </div>
       </div>
     </div>
+  );
+}
+
+// Kesim onayı — kurumsal beyan + özet. "Bileti Kes" form geçerliyken bu modalı açar;
+// kesim yalnızca kontrol beyanı işaretlenip onaylanınca yapılır (yanlış kesim/void yükünü azaltır).
+function IssueConfirmModal({
+  open, values, total, pending, onCancel, onConfirm,
+}: {
+  open: boolean;
+  values: FormValues;
+  total: number;
+  pending: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const [ack, setAck] = useState(false);
+  useEffect(() => { if (open) setAck(false); }, [open]);
+  const cur = values.currency || "TRY";
+  const route = values.segments.map((s) => s.origin).concat(values.segments[values.segments.length - 1]?.destination ?? "").filter(Boolean).join(" → ");
+
+  return (
+    <Modal
+      open={open}
+      onClose={onCancel}
+      title="Bilet Kesim Onayı"
+      className="max-w-lg"
+      footer={
+        <>
+          <Button variant="secondary" onClick={onCancel} disabled={pending}>Geri Dön</Button>
+          <Button onClick={onConfirm} disabled={!ack || pending}>
+            {pending ? <><Loader2 size={16} className="animate-spin" /> Kesiliyor…</> : <><FileSignature size={16} strokeWidth={1.75} /> Onaylıyorum — Kes</>}
+          </Button>
+        </>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <p className="text-[13px] leading-relaxed text-secondary">
+          Aşağıdaki bilgilerle bir <b className="text-primary">elektronik bilet (ET)</b> düzenlenmek üzere. Lütfen son kez kontrol edin.
+        </p>
+
+        <div className="flex flex-col gap-2 rounded-md border border-[var(--border-subtle)] bg-surface-alt p-3.5 text-[13px]">
+          <div className="flex items-center justify-between"><span className="text-secondary">Yolcu</span><span className="font-medium text-primary">{values.surname}/{values.givenName} {values.title ?? ""}</span></div>
+          <div className="flex items-center justify-between"><span className="text-secondary">Güzergah</span><span className="font-mono text-primary">{route}</span></div>
+          <div className="flex items-center justify-between"><span className="text-secondary">Segment</span><span className="text-primary">{values.segments.length} uçuş kuponu</span></div>
+          <div className="flex items-center justify-between"><span className="text-secondary">Ödeme</span><span className="text-primary">{fopSummary(values)}</span></div>
+          <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-2">
+            <span className="font-medium text-primary">Tahsil edilecek tutar</span>
+            <Money value={{ amount: total, currency: cur }} size="md" />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-[var(--info-border)] bg-[var(--info-bg)] px-3.5 py-3 text-[12px] leading-relaxed text-[var(--info-text)]">
+          Bu işlem, IATA kurallarına tabi bir satış kaydı oluşturur ve belirtilen tutarın tahsilatını başlatır.
+          Kesim sonrası <b>void</b> yalnızca tüm kuponlar kullanılmamışken ve satış günü içinde mümkündür;
+          sonrasında değişiklik/iade, bilet sınıfının fare kurallarına tabidir. Tüm adımlar denetim kaydına (audit) işlenir.
+        </div>
+
+        <label className="flex cursor-pointer items-start gap-2.5 text-[13px] leading-snug text-primary">
+          <input
+            type="checkbox"
+            checked={ack}
+            onChange={(e) => setAck(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-[var(--border-strong)] accent-[var(--accent)]"
+          />
+          Yolcu, uçuş ve ücret bilgilerini kontrol ettiğimi; kesimi yetkim dahilinde onayladığımı beyan ederim.
+        </label>
+      </div>
+    </Modal>
   );
 }

@@ -15,7 +15,7 @@ test.describe("Issue wizard", () => {
     await page.getByRole("button", { name: /İleri/ }).click();
     // Adım 0'da kalır → "Yolcu Bilgileri" hâlâ görünür, hata mesajı çıkar.
     await expect(page.getByText("Yolcu Bilgileri")).toBeVisible();
-    await expect(page.getByText(/Soyadı en az 2 karakter/)).toBeVisible();
+    await expect(page.getByText("Soyadı en az 2 karakter (Ch 2)")).toBeVisible();
   });
 
   test("uçtan uca bilet kesilir ve detaya yönlendirir", async ({ page }) => {
@@ -68,11 +68,17 @@ test.describe("Issue wizard", () => {
     await page.getByRole("button", { name: /Nakit/ }).first().click();
     await page.getByRole("button", { name: /İleri/ }).click();
 
-    // --- Adım 3: Onay → Bileti Kes ---
+    // --- Adım 3: Onay → Bileti Kes → KURUMSAL ONAY MODALI ---
     await expect(page.getByText("Toplam tahsilat")).toBeVisible();
-    // Tek tıklama bileti keser; başarı overlay'i (z-[70]) hemen üste biner —
-    // force ile tek seferde tıkla, yoksa Playwright kaplanan butona retry edip timeout olur.
     await page.getByRole("button", { name: /Bileti Kes/ }).click({ force: true });
+
+    // Kesim onayı modalı: beyan işaretlenmeden "Onaylıyorum" pasif olmalı.
+    await expect(page.getByRole("dialog", { name: "Bilet Kesim Onayı" })).toBeVisible();
+    const confirmBtn = page.getByRole("button", { name: /Onaylıyorum/ });
+    await expect(confirmBtn).toBeDisabled();
+    await page.getByRole("checkbox").check();
+    // Başarı overlay'i (z-[70]) hemen üste biner — force ile tek seferde tıkla.
+    await confirmBtn.click({ force: true });
 
     // IssueSuccess overlay göründü → bilet kesildi.
     await expect(page.getByText("Bilet Kesildi")).toBeVisible({ timeout: 15_000 });
