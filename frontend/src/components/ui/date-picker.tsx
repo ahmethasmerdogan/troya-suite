@@ -16,7 +16,8 @@ function ymd(d: Date): string {
 }
 function pretty(v?: string): string {
   const d = toDate(v);
-  return d ? d.toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" }) : "";
+  // Detaylı: gün + tam ay adı + yıl + kısa gün adı — "21 Temmuz 2026, Salı"
+  return d ? d.toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric", weekday: "short" }) : "";
 }
 
 const rdpStyle = {

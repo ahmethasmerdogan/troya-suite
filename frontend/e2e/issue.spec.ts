@@ -45,7 +45,7 @@ test.describe("Issue wizard", () => {
 
     // Tarih seç (popover takvim) → YALNIZ o güne ait uçuş listesi çıkar.
     // Sefer no / saat / fiyat ELLE GİRİLMEZ; uçuşlar ancak tarih seçilince görünür.
-    await page.getByRole("button", { name: "Tarih seçin" }).click();
+    await page.getByRole("button", { name: /Gün.*Ay.*Yıl/ }).click();
     await page.locator(".rdp-day_button:not([disabled])").first().click();
 
     // Uçuş listesinden ilk seferi seç (aria-pressed'li satır).

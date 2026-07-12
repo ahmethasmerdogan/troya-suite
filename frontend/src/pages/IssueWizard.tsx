@@ -27,7 +27,6 @@ import { Field } from "@/components/ui/label";
 import { AirportCombobox } from "@/components/ui/airport-combobox";
 import { DatePicker } from "@/components/ui/date-picker";
 import { Money } from "@/components/domain/Money";
-import { TicketCard } from "@/components/domain/TicketCard";
 import { cn } from "@/lib/utils";
 
 // ===== Zod şema — client validation YALNIZCA hızlı geri bildirim (CLAUDE.md §8). =====
@@ -293,10 +292,15 @@ export function IssueWizard() {
         })}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <Card className="lg:col-span-2">
-          <CardContent className="pt-6">
-            <form onSubmit={handleSubmit(onSubmit)}>
+      {/* Canlı özet — üstte kompakt yatay şerit (dar kolonda taşmaz) + adım göstergesi */}
+      <WizardPreview values={values} offer={offer} total={total} currency={currency} step={step} />
+
+      <Card>
+        <CardContent className="pt-6">
+          {/* Implicit submit YOK — adım değişince buton type=button→submit morph'u
+              tarayıcıda otomatik submit'e (modalın kendiliğinden açılması) yol açıyordu.
+              Kesim yalnızca "Bileti Kes" butonunun açık handleSubmit çağrısıyla olur. */}
+          <form onSubmit={(e) => e.preventDefault()}>
               {/* STEP 0 — Yolcu */}
               {step === 0 && (
                 <Section title="Yolcu Bilgileri" hint="Ad ve soyadı pasaporttaki ile BİREBİR yazın (Türkçe karakter kullanmayın, sistem büyük harfe çevirir). Soyadı en az 2 karakter olmalıdır.">
@@ -379,20 +383,20 @@ export function IssueWizard() {
                               <button type="button" onClick={() => remove(idx)} className="text-tertiary hover:text-[var(--danger-text)]"><Trash2 size={15} strokeWidth={1.75} /></button>
                             )}
                           </div>
-                          <div className="grid grid-cols-2 gap-4 p-4 md:grid-cols-5">
-                            <Field label="Nereden *" info={FIELD_HELP.origin} error={errors.segments?.[idx]?.origin?.message} className="md:col-span-2">
+                          <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-3">
+                            <Field label="Nereden *" info={FIELD_HELP.origin} error={errors.segments?.[idx]?.origin?.message}>
                               <Controller control={control} name={`segments.${idx}.origin`} render={({ field }) => (
                                 <AirportCombobox value={field.value} onChange={(v) => { field.onChange(v); resetLegSelection(idx); }} placeholder="İstanbul / IST" invalid={!!errors.segments?.[idx]?.origin} />
                               )} />
                             </Field>
-                            <Field label="Nereye *" info={FIELD_HELP.destination} error={errors.segments?.[idx]?.destination?.message} className="md:col-span-2">
+                            <Field label="Nereye *" info={FIELD_HELP.destination} error={errors.segments?.[idx]?.destination?.message}>
                               <Controller control={control} name={`segments.${idx}.destination`} render={({ field }) => (
                                 <AirportCombobox value={field.value} onChange={(v) => { field.onChange(v); resetLegSelection(idx); }} placeholder="Tokyo / NRT" invalid={!!errors.segments?.[idx]?.destination} />
                               )} />
                             </Field>
-                            <Field label="Tarih *" hint="Uçuş günü — seçince o güne ait seferler listelenir">
+                            <Field label="Tarih *" hint="Uçuş günü">
                               <Controller control={control} name={`segments.${idx}.searchDate`} render={({ field }) => (
-                                <DatePicker value={field.value ?? ""} onChange={(v) => { field.onChange(v); resetLegSelection(idx); }} placeholder="Tarih seçin" />
+                                <DatePicker value={field.value ?? ""} onChange={(v) => { field.onChange(v); resetLegSelection(idx); }} placeholder="Gün / Ay / Yıl seçin" />
                               )} />
                             </Field>
                           </div>
@@ -562,17 +566,14 @@ export function IssueWizard() {
                 {step < STEPS.length - 1 ? (
                   <Button type="button" onClick={next} disabled={nextDisabled}>İleri <ArrowRight size={16} strokeWidth={1.75} /></Button>
                 ) : (
-                  <Button type="submit" disabled={mutation.isPending}>
+                  <Button type="button" onClick={handleSubmit(onSubmit)} disabled={mutation.isPending}>
                     {mutation.isPending ? <><Loader2 size={16} className="animate-spin" /> Kesiliyor…</> : <><Check size={16} strokeWidth={2} /> Bileti Kes</>}
                   </Button>
                 )}
               </div>
-            </form>
-          </CardContent>
-        </Card>
-
-        <LiveSummary values={values} offer={offer} step={step} />
-      </div>
+          </form>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -897,65 +898,37 @@ function ConfirmRow({ label, value, mono }: { label: string; value: string; mono
   );
 }
 
-function LiveSummary({ values, offer, step }: { values: FormValues; offer: FareOffer | null; step: number }) {
-  // useMemo YOK: RHF watch() dizi referansını korur → memo bayatlardı. Her render'da hesapla.
+// Canlı özet — form üstünde KOMPAKT yatay şerit. Eski dar-kolon boarding-pass önizlemesi
+// taşıyordu; bu şerit sığar, yer kaplamaz, doldukça canlı güncellenir.
+function WizardPreview({ values, offer, total, currency, step }: { values: FormValues; offer: FareOffer | null; total: number; currency: string; step: number }) {
+  const pax = values.surname || values.givenName ? `${values.surname}/${values.givenName}` : "—";
   const segs = (values.segments ?? []).filter((s) => s.origin && s.destination);
-  const cur = offer?.total.currency ?? "TRY";
-  const total = offer?.total.amount ?? 0;
-
+  const route = segs.length ? segs.map((s) => s.origin).concat(segs[segs.length - 1].destination).join(" → ") : "—";
+  const fop = values.fopType === "cash" ? "Nakit" : values.fopType === "other" ? "Diğer" : values.fopType === "uatp" ? "UATP" : "Kredi Kartı";
   return (
-    <div className="flex flex-col gap-3 lg:sticky lg:top-6">
-      <div className="flex items-center justify-between px-1">
-        <span className="text-[11px] font-semibold uppercase tracking-[0.08em] text-secondary">Canlı Önizleme</span>
-        <span className="rounded-pill bg-sunken px-2 py-0.5 text-[11px] text-tertiary">Adım {step + 1}/{STEPS.length}</span>
-      </div>
-
-      {/* Form doldukça dinamik güncellenen gerçek bilet görünümü */}
-      <TicketCard
-        data={{
-          preview: true,
-          carrier: values.validatingCarrier,
-          passenger: values.surname || values.givenName ? `${values.surname}/${values.givenName}` : undefined,
-          title: values.title,
-          pnr: values.pnr || undefined,
-          total: total > 0 ? { amount: total, currency: cur } : undefined,
-          segments: segs.map((s) => ({ origin: s.origin, destination: s.destination, carrier: s.marketingCarrier, flightNumber: s.flightNumber, rbd: offer?.rbd ?? s.rbd, departure: s.departure })),
-        }}
-      />
-
-      {/* fare + ödeme mini özet */}
-      <div className="rounded-md border border-[var(--border-subtle)] bg-surface p-4">
-        {offer ? (
-          <>
-            <div className="flex items-center justify-between text-[13px]">
-              <span className="text-secondary">{offer.fareType.label}</span>
-              <span className="font-mono text-[11px] text-tertiary">{offer.rbd} · {offer.fareBasis}</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between text-[13px]">
-              <span className="text-secondary">Base Fare</span>
-              <span className="font-mono text-primary">{fmtMoney(offer.baseFare.amount, cur)}</span>
-            </div>
-            <div className="mt-1.5 flex items-center justify-between text-[13px]">
-              <span className="text-secondary">Vergi / Harç (TFC)</span>
-              <span className="font-mono text-primary">{fmtMoney(offer.totalTfc.amount, cur)}</span>
-            </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-2 text-[12px] text-tertiary">
-            <Tag size={14} strokeWidth={1.75} /> Ücret, tarifeden seçilince burada görünür.
-          </div>
-        )}
-        <div className="mt-3 flex items-center gap-2.5 border-t border-[var(--border-subtle)] pt-3">
-          <span className="flex h-8 w-8 items-center justify-center rounded-md bg-sunken text-secondary">
-            {values.fopType === "cash" ? <Banknote size={16} strokeWidth={1.75} /> : values.fopType === "other" ? <Wallet size={16} strokeWidth={1.75} /> : <CreditCard size={16} strokeWidth={1.75} />}
-          </span>
-          <div className="min-w-0">
-            <div className="text-[13px] font-medium text-primary">{values.fopType === "cash" ? "Nakit" : values.fopType === "other" ? "Diğer" : "Kredi Kartı"}</div>
-            <div className="truncate font-mono text-[12px] text-tertiary">{values.fopType === "cash" ? "Gişe / ofis" : fopSummary(values)}</div>
-          </div>
-        </div>
+    <div className="mb-4 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-md border border-[var(--border-subtle)] bg-surface-alt px-4 py-2.5">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-tertiary">
+        <Ticket size={13} strokeWidth={1.75} className="text-accent" /> Canlı Özet
+        <span className="rounded-pill bg-sunken px-1.5 py-0.5 font-normal normal-case tracking-normal text-tertiary">Adım {step + 1}/{STEPS.length}</span>
+      </span>
+      <PreviewItem label="Yolcu" value={pax} />
+      <PreviewItem label="Güzergah" value={route} mono />
+      <PreviewItem label="Ücret" value={offer ? `${offer.fareType.label} · ${offer.rbd}` : "—"} />
+      <PreviewItem label="Ödeme" value={fop} />
+      <div className="ml-auto flex items-center gap-2">
+        <span className="text-[12px] text-secondary">Toplam</span>
+        <Money value={{ amount: total, currency }} size="md" />
       </div>
     </div>
+  );
+}
+
+function PreviewItem({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <span className="flex items-baseline gap-1.5">
+      <span className="text-[11px] text-tertiary">{label}</span>
+      <span className={cn("max-w-[240px] truncate text-[13px] font-medium text-primary", mono && "font-mono")}>{value}</span>
+    </span>
   );
 }
 
