@@ -1,52 +1,134 @@
-# Troya — Modern Biletleme Platformu
+<div align="center">
 
-IATA Ticketing Handbook'tan türetilen, **event-sourced** bir elektronik biletleme platformu. Troya'nın kriptik terminal ekranının yerine **tıklama-tabanlı React arayüzü** koyar; ileride IATA'nın **Offers & Orders (NDC / ONE Order)** yönüne evrilir.
+# 🎫 Troya Suite
 
-İki track: **Engine (backend)** — biletleme motoru + iş kuralları · **Experience (frontend)** — operasyon arayüzü. Temel ilke: **"tek komut, iki yüzey"** — terminal komutu da React tıklaması da aynı backend komutuna map olur.
+**A modern, event-sourced electronic-ticketing platform for airline passenger services — modeled on the IATA Ticketing Handbook.**
 
-> **Kapsam:** Bir PSS'in biletleme modülü. Kapsam dışı (port arkasında mock): inventory, availability, shopping, pricing engine, PNR, DCS, loyalty, revenue accounting.
+[![Kotlin](https://img.shields.io/badge/Kotlin-7F52FF?style=flat-square&logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Spring Boot](https://img.shields.io/badge/Spring_Boot-6DB33F?style=flat-square&logo=springboot&logoColor=white)](https://spring.io/projects/spring-boot)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![React](https://img.shields.io/badge/React-20232A?style=flat-square&logo=react&logoColor=61DAFB)](https://react.dev/)
+[![Vite](https://img.shields.io/badge/Vite-646CFF?style=flat-square&logo=vite&logoColor=white)](https://vitejs.dev/)
 
-## Dokümantasyon
+**English** · [Türkçe](README.tr.md)
 
-| Dosya | Ne için | Repo yolu |
-|---|---|---|
-| **TROYA_ETICKET_ROADMAP.md** | Ana yol haritası — full-stack, iki track, Faz 0-7 + FE-0…FE-7. IATA→domain eşlemesi, coupon status, mimari özet. | kök |
-| **CLAUDE.md** | Claude Code çalışma kuralları — mimari kurallar, teknoloji, çalışma yöntemi, durum. | kök |
-| **docs/ARCHITECTURE.md** | Mimari kararlar + gerekçe — bounded context, ES/CQRS, FSM, control authority, idempotency/outbox, komut akışı. | docs/ |
-| **docs/DESIGN_ROADMAP.md** | Arayüz tasarımı — IA/navigasyon, ekran-ekran tasarım, etkileşim desenleri, prototip sırası. (Kararlar verildi.) | docs/ |
-| **docs/DESIGN_SYSTEM.md** | Görsel tasarım dili — tek kaynak gerçeği. CRM+ERP fintech-minimalizminden uyarlandı; coupon-status pill mapping, fare two-tone, lifecycle timeline. shadcn-oriented. | docs/ |
-| **docs/GLOSSARY.md** | Ubiquitous language — IATA + mühendislik terimleri (TR). | docs/ |
+</div>
 
-## Teknoloji
+---
 
-**Backend:** Kotlin + Spring Boot 3 (Java 21) · PostgreSQL 16 (event store + read model) · Kafka/Redpanda · Redis · OpenAPI + SSE/WebSocket · Keycloak · Testcontainers · OpenTelemetry.
-**Frontend:** Vite + React 18 + TypeScript · shadcn/ui + Tailwind · TanStack Query/Router/Table · Zustand · React Hook Form + Zod · cmdk · Vitest + Playwright.
+## Overview
+
+Troya Suite is a full-stack **Passenger Service System (PSS) electronic-ticketing** platform. It implements the electronic-ticketing bounded context of a PSS: issuing electronic tickets (ET) and EMDs, managing the **coupon lifecycle**, keeping a complete audit of the ticket record, search & display, exchange / reissue / refund / void, and interline messaging. In place of the cryptic command-line terminal of legacy ticketing systems, it offers a **click-based React interface** — while keeping the underlying engine command-driven.
+
+The project is organized around one guiding principle — **"one command, two surfaces"**: whether an action originates from a terminal command or a React click, it maps to the *same* backend command. Business rules live in the engine; the UI is a presentation adapter. Money operations wait for the server (no optimistic UI).
+
+Two tracks:
+
+- **Engine (backend)** — the ticketing engine and business rules.
+- **Experience (frontend)** — the operations interface.
+
+> **Scope.** Troya Suite implements the *electronic-ticketing* module of a PSS. Adjacent systems — inventory, availability, shopping, pricing engine, PNR, DCS, loyalty, revenue accounting — are intentionally out of scope and sit behind ports as mocks. Pricing is *consumed*, not computed.
+
+## Highlights
+
+**Domain & architecture**
+
+- **Event Sourcing** — state is derived from an append-only, immutable event log; the full audit trail is the definition of the domain, not an add-on.
+- **CQRS** — writes (command → aggregate → event) and reads (projected read models) are separated.
+- **Coupon Status finite-state machine** — the IATA coupon-status indicators (interim and final/terminal) are modeled as an explicit FSM; illegal transitions raise an error, never fail silently.
+- **Control authority / lease** — the IATA "Concept of Control" modeled as single-writer ownership with a TTL-based lease.
+- **Idempotency & outbox** — every money/status-changing command carries an idempotency key (no double-issue / double-refund); DB commit and message publication are atomic via an outbox.
+- **Hexagonal layering** — a pure domain module with ports & adapters for every outside system (dependencies always point inward).
+
+**Product surface (frontend)**
+
+A single unified workspace with a module switcher, mirroring an airline PSS operational model:
+
+- **QuickRes** — reservation (PNR): search, detail, create-PNR wizard, availability.
+- **Troya** — ticketing: issue wizard, ticket detail (status pills, control indicator, lifecycle timeline, fare/TFC breakdown), smart search, itinerary/receipt (TR/EN, printable), exchange / refund / void, EMD, interline messages, orders.
+- **QuickCheck-in** — departure control (DCS): flight list, passenger acceptance, 3D cabin seat selection, boarding.
+- **Panel** & **Admin** — unified dashboard; users, roles & permissions, audit logs, settings.
+- **Bilingual (TR/EN)**, role-based access (cumulative roles), command palette (⌘K), and keyboard shortcuts throughout.
+
+## Tech stack
+
+**Engine (backend)** — Kotlin · Spring Boot 3 (Java 21) · Gradle (Kotlin DSL) multi-module (`domain` · `application` · `infrastructure` · `api`) · PostgreSQL 16 (event store + read models, Flyway) · Redis (control lease) · Kafka / Redpanda (outbox) · Keycloak (OIDC) · Kotest + JUnit 5 · ktlint + detekt · OpenTelemetry.
+
+**Experience (frontend)** — Vite · React 18 · TypeScript · Tailwind CSS + shadcn-style tokens · TanStack Router / Query / Table · Zustand · React Hook Form + Zod · cmdk · Lucide · react-three-fiber (3D cabin) · Vitest + Playwright.
+
+**Contracts** — an OpenAPI 3.1 spec is the single source of truth; frontend TypeScript types are generated from it (`openapi-typescript`).
+
+**Local infra & CI** — Docker Compose (PostgreSQL · Redpanda · Redis · Keycloak); GitHub Actions (backend: build + ktlint + detekt · frontend: typecheck + test + build).
+
+## Repository structure
 
 ```
-troya-eticket/
-├── backend/    Kotlin: domain · application · infrastructure · api
-├── frontend/   Vite + React + TS
-├── contracts/  OpenAPI spec (tek doğruluk kaynağı; TS tipi üretir)
-├── docs/       ARCHITECTURE · GLOSSARY · DESIGN_ROADMAP · DESIGN_SYSTEM
-├── docker-compose.yml
-├── CLAUDE.md
-├── TROYA_ETICKET_ROADMAP.md
-└── README.md
+troya-suite/
+├── backend/        Kotlin multi-module engine: domain · application · infrastructure · api
+├── frontend/       Vite + React + TypeScript experience (unified panel)
+├── contracts/      OpenAPI 3.1 spec (single source of truth → generates TS types)
+├── docker-compose.yml       Local dev infra (Postgres · Redpanda · Redis · Keycloak)
+├── ARCHITECTURE.md          Architecture decisions & rationale
+├── GLOSSARY.md              Ubiquitous language (IATA + engineering terms)
+├── DESIGN_ROADMAP.md        Interface / IA design
+├── DESIGN_SYSTEM.md         Visual design language
+├── SYSTEM_GUIDE.md          End-user guide
+├── TROYA_ETICKET_ROADMAP.md Full delivery roadmap
+└── CLAUDE.md                Engineering working rules
 ```
 
-## Claude Code ile başlama
+## Getting started
 
-1. Tüm dosyaları repoya yukarıdaki yapıya göre koy.
-2. Claude Code'a ilk komut (Engine Faz 0):
-   > "Engine Faz 0'ı başlat: monorepo (backend/ Kotlin çok-modüllü, frontend/ Vite+React+TS iskeleti, contracts/, docs/), docker-compose (Postgres + Redpanda + Redis + Keycloak), append-only event store tablosu. `CouponStatus` enum'unu ROADMAP'teki 18 kodla interim/final ayrımıyla yaz. ktlint + detekt + GitHub Actions CI. Önce yapı, kod sonra; her adımı açıkla."
-3. Faz faz, dikey dilim dilim ilerle; test-first; her faz sonunda `docker compose up` + testler yeşil.
+**Frontend** — clickable prototype on mock data:
 
-## Birleşik panel (THY mental modeli)
+```bash
+cd frontend
+npm install
+npm run dev        # http://localhost:5173
+npm run build      # tsc + vite build
+npm run test       # Vitest (unit + component)
+npm run e2e        # Playwright (end-to-end)
+```
 
-THY'nin gerçek ayrımı: **Troya** = komut-tabanlı motor · **QuickRes** = rezervasyon için tıklama arayüzü · **QuickCheck-in** = check-in/DCS için tıklama arayüzü (hepsi aynı motora oturur). Prototip bu üçünü **tek panelde** birleştirir (üstte modül seçici + birleşik anasayfa). Böylece kapsam, salt biletlemeden **rezervasyon + biletleme + check-in** suite'ine genişledi (hepsi mock; backend motoru ortak).
+**Backend** — Kotlin engine:
 
-## Durum (2026-06-13)
-**Experience (frontend/):** Birleşik panel + QuickRes + Troya (FE0…FE7) + QuickCheck-in + Yönetim, **TR/EN dil** ile **tıklanabilir prototip, mock veriyle uçtan uca çalışıyor** — `cd frontend && npm install && npm run dev` → http://localhost:5173. `npm run test` (52 test) + `npm run build` yeşil.
-**Engine (backend/):** **Faz 0 iskeleti yazıldı** (Kotlin çok-modüllü, CouponStatus FSM, value object'ler, event store DDL, docker-compose, CI) ama **bu makinede çalıştırılmadı** — Java 21 + Docker gerekiyor (kurulu değil). Faz 1+ bekliyor. Bkz. `backend/README.md`.
+```bash
+# Local infra (Postgres · Redpanda · Redis · Keycloak):
+docker compose up -d
 
-Detay ve checklist'ler ROADMAP'te; çalışma kuralları + durum `CLAUDE.md`'de.
+cd backend
+./gradlew build            # compile + test + ktlint + detekt
+./gradlew :api:bootRun     # start the API
+```
+
+Java 21 is required on the host for the classic Gradle flow; a fully Docker-based build/test/run flow (no host Java needed) is documented in [`backend/README.md`](backend/README.md).
+
+## Status
+
+Actively developed, **private / internal**. An honest snapshot:
+
+- **Experience (frontend)** — the unified panel (QuickRes + Troya + QuickCheck-in + Panel + Admin) is a **clickable prototype running end-to-end on mock data**, in TR/EN, with typecheck, tests, and build green. API call signatures are shaped to match the real REST contract, so they can be swapped for live endpoints without reshaping the UI.
+- **Engine (backend)** — verified end-to-end in Docker: **F0 foundation**, **F1 ticket + coupon** (issue / get / idempotency / event store), and **F2 search + receipt** (CQRS read model + projection) are complete; **F3 void/exchange/refund**, **F4 fare/TFC**, **F5 EMD**, and **F6 interline** have their core commands implemented and verified, with advanced pieces (IRROP/FIM saga, ROE/banker's rounding, vMPD/legacy mapping, EDIFACT/NDC gateway) still open. **F7 order-native** is planned.
+
+Live authentication (Keycloak/OIDC) and SSE/WebSocket live updates land as the backend advances toward an **Order-native (ONE Order)** future.
+
+## Documentation
+
+| Document | What it covers |
+|---|---|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Architecture decisions & rationale — bounded context, ES/CQRS, FSM, control authority, idempotency/outbox. |
+| [`GLOSSARY.md`](GLOSSARY.md) | Ubiquitous language — IATA + engineering terms. |
+| [`DESIGN_ROADMAP.md`](DESIGN_ROADMAP.md) | Interface design — IA, navigation, screen-by-screen. |
+| [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md) | Visual design language — the single source of truth. |
+| [`SYSTEM_GUIDE.md`](SYSTEM_GUIDE.md) | End-user guide — modules, roles, workflows. |
+| [`TROYA_ETICKET_ROADMAP.md`](TROYA_ETICKET_ROADMAP.md) | Full delivery roadmap (Engine F0–F7, Experience FE-0…FE-7). |
+| [`contracts/openapi.yaml`](contracts/openapi.yaml) | REST API contract (OpenAPI 3.1). |
+
+---
+
+<div align="center">
+
+Built with [Claude Code](https://claude.com/claude-code).
+
+</div>
