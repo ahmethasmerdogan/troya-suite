@@ -52,8 +52,8 @@ export function Login() {
         </svg>
 
         <div className="relative flex items-center gap-3">
-          <span className="grid h-11 w-11 place-items-center rounded-[12px] bg-accent shadow-[0_0_0_1px_rgba(255,255,255,0.1),0_12px_24px_var(--shell-glow)]">
-            <BrandMark size={26} variant="onRed" />
+          <span className="grid h-11 w-11 place-items-center rounded-[12px] bg-white shadow-[0_4px_16px_rgba(0,0,0,0.22)]">
+            <BrandMark size={26} variant="plain" />
           </span>
           <div>
             <div className="text-[17px] font-semibold tracking-tight">Troya Suite</div>
@@ -63,7 +63,7 @@ export function Login() {
 
         <div className="relative max-w-md">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-[var(--shell-border)] bg-[var(--shell-surface)] px-3 py-1 text-[11px] font-medium uppercase tracking-[0.08em] text-[var(--shell-dim)]">
-            <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+            <span className="h-1.5 w-1.5 rounded-full bg-white" />
             PSS · Elektronik Biletleme
           </div>
           <h1 className="text-[34px] font-semibold leading-[1.12] tracking-tight xl:text-[40px]">

@@ -150,11 +150,17 @@ export interface Ticket {
 export interface TicketSummary {
   ticketNumber: string;
   passengerName: string;
+  pnr?: string; // rezervasyon kodu — arama/gelişmiş filtre için
+  foid?: string; // kimlik belgesi — gelişmiş arama
+  cardLast4?: string; // ödeme kartı son 4 hane (maskeli) — dolandırıcılık/duplicate arama
   route: string; // "IST → NRT"
+  flightNumbers: string[]; // kupon sefer no'ları — uçuş bazlı arama
+  departures: string[]; // kupon kalkış ISO'ları — seyahat tarihi arama
   validatingCarrier: string;
   issuedAt: string;
   total: Money;
   overallStatus: CouponStatus; // ilk açık kupon ya da temsili statü
+  statuses: CouponStatus[]; // tüm kupon statüleri — statü filtresi (17 kodun tamamı)
 }
 
 // ===== FE-5: EMD (Electronic Miscellaneous Document) — Handbook Ch 5 =====

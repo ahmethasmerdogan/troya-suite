@@ -295,14 +295,26 @@ export const MOCK_REVENUE_ALERTS: RevenueAlert[] = [
   { id: "ra4", kind: "status_mismatch", severity: "low", ticketNumber: "2355544332211", detail: "DCS 'lifted' bildirdi ama kupon statüsü 'A' — interline statü senkron gecikmesi.", detectedAt: "2026-06-15T14:03:00Z" },
 ];
 
+// Maskeli ödeme detayından kart son-4 hanesini çıkar (yalnız kredi kartı).
+function cardLast4Of(t: Ticket): string | undefined {
+  if (t.formOfPayment.type !== "credit") return undefined;
+  return t.formOfPayment.detail?.match(/\d{4}/)?.[0];
+}
+
 export function toSummary(t: Ticket): TicketSummary {
   return {
     ticketNumber: t.ticketNumber,
     passengerName: `${t.passenger.surname}/${t.passenger.givenName}`,
+    pnr: t.pnr,
+    foid: t.passenger.foid,
+    cardLast4: cardLast4Of(t),
     route: t.coupons.map((c) => c.segment.origin).concat(t.coupons[t.coupons.length - 1].segment.destination).join(" → "),
+    flightNumbers: t.coupons.map((c) => c.segment.flightNumber),
+    departures: t.coupons.map((c) => c.segment.departure),
     validatingCarrier: t.validatingCarrier,
     issuedAt: t.issuedAt,
     total: t.fare.total,
     overallStatus: overallStatus(t),
+    statuses: t.coupons.map((c) => c.status),
   };
 }

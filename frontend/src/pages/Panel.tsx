@@ -9,7 +9,7 @@ import { MODULES } from "@/modules";
 import { listTickets, getDashboardStats } from "@/domain/api";
 import { listPnrs } from "@/domain/reservation";
 import { listFlights } from "@/domain/checkin";
-import { STATUS_META } from "@/domain/couponStatus";
+import { STATUS_META, STATUS_CHART_COLOR } from "@/domain/couponStatus";
 import { StatCard } from "@/components/StatCard";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -94,7 +94,7 @@ export function Panel() {
             <div className="mb-3 text-[11px] font-medium uppercase tracking-[0.06em] text-secondary">Kupon Durum Dağılımı</div>
             {stats.isLoading || !stats.data ? <Skeleton className="h-32 w-full" /> : (() => {
               const total = stats.data.statusDist.reduce((a, s) => a + s.count, 0);
-              const segs: DonutSeg[] = stats.data.statusDist.map((s) => ({ label: `${STATUS_META[s.status].short} (${s.status})`, value: s.count, color: VARIANT_DOT[STATUS_META[s.status].variant] }));
+              const segs: DonutSeg[] = stats.data.statusDist.map((s) => ({ label: `${STATUS_META[s.status].short} (${s.status})`, value: s.count, color: STATUS_CHART_COLOR[s.status] }));
               return <Donut segments={segs} centerValue={total} centerLabel="KUPON" />;
             })()}
           </CardContent>

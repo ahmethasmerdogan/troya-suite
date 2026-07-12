@@ -38,8 +38,8 @@ export function MobileNav() {
       <div className="absolute inset-y-0 left-0 flex w-72 flex-col bg-surface shadow-xl" style={{ animation: "drawerInLeft 240ms cubic-bezier(0.16,1,0.3,1)" }}>
         <div className="shell-panel flex h-14 items-center justify-between px-4">
           <span className="flex items-center gap-2.5">
-            <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-accent">
-              <BrandMark size={20} variant="onRed" />
+            <span className="grid h-8 w-8 place-items-center rounded-[10px] bg-white shadow-[0_2px_8px_rgba(0,0,0,0.18)]">
+              <BrandMark size={20} variant="plain" />
             </span>
             <span className="text-[14px] font-semibold text-[var(--shell-text)]">{t("brand.suite")}</span>
           </span>

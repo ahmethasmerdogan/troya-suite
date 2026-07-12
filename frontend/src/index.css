@@ -41,23 +41,24 @@
   --accent-soft: #fcecec;
   --accent-ring: rgba(199, 10, 12, 0.16);
 
-  /* === Yapısal kabuk (rail/topbar koyu alanları) — THY laciverti, tema-sabit === */
-  --thy-navy: #1a2a4f;
-  --shell-bg: #0c1526;
-  --shell-bg-deep: #091020;
-  --shell-surface: rgba(255, 255, 255, 0.06);
-  --shell-hover: rgba(255, 255, 255, 0.08);
-  --shell-active: rgba(255, 255, 255, 0.12);
-  --shell-border: rgba(255, 255, 255, 0.09);
-  --shell-text: #edf1f7;
-  --shell-dim: #8b96ab;
-  --shell-glow: rgba(199, 10, 12, 0.35);
+  /* === Yapısal kabuk (rail/topbar/marka paneli) — THY KIRMIZISI, tema-sabit === */
+  --shell-bg: #c30a0c;
+  --shell-bg-deep: #9e0708;
+  --shell-surface: rgba(255, 255, 255, 0.10);
+  --shell-hover: rgba(255, 255, 255, 0.15);
+  --shell-active: rgba(255, 255, 255, 0.22);
+  --shell-border: rgba(255, 255, 255, 0.18);
+  --shell-text: #ffffff;
+  --shell-dim: rgba(255, 255, 255, 0.68);
+  --shell-glow: rgba(90, 0, 3, 0.38);
 
-  /* === Semantik — Status Pills (soft + border) === */
+  /* === Semantik — Status Pills (soft + border) ===
+     THY kırmızı+beyaz kimliği: fonksiyonel renkler korunur; mavi 'info' → gri pill +
+     KIRMIZI 'canlı' nokta (açık/aktif statüler O/A/C/L için — mavisiz, markaya uygun). */
   --success-bg: #ecfdf3;  --success-text: #067647;  --success-dot: #17b26a;  --success-border: #abefc6;
   --warning-bg: #fffaeb;  --warning-text: #b54708;  --warning-dot: #f79009;  --warning-border: #fedf89;
   --danger-bg: #fef3f2;   --danger-text: #b42318;   --danger-dot: #f04438;   --danger-border: #fecdca;
-  --info-bg: #eff8ff;     --info-text: #175cd3;     --info-dot: #2e90fa;     --info-border: #b2ddff;
+  --info-bg: #f4f5f7;     --info-text: #344054;     --info-dot: #c70a0c;      --info-border: #e4e7ec;
   --neutral-bg: #f2f4f7;  --neutral-text: #475467;  --neutral-border: #e4e7ec;
 
   /* === Elevation — katmanlı, ultra-subtle === */
@@ -95,20 +96,20 @@
   --accent-soft: #391416;
   --accent-ring: rgba(241, 73, 75, 0.22);
 
-  /* kabuk koyu temada sayfayla kaynaşır (daha nötr, daha derin) */
-  --shell-bg: #090d15;
-  --shell-bg-deep: #06090f;
-  --shell-surface: rgba(255, 255, 255, 0.05);
-  --shell-hover: rgba(255, 255, 255, 0.07);
-  --shell-active: rgba(255, 255, 255, 0.11);
-  --shell-border: rgba(255, 255, 255, 0.08);
-  --shell-text: #edf1f7;
-  --shell-dim: #79839a;
+  /* kabuk koyu temada da THY kırmızısı (derin/koyu ton) */
+  --shell-bg: #7a0608;
+  --shell-bg-deep: #560507;
+  --shell-surface: rgba(255, 255, 255, 0.08);
+  --shell-hover: rgba(255, 255, 255, 0.12);
+  --shell-active: rgba(255, 255, 255, 0.18);
+  --shell-border: rgba(255, 255, 255, 0.14);
+  --shell-text: #ffffff;
+  --shell-dim: rgba(255, 255, 255, 0.62);
 
   --success-bg: #10241a; --success-text: #4ade80; --success-dot: #22c55e; --success-border: #1d4230;
   --warning-bg: #271e0c; --warning-text: #fbbf24; --warning-dot: #f59e0b; --warning-border: #4a3a13;
   --danger-bg: #2b1414;  --danger-text: #f87171;  --danger-dot: #ef4444;  --danger-border: #4f1f1f;
-  --info-bg: #12203a;    --info-text: #7fa8f5;    --info-dot: #3b82f6;    --info-border: #1e3a66;
+  --info-bg: #1c2230;    --info-text: #c9d2df;    --info-dot: #f1494b;    --info-border: #2a3345;
   --neutral-bg: #1c2230; --neutral-text: #9aa4b5; --neutral-border: #2a3345;
 
   /* inverse (toast/popover) koyu zeminde açık görünsün ki ayrışsın */

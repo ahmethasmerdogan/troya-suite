@@ -11,7 +11,7 @@ test.describe("Ticket search & detail", () => {
   test("bilet numarasıyla arama sonucu döner ve detay açılır", async ({ page }) => {
     await page.goto("/search");
 
-    const input = page.getByPlaceholder("2351234567890 · ERDOGAN · XQ7T2M · IST");
+    const input = page.getByPlaceholder("TKT no · ERDOGAN · PNR · IST · TK198 · kart son4");
     await input.fill("2351234567890");
 
     // Sonuç satırı (DataTable hücresinde mono bilet no) görünür olmalı.
@@ -26,7 +26,7 @@ test.describe("Ticket search & detail", () => {
   test("eşleşmeyen aramada boş durum gösterilir", async ({ page }) => {
     await page.goto("/search");
     await page
-      .getByPlaceholder("2351234567890 · ERDOGAN · XQ7T2M · IST")
+      .getByPlaceholder("TKT no · ERDOGAN · PNR · IST · TK198 · kart son4")
       .fill("ZZZZZZZ-YOK");
     await expect(page.getByText("Eşleşen bilet bulunamadı")).toBeVisible();
   });

@@ -13,13 +13,15 @@ const COLX: Record<string, number> = { A: -3.0, B: -2.1, C: -1.2, D: 1.2, E: 2.1
 const RZ = 1.0;
 const WALL_X = 3.9;
 
+// THY kırmızı+beyaz kimliği: mavi tonlar kaldırıldı. Kabinler nötr/warm gri tonlarla
+// ayrışır (Business = hafif kırmızı-tint premium), seçili koltuk THY kırmızısı.
 const SEATCOL: Record<Cabin, { c: string; b: string }> = {
-  Business: { c: "#9fc0f6", b: "#7ba6f1" },
-  Premium: { c: "#bcd0ee", b: "#93b2e0" },
-  Economy: { c: "#c4cad4", b: "#aab2bf" },
+  Business: { c: "#e6cfcf", b: "#d0adad" },
+  Premium: { c: "#d7dbe1", b: "#bfc5ce" },
+  Economy: { c: "#c8cdd5", b: "#adb3bd" },
 };
 const OCC = { c: "#9498a0", b: "#83878f" };
-const SEL = { c: "#2563eb", b: "#1d4fd8" };
+const SEL = { c: "#c70a0c", b: "#8f0507" };
 const STRUCT = "#e7eaf0";
 const STRUCT2 = "#dadfe8";
 

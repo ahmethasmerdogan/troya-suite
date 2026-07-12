@@ -41,6 +41,9 @@ const agreementsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/a
 const ptaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/pta", component: lazyRouteComponent(() => import("@/pages/troya/Pta"), "PtaPage") });
 const ordersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/orders", component: lazyRouteComponent(() => import("@/pages/Orders"), "Orders") });
 const orderDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/orders/$orderId", component: lazyRouteComponent(() => import("@/pages/OrderDetail"), "OrderDetail") });
+const emdsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/emds", component: lazyRouteComponent(() => import("@/pages/EmdSearch"), "EmdSearch") });
+const emdDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/emds/$emdNumber", component: lazyRouteComponent(() => import("@/pages/EmdDetail"), "EmdDetail") });
+const reportRoute = createRoute({ getParentRoute: () => rootRoute, path: "/report", component: lazyRouteComponent(() => import("@/pages/SalesReport"), "SalesReport") });
 
 // QuickCheck-in (DCS)
 const checkinFlightsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/checkin", component: lazyRouteComponent(() => import("@/pages/checkin/CheckinFlights"), "CheckinFlights") });
@@ -69,7 +72,7 @@ const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   resSearchRoute, resNewRoute, resAvailRoute, resDetailRoute,
-  searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute,
+  searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute, reportRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
   adminRoute, guideRoute, docsRoute, chatRoute,
 ]);

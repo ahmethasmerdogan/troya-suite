@@ -4,7 +4,7 @@ import {
   MOCK_TICKETS, MOCK_EMDS, MOCK_MESSAGES, MOCK_AGREEMENTS, MOCK_ORDERS, MOCK_PTAS, MOCK_REVENUE_ALERTS, toSummary,
 } from "./mockData";
 import type {
-  Ticket, TicketSummary, LifecycleEvent, Emd, InterlineMessage, BilateralAgreement, Order,
+  Ticket, TicketSummary, LifecycleEvent, LifecycleEventType, Emd, EmdType, InterlineMessage, BilateralAgreement, Order,
   Segment, Money, CouponStatus, Pta, RevenueAlert, Passenger,
 } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
@@ -33,7 +33,9 @@ export async function searchTickets(query: string): Promise<TicketSummary[]> {
         t.passenger.surname.toUpperCase().includes(q) ||
         t.passenger.givenName.toUpperCase().includes(q) ||
         t.pnr?.toUpperCase().includes(q) ||
-        t.coupons.some((c) => c.segment.origin === q || c.segment.destination === q),
+        t.passenger.foid?.toUpperCase().includes(q) ||
+        t.formOfPayment.detail?.toUpperCase().includes(q) || // kart son-4 maskeli detayda geçer
+        t.coupons.some((c) => c.segment.origin === q || c.segment.destination === q || c.segment.flightNumber.toUpperCase().includes(q)),
     )
     .map(toSummary);
 }
@@ -319,12 +321,127 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
 // =====================================================================
 // FE-5/6/7 getter'lar
 // =====================================================================
-const emdStore: Emd[] = [...MOCK_EMDS];
+// Demo için birkaç EMD tohumla (mock store'daki biletlerden deterministik) — /emds arama
+// sayfasının anlamlı veriyle dolması için. Gerçekte EMD'ler kesim akışıyla oluşur.
+const EMD_PRESETS = [
+  { rfisc: "0CC", desc: "Fazla Bagaj 23kg", amount: 1200 },
+  { rfisc: "0B5", desc: "Ekstra Koltuk (ön sıra)", amount: 850 },
+  { rfisc: "0DF", desc: "Lounge erişimi", amount: 600 },
+  { rfisc: "0G6", desc: "Evcil hayvan (kabin, PETC)", amount: 1500 },
+  { rfisc: "0IK", desc: "Wi-Fi paketi", amount: 350 },
+];
+function seedEmds(tickets: Ticket[]): Emd[] {
+  const out: Emd[] = [];
+  tickets.forEach((t, i) => {
+    if (i % 3 !== 0) return; // her 3. bilete bir EMD
+    const p = EMD_PRESETS[i % EMD_PRESETS.length];
+    const type: EmdType = i % 6 === 0 ? "A" : "S";
+    out.push({
+      emdNumber: buildTicketNumber("235", String(900000 + i * 7)),
+      type,
+      passenger: t.passenger,
+      issuingCarrier: t.validatingCarrier,
+      issuedAt: t.issuedAt,
+      associatedTicket: t.ticketNumber,
+      associatedCouponSeq: type === "A" ? 1 : undefined,
+      coupons: [{ seq: 1, status: "O", rfisc: p.rfisc, description: p.desc, value: { amount: p.amount, currency: "TRY" } }],
+      total: { amount: p.amount, currency: "TRY" },
+    });
+  });
+  return out;
+}
+const emdStore: Emd[] = [...MOCK_EMDS, ...seedEmds(store)];
 let emdSerial = 200300400;
 
 export async function listEmdsForTicket(ticketNumber: string): Promise<Emd[]> {
   await delay(200);
   return emdStore.filter((e) => e.associatedTicket === ticketNumber);
+}
+
+// ===== EMD retrieval (Handbook Ch 5) — bağımsız arama/açma (Amadeus EWD muadili) =====
+export async function listEmds(): Promise<Emd[]> {
+  await delay(220);
+  return [...emdStore];
+}
+export async function getEmd(emdNumber: string): Promise<Emd | undefined> {
+  await delay(220);
+  return emdStore.find((e) => e.emdNumber === emdNumber.trim());
+}
+export async function searchEmds(query: string): Promise<Emd[]> {
+  await delay(200);
+  const q = query.trim().toUpperCase();
+  if (!q) return [...emdStore];
+  return emdStore.filter(
+    (e) =>
+      e.emdNumber.includes(q) ||
+      e.passenger.surname.toUpperCase().includes(q) ||
+      e.passenger.givenName.toUpperCase().includes(q) ||
+      e.associatedTicket?.includes(q) ||
+      e.coupons.some((c) => c.rfisc.toUpperCase().includes(q) || c.description.toUpperCase().includes(q)),
+  );
+}
+
+// ===== Satış / İşlem sorgu raporu (Amadeus TJQ muadili) =====
+// Event-sourcing gücü: her biletin history[]'sinden çapraz-belge audit raporu türetilir.
+// "Bugünkü tüm void'ler", "01-31 Tem iadeler", "personel X'in işlemleri" gibi sorgular.
+export type TxCategory = "issue" | "void" | "refund" | "exchange" | "emd" | "checkin" | "other";
+export interface TransactionRow {
+  id: string;
+  ticketNumber: string;
+  passengerName: string;
+  category: TxCategory;
+  type: LifecycleEventType;
+  occurredAt: string;
+  actor: string;
+  detail?: string;
+  carrier: string;
+  amount?: Money; // kesimde bilet toplamı
+  status?: CouponStatus;
+}
+export interface TransactionQuery {
+  text?: string;
+  category?: TxCategory | "all";
+  from?: string; // yyyy-mm-dd
+  to?: string;
+  carrier?: string;
+}
+function txCategory(type: LifecycleEventType): TxCategory {
+  switch (type) {
+    case "TicketIssued": case "PtaIssued": return "issue";
+    case "TicketVoided": return "void";
+    case "CouponRefunded": return "refund";
+    case "CouponExchanged": case "TicketReissued": return "exchange";
+    case "EmdIssued": return "emd";
+    case "CouponCheckedIn": case "CouponLifted": case "CouponFlown": return "checkin";
+    default: return "other";
+  }
+}
+export async function queryTransactions(qc: TransactionQuery = {}): Promise<TransactionRow[]> {
+  await delay(240);
+  let rows: TransactionRow[] = store.flatMap((t) =>
+    t.history.map((h) => ({
+      id: t.ticketNumber + h.id,
+      ticketNumber: t.ticketNumber,
+      passengerName: `${t.passenger.surname}/${t.passenger.givenName}`,
+      category: txCategory(h.type),
+      type: h.type,
+      occurredAt: h.occurredAt,
+      actor: h.actor,
+      detail: h.detail,
+      carrier: t.validatingCarrier,
+      amount: h.type === "TicketIssued" ? t.fare.total : undefined,
+      status: h.status,
+    })),
+  );
+  if (qc.category && qc.category !== "all") rows = rows.filter((x) => x.category === qc.category);
+  if (qc.carrier?.trim()) rows = rows.filter((x) => x.carrier.toUpperCase().includes(qc.carrier!.trim().toUpperCase()));
+  if (qc.from?.trim()) rows = rows.filter((x) => new Date(x.occurredAt) >= new Date(qc.from!));
+  if (qc.to?.trim()) rows = rows.filter((x) => new Date(x.occurredAt) <= new Date(qc.to! + "T23:59:59"));
+  if (qc.text?.trim()) {
+    const q = qc.text.trim().toUpperCase();
+    rows = rows.filter((x) => x.ticketNumber.includes(q) || x.passengerName.toUpperCase().includes(q) || x.actor.toUpperCase().includes(q) || (x.detail?.toUpperCase().includes(q) ?? false));
+  }
+  return rows.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
 }
 
 export interface AddEmdInput {

@@ -1,8 +1,9 @@
 import { test, expect } from "@playwright/test";
 
-// Bilet kesme sihirbazı (IssueWizard). Adımlar: Yolcu → Segmentler →
-// Fare & Ödeme → Onay → Bileti Kes. Mock issueTicket idempotent bileti döner;
-// IssueSuccess overlay "Bilete git" ile detay route'una yönlendirir.
+// Bilet kesme sihirbazı (IssueWizard). Adımlar: Yolcu → Sefer → Ücret Seçimi →
+// Ödeme → Onay → Bileti Kes. Ücret ELLE GİRİLMEZ — sistem tarifesinden seçilir.
+// Mock issueTicket idempotent bileti döner; IssueSuccess overlay "Bilete git" ile
+// detay route'una yönlendirir.
 
 // Onboarding modal'ını atla.
 test.beforeEach(async ({ page }) => {
@@ -28,8 +29,8 @@ test.describe("Issue wizard", () => {
     await expect(page.getByPlaceholder("TK").first()).toHaveValue("TK");
     await page.getByRole("button", { name: /İleri/ }).click();
 
-    // --- Adım 1: Segmentler ---
-    await expect(page.getByText("Uçuş Segmentleri")).toBeVisible();
+    // --- Adım 1: Sefer — güzergah + tarih → uçuş listesinden SEÇ ---
+    await expect(page.getByRole("heading", { name: "Sefer Seçimi" })).toBeVisible();
 
     // Nereden / Nereye: AirportCombobox — yaz + Enter (ilk sonucu seçer).
     const from = page.getByPlaceholder("İstanbul / IST");
@@ -42,33 +43,35 @@ test.describe("Issue wizard", () => {
     await to.fill("ESB");
     await to.press("Enter");
 
-    await page.getByPlaceholder("TK198").fill("TK2406");
-    await page.getByPlaceholder("C", { exact: true }).fill("Y"); // RBD
-    await page.getByPlaceholder("CFLEX").fill("YFLEX");
-
-    // Kalkış: DatePicker popover → bir gün seç; TimePicker → bir slot seç.
+    // Tarih seç (popover takvim) → YALNIZ o güne ait uçuş listesi çıkar.
+    // Sefer no / saat / fiyat ELLE GİRİLMEZ; uçuşlar ancak tarih seçilince görünür.
     await page.getByRole("button", { name: "Tarih seçin" }).click();
-    // react-day-picker: etkin (devre dışı olmayan) bir gün düğmesi tıkla.
-    await page
-      .getByRole("button", { name: /^15(th|\.|,| )/ })
-      .or(page.locator(".rdp-day_button:not([disabled])").first())
-      .first()
-      .click();
-    // Saat seçici inputuna odaklan → bir slot tıkla.
-    await page.getByPlaceholder("--:--").click();
-    await page.getByRole("button", { name: "08:00", exact: true }).click();
+    await page.locator(".rdp-day_button:not([disabled])").first().click();
+
+    // Uçuş listesinden ilk seferi seç (aria-pressed'li satır).
+    const flight = page.locator('button[aria-pressed]').first();
+    await expect(flight).toBeVisible({ timeout: 10_000 });
+    await flight.click();
+    await expect(flight).toHaveAttribute("aria-pressed", "true");
 
     await page.getByRole("button", { name: /İleri/ }).click();
 
-    // --- Adım 2: Fare & Ödeme ---
-    await expect(page.getByText("Ücret (Fare / TFC)")).toBeVisible();
-    await page.getByPlaceholder("1285000").fill("125000");
-    await page.getByPlaceholder("38400").fill("8400");
+    // --- Adım 2: Ücret Seçimi (sistem tarifesi) ---
+    await expect(page.getByRole("heading", { name: "Ücret Seçimi" })).toBeVisible();
+    // Tarife hesaplanınca ücret satırları (aria-pressed'li seçilebilir kartlar) gelir.
+    const offer = page.locator('button[aria-pressed]').first();
+    await expect(offer).toBeVisible({ timeout: 10_000 });
+    await offer.click();
+    await expect(offer).toHaveAttribute("aria-pressed", "true");
+    await page.getByRole("button", { name: /İleri/ }).click();
+
+    // --- Adım 3: Ödeme ---
+    await expect(page.getByRole("heading", { name: "Ödeme" })).toBeVisible();
     // FOP varsayılan kredi kartı — Nakit seç (ek alan istemez).
     await page.getByRole("button", { name: /Nakit/ }).first().click();
     await page.getByRole("button", { name: /İleri/ }).click();
 
-    // --- Adım 3: Onay → Bileti Kes → KURUMSAL ONAY MODALI ---
+    // --- Adım 4: Onay → Bileti Kes → KURUMSAL ONAY MODALI ---
     await expect(page.getByText("Toplam tahsilat")).toBeVisible();
     await page.getByRole("button", { name: /Bileti Kes/ }).click({ force: true });
 

@@ -22,9 +22,9 @@ export function Rail() {
 
   return (
     <aside className="shell-panel z-30 hidden w-16 flex-shrink-0 flex-col items-center border-r border-shell-border lg:flex" aria-label="Modüller">
-      {/* Marka → Panel */}
-      <Link to="/" className="mt-3 grid h-10 w-10 place-items-center rounded-[12px] bg-accent shadow-[0_0_0_1px_rgba(255,255,255,0.08),0_8px_16px_var(--shell-glow)]" title={t("brand.suite")}>
-        <BrandMark size={24} variant="onRed" />
+      {/* Marka → Panel — kırmızı rayda beyaz roundel + kırmızı kuş (yüksek kontrast) */}
+      <Link to="/" className="mt-3 grid h-10 w-10 place-items-center rounded-[12px] bg-white shadow-[0_2px_10px_rgba(0,0,0,0.20)]" title={t("brand.suite")}>
+        <BrandMark size={24} variant="plain" />
       </Link>
 
       <div className="my-3 h-px w-8 bg-shell-border" />
@@ -51,7 +51,7 @@ export function Rail() {
           <MessageSquareText size={19} strokeWidth={1.75} />
           {/* GERÇEK okunmamış rozeti — chat store'dan */}
           {unread > 0 && (
-            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 text-[9px] font-semibold tabular-nums text-white">
+            <span className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-white px-1 text-[9px] font-semibold tabular-nums text-accent">
               {unread > 9 ? "9+" : unread}
             </span>
           )}
@@ -88,8 +88,8 @@ function RailItem({ to, icon: Icon, label, active }: { to: string; icon: LucideI
         active ? "bg-shell-active text-shell-text shadow-[inset_0_0_0_1px_var(--shell-border)]" : "text-shell-dim hover:bg-shell-hover hover:text-shell-text",
       )}
     >
-      {/* aktif modül göstergesi — sol kırmızı çubuk */}
-      {active && <span className="absolute -left-[13px] h-5 w-[3px] rounded-full bg-accent" aria-hidden />}
+      {/* aktif modül göstergesi — kırmızı rayda sol BEYAZ çubuk */}
+      {active && <span className="absolute -left-[13px] h-5 w-[3px] rounded-full bg-white" aria-hidden />}
       <Icon size={20} strokeWidth={1.75} />
     </Link>
   );

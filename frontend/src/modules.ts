@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookMarked, Ticket, PlaneTakeoff,
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText,
   MessagesSquare, Handshake, Users, ScrollText, Settings,
-  CalendarSearch, UserCheck, Banknote, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, type LucideIcon,
+  CalendarSearch, UserCheck, Banknote, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/domain/auth";
 
@@ -81,6 +81,7 @@ export const MODULES: ModuleDef[] = [
         titleKey: "nav.section.documents",
         items: [
           { labelKey: "nav.emd", to: "/search", icon: FileText, contextual: true, perm: "ticket.emd" },
+          { labelKey: "nav.emd.search", to: "/emds", icon: Search, perm: "ticket.emd" },
           { labelKey: "nav.pta", to: "/pta", icon: Banknote, perm: "pta.manage" },
         ],
       },
@@ -98,6 +99,7 @@ export const MODULES: ModuleDef[] = [
       {
         titleKey: "nav.section.admin",
         items: [
+          { labelKey: "nav.report", to: "/report", icon: ClipboardList, perm: "revenue.view" },
           { labelKey: "nav.revenue", to: "/admin/revenue", icon: ShieldAlert, perm: "revenue.view" },
           { labelKey: "nav.roles", to: "/admin/roles", icon: ShieldAlert, perm: "admin.roles" },
           { labelKey: "nav.users", to: "/admin/users", icon: Users, perm: "admin.users" },

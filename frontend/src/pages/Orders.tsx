@@ -8,6 +8,7 @@ import { useT } from "@/i18n";
 import { PageHeader } from "@/components/PageHeader";
 import { DataTable } from "@/components/ui/data-table";
 import { Select } from "@/components/ui/select";
+import { SearchBar } from "@/components/ui/search-bar";
 import { Money } from "@/components/domain/Money";
 import { cn } from "@/lib/utils";
 
@@ -22,9 +23,21 @@ export function Orders() {
   const navigate = useNavigate();
   const t = useT();
   const [status, setStatus] = useState<Order["status"] | "all">("all");
+  const [query, setQuery] = useState("");
   const { data: orders, isLoading } = useQuery({ queryKey: ["orders"], queryFn: listOrders });
 
-  const rows = useMemo(() => (orders ?? []).filter((o) => status === "all" || o.status === status), [orders, status]);
+  const rows = useMemo(() => {
+    const q = query.trim().toUpperCase();
+    return (orders ?? []).filter((o) => {
+      if (status !== "all" && o.status !== status) return false;
+      if (!q) return true;
+      return (
+        o.orderId.toUpperCase().includes(q) ||
+        `${o.passenger.surname}/${o.passenger.givenName}`.toUpperCase().includes(q) ||
+        o.items.some((it) => it.reference.toUpperCase().includes(q) || it.serviceLabel.toUpperCase().includes(q))
+      );
+    });
+  }, [orders, status, query]);
 
   const columns = [
     col.accessor("orderId", { header: "Order ID", cell: (c) => <span className="font-mono font-medium text-primary">{c.getValue()}</span> }),
@@ -38,6 +51,9 @@ export function Orders() {
   return (
     <div>
       <PageHeader title={t("nav.orders")} description={t("orders.desc")} />
+      <div className="mb-4">
+        <SearchBar value={query} onChange={setQuery} placeholder="Order ID · yolcu · bağlı ET/EMD no · hizmet" />
+      </div>
       <DataTable
         data={rows}
         columns={columns}

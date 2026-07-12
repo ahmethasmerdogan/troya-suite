@@ -20,14 +20,14 @@ test.describe("App shell & navigation", () => {
     await expect(page).toHaveURL(/\/search/);
     // TicketSearch SearchBar input — placeholder kaynaktan.
     await expect(
-      page.getByPlaceholder("2351234567890 · ERDOGAN · XQ7T2M · IST"),
+      page.getByPlaceholder("TKT no · ERDOGAN · PNR · IST · TK198 · kart son4"),
     ).toBeVisible();
   });
 
-  test("issue wizard sayfası 4 adımlı sihirbazı gösterir", async ({ page }) => {
+  test("issue wizard sayfası 5 adımlı sihirbazı gösterir", async ({ page }) => {
     await page.goto("/issue");
     await expect(page).toHaveURL(/\/issue/);
-    // IssueWizard STEPS: Yolcu / Segmentler / Fare & Ödeme / Onay
+    // IssueWizard STEPS: Yolcu / Sefer / Ücret / Ödeme / Onay
     await expect(page.getByText("Yolcu Bilgileri")).toBeVisible();
     await expect(page.getByRole("button", { name: /İleri/ })).toBeVisible();
   });

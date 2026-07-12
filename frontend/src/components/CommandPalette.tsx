@@ -3,7 +3,7 @@ import { Command } from "cmdk";
 import { useNavigate } from "@tanstack/react-router";
 import {
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText, Ticket as TicketIcon,
-  Package, MessagesSquare, Handshake,
+  Package, MessagesSquare, Handshake, BookMarked, ClipboardList,
 } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { isValidTicketNumber } from "@/domain/ticketNumber";
@@ -35,6 +35,10 @@ export function CommandPalette() {
 
   const trimmed = search.trim();
   const looksLikeTicketNo = /^\d{6,13}$/.test(trimmed);
+  const looksLikeDoc13 = /^\d{13}$/.test(trimmed); // bilet VEYA EMD (ikisi de 13 hane)
+  const looksLikePnr = /^[A-Za-z0-9]{6}$/.test(trimmed) && /[A-Za-z]/.test(trimmed);
+  const looksLikeOrder = /^ORD/i.test(trimmed);
+  const up = trimmed.toUpperCase();
 
   return (
     <Command.Dialog
@@ -65,7 +69,7 @@ export function CommandPalette() {
           </Command.Empty>
 
           {trimmed && (
-            <Group heading="Bilet">
+            <Group heading="Kayıt aç / ara">
               {looksLikeTicketNo && (
                 <Item
                   onSelect={() => run(() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: trimmed } }))}
@@ -75,11 +79,45 @@ export function CommandPalette() {
                   hint={isValidTicketNumber(trimmed) ? "check ✓" : undefined}
                 />
               )}
+              {looksLikeDoc13 && (
+                <Item
+                  onSelect={() => run(() => navigate({ to: "/emds/$emdNumber", params: { emdNumber: trimmed } }))}
+                  icon={<FileText size={16} strokeWidth={1.75} />}
+                  label={`EMD aç: ${trimmed}`}
+                  mono
+                />
+              )}
+              {looksLikePnr && (
+                <Item
+                  onSelect={() => run(() => navigate({ to: "/res/$pnr", params: { pnr: up } }))}
+                  icon={<BookMarked size={16} strokeWidth={1.75} />}
+                  label={`PNR aç: ${up}`}
+                  mono
+                />
+              )}
+              {looksLikeOrder && (
+                <Item
+                  onSelect={() => run(() => navigate({ to: "/orders/$orderId", params: { orderId: up } }))}
+                  icon={<Package size={16} strokeWidth={1.75} />}
+                  label={`Order aç: ${up}`}
+                  mono
+                />
+              )}
               <Item
                 onSelect={() => run(() => { pushSearch(trimmed); navigate({ to: "/search", search: { q: trimmed } }); })}
                 icon={<Search size={16} strokeWidth={1.75} />}
-                label={`"${trimmed}" için ara`}
+                label={`Biletlerde ara: "${trimmed}"`}
                 hint="↵"
+              />
+              <Item
+                onSelect={() => run(() => navigate({ to: "/emds" }))}
+                icon={<FileText size={16} strokeWidth={1.75} />}
+                label={`EMD'lerde ara: "${trimmed}"`}
+              />
+              <Item
+                onSelect={() => run(() => navigate({ to: "/res" }))}
+                icon={<BookMarked size={16} strokeWidth={1.75} />}
+                label={`PNR'larda ara: "${trimmed}"`}
               />
             </Group>
           )}
@@ -94,6 +132,8 @@ export function CommandPalette() {
           </Group>
 
           <Group heading="Git">
+            <Item onSelect={() => run(() => navigate({ to: "/emds" }))} icon={<FileText size={16} strokeWidth={1.75} />} label="EMD Ara" />
+            <Item onSelect={() => run(() => navigate({ to: "/report" }))} icon={<ClipboardList size={16} strokeWidth={1.75} />} label="Satış / İşlem raporu" />
             <Item onSelect={() => run(() => navigate({ to: "/orders" }))} icon={<Package size={16} strokeWidth={1.75} />} label="Order'lar" />
             <Item onSelect={() => run(() => navigate({ to: "/messages" }))} icon={<MessagesSquare size={16} strokeWidth={1.75} />} label="Interline mesajları" />
             <Item onSelect={() => run(() => navigate({ to: "/agreements" }))} icon={<Handshake size={16} strokeWidth={1.75} />} label="Bilateral anlaşmalar" />
