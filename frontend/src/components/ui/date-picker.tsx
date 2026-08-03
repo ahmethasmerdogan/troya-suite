@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { DayPicker } from "react-day-picker";
 import { tr } from "react-day-picker/locale";
 import "react-day-picker/style.css";
-import { Calendar, Clock } from "lucide-react";
+import { Calendar, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function toDate(v?: string): Date | undefined {
@@ -19,18 +19,32 @@ function pretty(v?: string): string {
   // Detaylı: gün + tam ay adı + yıl + kısa gün adı — "21 Temmuz 2026, Salı"
   return d ? d.toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric", weekday: "short" }) : "";
 }
+function startOfToday(): Date { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }
+function addDays(base: Date, n: number): Date { const d = new Date(base); d.setDate(d.getDate() + n); return d; }
 
-const rdpStyle = {
-  "--rdp-accent-color": "var(--accent)",
-  "--rdp-accent-background-color": "var(--accent-soft)",
-  "--rdp-day-width": "34px",
-  "--rdp-day-height": "34px",
-  "--rdp-day_button-width": "34px",
-  "--rdp-day_button-height": "34px",
-  "--rdp-font-size": "13px",
-} as React.CSSProperties;
+// react-day-picker v9 — THY markalı, cilalı görünüm (varsayılan sade stili override eder).
+const rdpClassNames = {
+  months: "flex flex-col",
+  month: "flex flex-col gap-1.5",
+  month_caption: "relative flex h-8 items-center justify-center",
+  caption_label: "text-[14px] font-semibold capitalize text-primary",
+  nav: "absolute inset-x-0 top-0 flex h-8 items-center justify-between",
+  button_previous: "grid h-7 w-7 place-items-center rounded-md text-secondary transition-colors hover:bg-sunken hover:text-primary disabled:pointer-events-none disabled:opacity-25",
+  button_next: "grid h-7 w-7 place-items-center rounded-md text-secondary transition-colors hover:bg-sunken hover:text-primary disabled:pointer-events-none disabled:opacity-25",
+  month_grid: "border-collapse",
+  weekdays: "flex",
+  weekday: "grid h-8 w-10 place-items-center text-[11px] font-semibold uppercase tracking-wide text-tertiary",
+  week: "flex",
+  day: "p-0.5",
+  day_button: "grid h-9 w-9 place-items-center rounded-full text-[13px] font-medium text-secondary transition-colors hover:bg-accent-soft hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
+  today: "[&>button]:font-bold [&>button]:text-accent [&>button]:ring-1 [&>button]:ring-inset [&>button]:ring-[var(--accent-ring)]",
+  selected: "[&>button]:!bg-accent [&>button]:!text-white [&>button]:font-semibold [&>button:hover]:!bg-accent-hover",
+  outside: "[&>button]:text-disabled [&>button]:opacity-50",
+  disabled: "[&>button]:cursor-not-allowed [&>button]:text-disabled [&>button]:opacity-40 [&>button:hover]:!bg-transparent [&>button:hover]:!text-disabled",
+  hidden: "invisible",
+};
 
-/** Tek tarih seçici — popover takvim. value/onChange: "yyyy-mm-dd". */
+/** Tek tarih seçici — popover takvim (THY tasarımı + hızlı seçim). value/onChange: "yyyy-mm-dd". */
 export function DatePicker({ value, onChange, placeholder = "Tarih seçin", className, invalid }: {
   value: string; onChange: (v: string) => void; placeholder?: string; className?: string; invalid?: boolean;
 }) {
@@ -43,32 +57,59 @@ export function DatePicker({ value, onChange, placeholder = "Tarih seçin", clas
     return () => document.removeEventListener("mousedown", h);
   }, [open]);
 
+  const pick = (d: Date) => { onChange(ymd(d)); setOpen(false); };
+  const quicks = [
+    { label: "Bugün", d: startOfToday() },
+    { label: "Yarın", d: addDays(startOfToday(), 1) },
+    { label: "+1 Hafta", d: addDays(startOfToday(), 7) },
+  ];
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
         className={cn(
-          "flex h-9 w-full items-center gap-2 rounded border bg-surface px-3 text-left text-sm transition-colors focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/20",
-          invalid ? "border-[var(--danger-text)]" : "border-border-default",
+          "flex h-9 w-full items-center gap-2 rounded-md border bg-surface px-3 text-left text-sm transition-colors focus-visible:border-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
+          open ? "border-accent ring-2 ring-[var(--accent-ring)]" : invalid ? "border-[var(--danger-text)]" : "border-border-default",
           value ? "text-primary" : "text-tertiary",
         )}
       >
-        <Calendar size={16} strokeWidth={1.75} className="text-tertiary" />
-        {value ? pretty(value) : placeholder}
+        <Calendar size={16} strokeWidth={1.75} className={cn(open || value ? "text-accent" : "text-tertiary")} />
+        <span className="truncate">{value ? pretty(value) : placeholder}</span>
       </button>
       {open && (
-        <div className="absolute left-0 top-11 z-50 rounded-lg border border-[var(--border-subtle)] bg-surface p-2 shadow-md" style={rdpStyle}>
-          <DayPicker
-            mode="single"
-            locale={tr}
-            selected={toDate(value)}
-            defaultMonth={toDate(value)}
-            onSelect={(d) => { if (d) { onChange(ymd(d)); setOpen(false); } }}
-            captionLayout="dropdown"
-            startMonth={new Date(2024, 0)}
-            endMonth={new Date(2030, 11)}
-          />
+        <div className="absolute left-0 top-11 z-50 w-[302px] overflow-hidden rounded-xl border border-[var(--border-subtle)] bg-surface shadow-lg">
+          {/* Hızlı seçim */}
+          <div className="flex flex-wrap gap-1.5 border-b border-[var(--border-subtle)] bg-surface-alt px-3 py-2.5">
+            {quicks.map((q) => {
+              const active = value === ymd(q.d);
+              return (
+                <button
+                  key={q.label} type="button" onClick={() => pick(q.d)}
+                  className={cn("rounded-pill border px-2.5 py-1 text-[12px] font-medium transition-colors",
+                    active ? "border-accent bg-accent text-white" : "border-border-default text-secondary hover:border-accent hover:text-accent")}
+                >
+                  {q.label}
+                </button>
+              );
+            })}
+          </div>
+          <div className="p-2.5">
+            <DayPicker
+              mode="single"
+              locale={tr}
+              selected={toDate(value)}
+              defaultMonth={toDate(value)}
+              onSelect={(d) => d && pick(d)}
+              captionLayout="label"
+              startMonth={new Date(2024, 0)}
+              endMonth={new Date(2030, 11)}
+              classNames={rdpClassNames}
+              components={{ Chevron: (p) => (p.orientation === "left" ? <ChevronLeft size={17} strokeWidth={2} /> : <ChevronRight size={17} strokeWidth={2} />) }}
+            />
+          </div>
         </div>
       )}
     </div>

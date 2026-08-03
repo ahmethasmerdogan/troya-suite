@@ -4,7 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
-import { Check, Plus, Trash2, ArrowLeft, ArrowRight, Plane, Loader2, User, Ticket, CreditCard, Banknote, Wallet, ShieldCheck, Accessibility, Eye, Stethoscope, LifeBuoy, PawPrint, Baby, Lightbulb, FileSignature, Tag, Luggage, Armchair, RefreshCcw, Undo2, Sparkles, Award, Ban, Clock, Search, Calendar, type LucideIcon } from "lucide-react";
+import { Check, Plus, Trash2, ArrowLeft, ArrowRight, Plane, Loader2, User, Ticket, CreditCard, Banknote, Wallet, ShieldCheck, Accessibility, Eye, Stethoscope, LifeBuoy, PawPrint, Baby, Lightbulb, FileSignature, Tag, Luggage, Armchair, RefreshCcw, Undo2, Sparkles, Award, Ban, Clock, Search, Calendar, TrendingDown, TrendingUp, Minus, type LucideIcon } from "lucide-react";
 import { issueTicket, newIdempotencyKey, type IssueTicketInput } from "@/domain/api";
 import type { Ticket as TicketT } from "@/domain/types";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -707,6 +707,16 @@ function FareQuoteStep({ legs, demandFactor, selectedId, onSelect, onBack }: { l
   }
 
   const shown = offers.filter((o) => cabin === "all" || o.cabin === cabin);
+  // Hızlı seçim — Troya "kod" muadili: en düşük / ortalama / en yüksek ücret.
+  const sortedByPrice = [...shown].sort((a, b) => a.total.amount - b.total.amount);
+  const mean = shown.length ? shown.reduce((s, o) => s + o.total.amount, 0) / shown.length : 0;
+  const quickPicks = shown.length
+    ? [
+        { label: "En Düşük", icon: TrendingDown, o: sortedByPrice[0] },
+        { label: "Ortalama", icon: Minus, o: sortedByPrice.reduce((best, o) => (Math.abs(o.total.amount - mean) < Math.abs(best.total.amount - mean) ? o : best), sortedByPrice[0]) },
+        { label: "En Yüksek", icon: TrendingUp, o: sortedByPrice[sortedByPrice.length - 1] },
+      ]
+    : [];
 
   return (
     <Section title="Ücret Seçimi" hint="Sistem, güzergaha göre aşağıdaki ücret tarifesini çıkardı. Yüksek ücretler esnek (iade/değişim + iyi koltuk), düşük ücretler kısıtlıdır. Birini seçin — RBD ve Fare Basis otomatik atanır.">
@@ -731,6 +741,29 @@ function FareQuoteStep({ legs, demandFactor, selectedId, onSelect, onBack }: { l
           Ücret kodlarını göster
         </label>
       </div>
+
+      {/* Hızlı seç — Troya kod muadili: en düşük / ortalama / en yüksek ücreti tek tıkla seç */}
+      {!isLoading && quickPicks.length > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-md border border-[var(--border-subtle)] bg-surface-alt px-3 py-2">
+          <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-tertiary">
+            <Sparkles size={12} strokeWidth={1.75} className="text-accent" /> Hızlı seç
+          </span>
+          {quickPicks.map((q) => {
+            const active = selectedId === q.o.id;
+            const Icon = q.icon;
+            return (
+              <button
+                key={q.label} type="button" onClick={() => onSelect(q.o)}
+                className={cn("inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-[12px] font-medium transition-colors",
+                  active ? "border-accent bg-accent text-white" : "border-border-default text-secondary hover:border-accent hover:text-accent")}
+              >
+                <Icon size={13} strokeWidth={1.75} /> {q.label}
+                <span className={cn("font-mono tabular-nums", active ? "text-white/85" : "text-tertiary")}>{fmtMoney(q.o.total.amount, q.o.total.currency)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {(isLoading || (isFetching && offers.length === 0)) ? (
         <div className="flex items-center justify-center gap-2 rounded-md border border-[var(--border-subtle)] bg-surface-alt py-12 text-[13px] text-secondary">
