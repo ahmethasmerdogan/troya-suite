@@ -1,0 +1,42 @@
+/* ------------------------------------------------------------------ */
+/* HashUI — portable component bundle                                  */
+/*                                                                     */
+/* This folder is self-contained: it imports nothing outside itself     */
+/* except `react` / `react-dom`. Copy it into any Tailwind v4 project,  */
+/* import ./hashui.css after tailwind, and you're done.                 */
+/*                                                                     */
+/*   import { Button, StatusPill, Modal, useToast } from "@/ui";        */
+/*                                                                     */
+/* Optional peer: `three` — only needed if you use <ThreeOrb />.        */
+/* ------------------------------------------------------------------ */
+
+/* primitives */
+export * from "./Button";
+export * from "./Badge";
+export * from "./Avatar";
+export * from "./Card";
+export * from "./controls";
+export * from "./Inputs";
+
+/* navigation & data */
+export * from "./Tabs";
+export * from "./Progress";
+export * from "./Timeline";
+export * from "./CommitGraph";
+
+/* feedback & overlays */
+export * from "./Feedback";
+export * from "./Overlay";
+
+/* motion */
+export * from "./Motion";
+export * from "./ThreeOrb";
+
+/* theming — wrap your app in <ThemeProvider>, read with useTheme() */
+export * from "./theme";
+
+/* icon set (all hand-drawn SVG, tree-shakeable) */
+export * from "./icons";
+
+/* class-name helper */
+export { cx } from "./cx";

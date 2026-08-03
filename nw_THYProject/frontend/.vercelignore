@@ -1,0 +1,11 @@
+node_modules
+dist
+test-results
+playwright-report
+playwright/.cache
+tour
+scripts
+e2e
+*.log
+.DS_Store
+tsconfig.tsbuildinfo

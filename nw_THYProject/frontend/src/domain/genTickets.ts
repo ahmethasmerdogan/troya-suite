@@ -1,0 +1,128 @@
+// 30 örnek bilet üreteci — seeded PRNG (mulberry32) ile STABİL veri (her yüklemede aynı).
+// Karışık statüler (O/F/V/R/E/I + no-show) → search durum filtresi anlamlı olur.
+import type { Ticket, Coupon, CouponStatus, LifecycleEvent, Segment } from "./types";
+import { buildTicketNumber } from "./ticketNumber";
+
+function mulberry32(seed: number) {
+  return () => {
+    seed |= 0;
+    seed = (seed + 0x6d2b79f5) | 0;
+    let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+const SURNAMES = ["KAYA", "DEMIR", "ŞAHIN", "ÇELIK", "YILDIZ", "YILMAZ", "AYDIN", "ÖZTÜRK", "ARSLAN", "DOĞAN", "KILIÇ", "ASLAN", "ÇETIN", "KARA", "KOÇ", "KURT", "ÖZDEMIR", "ŞIMŞEK", "POLAT", "KORKMAZ"];
+const GIVENS = ["MEHMET", "MUSTAFA", "AHMET", "ALI", "HÜSEYIN", "HASAN", "İBRAHIM", "ELIF", "ZEYNEP", "FATMA", "AYŞE", "EMINE", "HATICE", "MERVE", "BÜŞRA", "EMRE", "BURAK", "CAN", "DENIZ", "SELIN"];
+const TITLES = ["MR", "MS", "MRS"];
+// [origin, dest, carrier, baseFlightNo, currency, baseFare]
+const ROUTES: [string, string, string, string, string, number][] = [
+  ["IST", "AMS", "TK", "1951", "TRY", 9800],
+  ["IST", "LHR", "TK", "1979", "TRY", 11200],
+  ["IST", "JFK", "TK", "0001", "USD", 720],
+  ["IST", "FRA", "TK", "1587", "EUR", 240],
+  ["SAW", "ESB", "TK", "7102", "TRY", 1650],
+  ["IST", "DXB", "TK", "0764", "TRY", 7300],
+  ["ADB", "IST", "TK", "2315", "TRY", 1450],
+  ["IST", "CDG", "TK", "1821", "EUR", 260],
+  ["IST", "NRT", "TK", "0198", "JPY", 128000],
+  ["AYT", "IST", "TK", "2417", "TRY", 1380],
+  ["IST", "MAD", "TK", "1857", "EUR", 255],
+  ["IST", "VIE", "TK", "1885", "EUR", 210],
+];
+const RBDS = ["Y", "C", "W", "J", "M", "K"];
+
+// Statü dağılımı — gerçekçi: çoğu açık/uçulmuş, bir kısmı iptal/iade/değişim/düzensiz.
+const STATUS_PLAN: { status: CouponStatus; weight: number; noShow?: boolean }[] = [
+  { status: "O", weight: 9 },
+  { status: "F", weight: 7 },
+  { status: "V", weight: 4 },
+  { status: "R", weight: 3 },
+  { status: "E", weight: 2 },
+  { status: "I", weight: 2 },
+  { status: "O", weight: 2, noShow: true }, // no-show işaretli açık biletler
+];
+
+export function generateTickets(count: number): Ticket[] {
+  const rnd = mulberry32(20260620);
+  const pick = <T,>(arr: T[]): T => arr[Math.floor(rnd() * arr.length)];
+  const out: Ticket[] = [];
+
+  // ağırlıklı statü havuzu
+  const pool: { status: CouponStatus; noShow?: boolean }[] = [];
+  STATUS_PLAN.forEach((p) => { for (let i = 0; i < p.weight; i++) pool.push({ status: p.status, noShow: p.noShow }); });
+
+  let serial = 700000000;
+  for (let i = 0; i < count; i++) {
+    const plan = pool[Math.floor(rnd() * pool.length)];
+    const roundTrip = rnd() > 0.5;
+    const [o, d, carrier, fno, currency, base] = pick(ROUTES);
+    const rbd = pick(RBDS);
+    const dayOffset = Math.floor(rnd() * 120) - 40; // -40..+80 gün
+    const dep = new Date(Date.UTC(2026, 5, 20) + dayOffset * 86400000 + Math.floor(rnd() * 18) * 3600000);
+    const arr = new Date(dep.getTime() + (90 + Math.floor(rnd() * 600)) * 60000);
+    const issued = new Date(dep.getTime() - (3 + Math.floor(rnd() * 40)) * 86400000);
+
+    const mkSeg = (from: string, to: string, fn: string, dt: Date, at: Date): Segment => ({
+      origin: from, destination: to, marketingCarrier: carrier, operatingCarrier: carrier,
+      flightNumber: `${carrier}${fn}`, rbd, departure: dt.toISOString(), arrival: at.toISOString(),
+      fareBasis: `${rbd}${["FLEX", "RT", "OW", "PRO"][Math.floor(rnd() * 4)]}`, reservationStatus: "HK",
+    });
+
+    const segs: Segment[] = [mkSeg(o, d, fno, dep, arr)];
+    if (roundTrip) {
+      const rdep = new Date(dep.getTime() + (3 + Math.floor(rnd() * 10)) * 86400000);
+      const rarr = new Date(rdep.getTime() + (arr.getTime() - dep.getTime()));
+      segs.push(mkSeg(d, o, String(Number(fno) + 1).padStart(4, "0"), rdep, rarr));
+    }
+
+    const coupons: Coupon[] = segs.map((segment, idx) => ({
+      seq: idx + 1, status: plan.status, segment, noShow: plan.noShow,
+    }));
+
+    const surname = pick(SURNAMES), given = pick(GIVENS);
+    const tn = buildTicketNumber("235", String(serial++));
+    const baseFare = Math.round(base * (roundTrip ? 1.9 : 1) * (rbd === "C" || rbd === "J" ? 2.4 : 1));
+    const tfc = Math.round(baseFare * 0.18);
+    const fops = [{ type: "credit" as const, detail: "VISA ····" + (1000 + Math.floor(rnd() * 8999)) }, { type: "cash" as const }];
+    const fop = pick(fops);
+
+    const history: LifecycleEvent[] = [
+      { id: "g1", type: "TicketIssued", occurredAt: issued.toISOString(), actor: `${carrier} / IST-CTR`, detail: "Bilet kesildi", status: "O" },
+      ...segs.map((s, idx) => ({
+        id: `gc${idx + 1}`, type: "CouponAdded" as const, occurredAt: issued.toISOString(), actor: carrier,
+        couponSeq: idx + 1, detail: `${s.origin}→${s.destination} ${s.flightNumber}`, status: "O" as const,
+      })),
+    ];
+    // statüye göre kapanış event'i
+    if (plan.status === "F") history.push({ id: "gf", type: "CouponFlown", occurredAt: arr.toISOString(), actor: carrier, couponSeq: 1, detail: "Uçuş tamamlandı", status: "F" });
+    if (plan.status === "V") history.push({ id: "gv", type: "TicketVoided", occurredAt: issued.toISOString(), actor: `${carrier} / IST-CTR`, detail: "Satış kaydı iptal edildi", status: "V" });
+    if (plan.status === "R") history.push({ id: "gr", type: "CouponRefunded", occurredAt: new Date(issued.getTime() + 86400000).toISOString(), actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "İade edildi", status: "R" });
+    if (plan.status === "E") history.push({ id: "ge", type: "CouponExchanged", occurredAt: new Date(issued.getTime() + 172800000).toISOString(), actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "Tarih değişikliği — yeniden kesim", status: "E" });
+    if (plan.status === "I") history.push({ id: "gi", type: "IrregularOpsApplied", occurredAt: new Date(dep.getTime() - 7200000).toISOString(), actor: `${carrier} OPS`, couponSeq: 1, detail: "IRROP — uçuş aksaması", status: "I" });
+    if (plan.noShow) history.push({ id: "gns", type: "NoShowRecorded", occurredAt: new Date(dep.getTime() + 3600000).toISOString(), actor: `${carrier} GATE`, couponSeq: 1, detail: "Yolcu uçuşa gelmedi (no-show)", status: "O" });
+
+    out.push({
+      ticketNumber: tn,
+      pnr: Array.from({ length: 6 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ0123456789"[Math.floor(rnd() * 34)]).join(""),
+      passenger: { surname, givenName: given, title: pick(TITLES) },
+      validatingCarrier: carrier,
+      issuedAt: issued.toISOString(),
+      formOfPayment: fop,
+      control: { holder: carrier, isValidatingCarrier: true },
+      coupons,
+      fare: {
+        baseFare: { amount: baseFare, currency },
+        totalTfc: { amount: tfc, currency },
+        total: { amount: baseFare + tfc, currency },
+        tfcs: [
+          { code: "YQ", amount: { amount: Math.round(tfc * 0.6), currency } },
+          { code: "TR", amount: { amount: Math.round(tfc * 0.4), currency } },
+        ],
+      },
+      history,
+    });
+  }
+  return out;
+}
