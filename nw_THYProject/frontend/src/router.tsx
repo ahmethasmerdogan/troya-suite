@@ -45,6 +45,8 @@ const emdsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/emds", 
 const emdDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/emds/$emdNumber", component: lazyRouteComponent(() => import("@/pages/EmdDetail"), "EmdDetail") });
 const emdReceiptRoute = createRoute({ getParentRoute: () => rootRoute, path: "/emds/$emdNumber/receipt", component: lazyRouteComponent(() => import("@/pages/EmdReceipt"), "EmdReceipt") });
 const reportRoute = createRoute({ getParentRoute: () => rootRoute, path: "/report", component: lazyRouteComponent(() => import("@/pages/SalesReport"), "SalesReport") });
+const reportFinancialRoute = createRoute({ getParentRoute: () => rootRoute, path: "/report/financial", component: lazyRouteComponent(() => import("@/pages/reports/FinancialReport"), "FinancialReport") });
+const reportPeriodRoute = createRoute({ getParentRoute: () => rootRoute, path: "/report/period", component: lazyRouteComponent(() => import("@/pages/reports/PeriodClosing"), "PeriodClosing") });
 
 // QuickCheck-in (DCS)
 const checkinFlightsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/checkin", component: lazyRouteComponent(() => import("@/pages/checkin/CheckinFlights"), "CheckinFlights") });
@@ -74,7 +76,7 @@ const routeTree = rootRoute.addChildren([
   indexRoute,
   resSearchRoute, resNewRoute, resAvailRoute, resDetailRoute,
   searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
-  emdReceiptRoute, reportRoute,
+  emdReceiptRoute, reportRoute, reportFinancialRoute, reportPeriodRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
   adminRoute, guideRoute, docsRoute, chatRoute,
 ]);

@@ -189,6 +189,35 @@ export type LifecycleEventType =
   | "PtaAcknowledged"
   | "PtaRefunded";
 
+/**
+ * Olayın parasal dökümü — raporlama bunun üzerinden yürür.
+ *
+ * Tutarlar `detail` metninden AYRIŞTIRILMAZ; komut çalışırken yapılandırılmış
+ * olarak yazılır. Mali rapor, dönem kapanışı ve KDV dökümü hep buradan okur.
+ */
+export interface EventMoney {
+  currency: string;
+  /** Brüt: kesimde bilet toplamı, iadede iade tutarı, EMD'de belge değeri. */
+  gross?: number;
+  /** Tarife kuralı cezası (iptal / değişiklik). */
+  penalty?: number;
+  /** No-show ücreti — cezadan ayrı kalem. */
+  noShowFee?: number;
+  /** 15.1.3.1 service charge + iletişim gideri. */
+  serviceCharge?: number;
+  /** İade edilen vergi/harç. */
+  taxRefunded?: number;
+  /** İade edilemediği için yolcuya dönmeyen vergi/harç. */
+  taxForfeited?: number;
+  /** KDV — toplamın İÇİNDE (md.20/4). */
+  vat?: number;
+  vatRate?: number;
+  /** Reissue: ek tahsilat ve bakiye. */
+  adc?: number;
+  residual?: number;
+  refundType?: "involuntary" | "voluntary";
+}
+
 export interface LifecycleEvent {
   id: string;
   type: LifecycleEventType;
@@ -199,6 +228,8 @@ export interface LifecycleEvent {
   /** Exchange linkage: ilgili diğer bilet numarası. */
   linkedTicketNumber?: string;
   status?: CouponStatus; // dot rengi için event'in ima ettiği statü
+  /** Parasal döküm — raporlar bunu okur (metinden ayrıştırma YOK). */
+  money?: EventMoney;
 }
 
 export interface Ticket {

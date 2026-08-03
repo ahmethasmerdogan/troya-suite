@@ -57,3 +57,22 @@ test("9.3 — PTA teslim teyidi ve iade belgesi", async ({ page }) => {
   await expect(page.getByText(/Belge ve yetki/)).toBeVisible();
   await expect(page.getByText(/Agents Refund Voucher/).first()).toBeVisible();
 });
+
+test("Rapor merkezi — üç sekme ve dönem kapanışı", async ({ page }) => {
+  await page.goto("/report");
+  await expect(page.getByRole("heading", { name: "Satış / İşlem Raporu" })).toBeVisible();
+
+  // Mali rapor: ceza / vergi / KDV kırılımı
+  await page.getByRole("link", { name: "Mali", exact: true }).click();
+  await expect(page).toHaveURL(/\/report\/financial/);
+  await expect(page.getByRole("heading", { name: "Mali Rapor" })).toBeVisible();
+  await expect(page.getByText("Ceza ve ücretler").first()).toBeVisible();
+  await expect(page.getByText(/KDV — bilet bedelinin içinde/).first()).toBeVisible();
+
+  // Dönem kapanışı: açık dönemde geri alma hakkı görünür
+  await page.getByRole("link", { name: "Dönem Kapanışı", exact: true }).first().click();
+  await expect(page).toHaveURL(/\/report\/period/);
+  await expect(page.getByRole("heading", { name: "Dönem Kapanışı" })).toBeVisible();
+  await expect(page.getByText("Dönem neden önemli")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Dönemi kapat" }).first()).toBeVisible();
+});

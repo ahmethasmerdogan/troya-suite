@@ -5,7 +5,7 @@ import {
 } from "./mockData";
 import type {
   Ticket, TicketSummary, LifecycleEvent, LifecycleEventType, Emd, EmdType, InterlineMessage, BilateralAgreement, Order,
-  Segment, Money, CouponStatus, Pta, RevenueAlert, Passenger, RefundRecord, Coupon, TaxFeeCharge,
+  Segment, Money, CouponStatus, Pta, RevenueAlert, Passenger, RefundRecord, Coupon, TaxFeeCharge, EventMoney,
 } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
 import { applyTransition, applyRefundCancel, canTransition, isRefundable } from "./couponStatusMachine";
@@ -24,6 +24,7 @@ const store: Ticket[] = [...MOCK_TICKETS];
 let serialCounter = 100200300;
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export async function listTickets(): Promise<TicketSummary[]> {
   await delay(280);
@@ -77,7 +78,15 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
   const ticketNumber = buildTicketNumber("235", String(serialCounter++));
   const now = new Date().toISOString();
   const history: LifecycleEvent[] = [
-    { id: "h1", type: "TicketIssued", occurredAt: now, actor: `${input.validatingCarrier} / Web`, detail: "Bilet kesildi", status: "O" },
+    {
+      id: "h1", type: "TicketIssued", occurredAt: now,
+      actor: `${input.validatingCarrier} / Web`, detail: "Bilet kesildi", status: "O",
+      money: {
+        currency: input.fare.total.currency,
+        gross: input.fare.total.amount,
+        ...(input.fare.vat ? { vat: input.fare.vat.amount, vatRate: input.fare.vat.rate } : {}),
+      },
+    },
     ...input.segments.map((s, i) => ({
       id: `h-c${i + 1}`,
       type: "CouponAdded" as const,
@@ -170,6 +179,7 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
   if (!t) throw new DomainError("Bilet bulunamadı.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
+  assertPeriodOpen(t.issuedAt, "void"); // kapanmış dönemde satış iptali yok
   // İnvariant: void için TÜM kuponlar O olmalı.
   const notOpen = t.coupons.filter((c) => c.status !== "O");
   if (notOpen.length)
@@ -179,7 +189,15 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
     cascadeEmdA(t.ticketNumber, c.seq, "V"); // EMD-A senkronu (5.3)
   });
   stampSac(t.coupons); // 1.3.6: işlem başına TEK kod, tüm kuponlara aynısı
-  t.history.push(event("TicketVoided", { detail: input.reason || "Satış kaydı iptal edildi", status: "V" }));
+  t.history.push(event("TicketVoided", {
+    detail: input.reason || "Satış kaydı iptal edildi",
+    status: "V",
+    money: {
+      currency: t.fare.total.currency,
+      gross: t.fare.total.amount,
+      ...(t.fare.vat ? { vat: t.fare.vat.amount, vatRate: t.fare.vat.rate } : {}),
+    },
+  }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }
@@ -226,6 +244,36 @@ export function reportingPeriodId(iso: string): string {
 }
 export function inCurrentReportingPeriod(iso: string): boolean {
   return reportingPeriodId(iso) === reportingPeriodId(new Date().toISOString());
+}
+
+/**
+ * Kapatılan raporlama dönemleri. Dönem kapandıktan sonra o döneme ait satış
+ * kaydı artık void edilemez ve iade geri alınamaz — kalemler settlement'a
+ * gitmiştir. (Gerçekte bu, muhasebe kapanışının kilididir.)
+ */
+const closedPeriods = new Set<string>();
+
+export function isPeriodClosed(periodId: string): boolean {
+  return closedPeriods.has(periodId);
+}
+
+export async function closeReportingPeriod(periodId: string): Promise<string[]> {
+  await delay(450);
+  if (closedPeriods.has(periodId)) throw new DomainError(`${periodId} dönemi zaten kapatılmış.`);
+  closedPeriods.add(periodId);
+  return [...closedPeriods].sort();
+}
+
+export async function listClosedPeriods(): Promise<string[]> {
+  await delay(120);
+  return [...closedPeriods].sort();
+}
+
+/** Dönem kapalıysa para/statü değiştiren işlemi reddet. */
+function assertPeriodOpen(iso: string, action: string): void {
+  const pid = reportingPeriodId(iso);
+  if (closedPeriods.has(pid))
+    throw new DomainError(`${pid} raporlama dönemi kapatıldı — ${action} yapılamaz. Kalemler settlement'a iletildi.`);
 }
 
 /**
@@ -438,6 +486,31 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
   // 1.3.6 — iade de settlement doğurur: işlem başına tek SAC.
   const sac = stampSac(affected);
 
+  // Parasal döküm: metinden ayrıştırılmaz, sunucu KENDİ hesabını yazar.
+  // (Statüler yukarıda değişti; tarife hesabı kupon durumundan bağımsız
+  // olduğu için aynı girdilerle yeniden üretilebilir.)
+  const q = quoteRefund({
+    ticket: t,
+    couponSeqs: input.couponSeqs,
+    refundType: input.refundType ?? "voluntary",
+    reason: input.involuntaryReason,
+    serviceCharge: input.serviceCharge,
+    communicationExpenses: input.communicationExpenses,
+    taxOnly: input.taxOnly,
+  });
+  const taxTotal = q.tfcLines.reduce((sum, l) => sum + l.amount, 0);
+  const money = {
+    currency: input.refundAmount.currency,
+    gross: input.refundAmount.amount,
+    penalty: q.penalty,
+    noShowFee: q.noShowFee,
+    serviceCharge: q.deductions,
+    taxRefunded: q.tfcComponent,
+    taxForfeited: Math.max(0, round2(taxTotal - q.tfcComponent)),
+    refundType: input.refundType ?? "voluntary",
+    ...(t.fare.vat ? { vat: t.fare.vat.amount, vatRate: t.fare.vat.rate } : {}),
+  };
+
   const waiverLabel = input.waiver === "death" ? "vefat (ceza muaf)" : input.waiver === "illness" ? "hastalık (ceza muaf)" : null;
   if (input.taxOnly) {
     t.history.push(event("CouponRefunded", { couponSeq: input.couponSeqs[0], detail: "Yalnız vergi (TFC) iadesi işaretlendi — O→Y (Refund TFC)", status: "Y" }));
@@ -455,6 +528,7 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
         (input.method === "voucher" ? " · voucher (EMD-S travel credit)" : "") +
         ` · SAC ${sac}`,
       status: "R",
+      money,
     }),
   );
 
@@ -537,6 +611,7 @@ export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
     throw new DomainError(
       `İade ${reportingPeriodId(rec.at)} raporlama döneminde yapılmış; geri alma yalnız AYNI dönem içinde mümkündür (12.13.2).`,
     );
+  assertPeriodOpen(rec.at, "iadeyi geri alma");
   assertControl(t, "İadeyi geri alma");
 
   const affected: Coupon[] = [];
@@ -655,6 +730,17 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
               ` · ${quote.totalBoxText}`
             : ` · ${input.adc.amount >= 0 ? "ADC" : "residual"} ${Math.abs(input.adc.amount).toLocaleString("en-US")} ${input.adc.currency}` +
               (input.adc.amount === 0 ? " (NO ADC)" : "")),
+        money: quote
+          ? {
+              currency: cur,
+              adc: quote.adc,
+              penalty: quote.penalty,
+              taxRefunded: quote.tfcRefunded,
+              taxForfeited: quote.tfcForfeited,
+              residual: quote.residual?.amount ?? 0,
+              gross: baseTotal,
+            }
+          : { currency: cur, adc: Math.max(0, input.adc.amount), gross: baseTotal },
         linkedTicketNumber: old.ticketNumber,
         status: "O",
       }),
@@ -781,6 +867,10 @@ export interface TransactionRow {
   carrier: string;
   amount?: Money; // kesimde bilet toplamı
   status?: CouponStatus;
+  /** Parasal döküm — mali rapor ve dönem kapanışı bunu okur. */
+  money?: EventMoney;
+  /** Ait olduğu raporlama dönemi (gün). */
+  periodId: string;
 }
 export interface TransactionQuery {
   text?: string;
@@ -813,8 +903,12 @@ export async function queryTransactions(qc: TransactionQuery = {}): Promise<Tran
       actor: h.actor,
       detail: h.detail,
       carrier: t.validatingCarrier,
-      amount: h.type === "TicketIssued" ? t.fare.total : undefined,
+      amount: h.money?.gross != null
+        ? { amount: h.money.gross, currency: h.money.currency }
+        : h.type === "TicketIssued" ? t.fare.total : undefined,
       status: h.status,
+      money: h.money,
+      periodId: reportingPeriodId(h.occurredAt),
     })),
   );
   if (qc.category && qc.category !== "all") rows = rows.filter((x) => x.category === qc.category);
@@ -864,7 +958,11 @@ export async function addEmd(input: AddEmdInput): Promise<Emd> {
     total: input.value,
   };
   emdStore.unshift(emd);
-  t.history.push(event("EmdIssued", { detail: `EMD-${input.type} ${input.rfisc} · ${input.description}`, status: "O" }));
+  t.history.push(event("EmdIssued", {
+    detail: `EMD-${input.type} ${input.rfisc} · ${input.description}`,
+    status: "O",
+    money: { currency: input.value.currency, gross: input.value.amount },
+  }));
   opKeys.set(input.idempotencyKey, emd.emdNumber);
   return emd;
 }

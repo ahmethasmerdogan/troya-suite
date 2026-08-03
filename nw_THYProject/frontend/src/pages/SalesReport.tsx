@@ -2,15 +2,16 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { CalendarRange, Printer } from "lucide-react";
+import { CalendarRange } from "lucide-react";
 import { queryTransactions, type TransactionRow } from "@/domain/api";
 import { Money } from "@/components/domain/Money";
-import { Button, Field, Input, Select } from "@/components/ui/core";
-import { PageTitle } from "@/components/ui/surface";
+import { Field, Input, Select } from "@/components/ui/core";
 import { DataTable } from "@/components/ui/table";
 import { Card, InsetPanel, OutlineBadge, SearchField, StatusPill, type Tone } from "@/ui";
 import { useT } from "@/i18n";
 import { formatDateTime, cn } from "@/lib/utils";
+import { ReportShell } from "./reports/ReportShell";
+import { PERIODS, periodRange, type PeriodId } from "./reports/period";
 
 /* ====================================================================
    Satış / İşlem Raporu — dönem kapanışı.
@@ -30,27 +31,6 @@ const CAT: Record<string, { label: string; tone: Tone; sign: -1 | 0 | 1 }> = {
   checkin: { label: "Check-in", tone: "gray", sign: 0 },
   other: { label: "Diğer", tone: "gray", sign: 0 },
 };
-
-type PeriodId = "day" | "month" | "year" | "custom";
-
-/** Dönem ön ayarları — kapanış raporunun omurgası. */
-function periodRange(id: PeriodId, now = new Date()): { from: string; to: string } | null {
-  const iso = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  if (id === "day") return { from: iso(now), to: iso(now) };
-  if (id === "month")
-    return { from: iso(new Date(now.getFullYear(), now.getMonth(), 1)), to: iso(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
-  if (id === "year")
-    return { from: iso(new Date(now.getFullYear(), 0, 1)), to: iso(new Date(now.getFullYear(), 11, 31)) };
-  return null;
-}
-
-const PERIODS: { id: PeriodId; label: string; hint: string }[] = [
-  { id: "day", label: "Gün sonu", hint: "Bugünün kapanışı" },
-  { id: "month", label: "Ay sonu", hint: "İçinde bulunulan ay" },
-  { id: "year", label: "Yıl sonu", hint: "İçinde bulunulan yıl" },
-  { id: "custom", label: "Özel tarih", hint: "Serbest aralık" },
-];
 
 const col = createColumnHelper<TransactionRow>();
 
@@ -117,6 +97,22 @@ export function SalesReport() {
     col.accessor("actor", { header: "Personel / Ofis", cell: (c) => <span className="text-ink-2">{c.getValue()}</span> }),
     col.accessor("carrier", { header: "Carrier", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
     col.accessor("detail", { header: "Açıklama", enableSorting: false, cell: (c) => <span className="text-ink-3">{c.getValue() ?? "—"}</span> }),
+    col.accessor((r) => (r.money?.penalty ?? 0) + (r.money?.noShowFee ?? 0), {
+      id: "penalty", header: "Ceza", meta: { align: "right" },
+      cell: (c) => {
+        const n = c.getValue() as number;
+        if (!n) return <span className="text-ink-3">—</span>;
+        return <Money value={{ amount: n, currency: c.row.original.money?.currency ?? "TRY" }} size="sm" />;
+      },
+    }),
+    col.accessor((r) => r.money?.taxRefunded ?? 0, {
+      id: "taxref", header: "İade edilen vergi", meta: { align: "right" },
+      cell: (c) => {
+        const n = c.getValue() as number;
+        if (!n) return <span className="text-ink-3">—</span>;
+        return <Money value={{ amount: n, currency: c.row.original.money?.currency ?? "TRY" }} size="sm" />;
+      },
+    }),
     col.accessor((r) => r.amount?.amount ?? 0, {
       id: "amount", header: "Tutar",
       meta: { align: "right", summary: closing[0] ? `${closing[0].net.toLocaleString("tr-TR")} ${closing[0].cur}` : undefined },
@@ -130,12 +126,7 @@ export function SalesReport() {
   ] as ColumnDef<TransactionRow, unknown>[];
 
   return (
-    <>
-      <PageTitle
-        title="Satış / İşlem Raporu"
-        hint={t("report.desc")}
-        action={<Button variant="secondary" onClick={() => window.print()}><Printer size={15} strokeWidth={1.75} /> Yazdır</Button>}
-      />
+    <ReportShell title="Satış / İşlem Raporu" hint={t("report.desc")}>
 
       {/* --- dönem seçimi --- */}
       <Card className="mb-4 p-4">
@@ -247,7 +238,7 @@ export function SalesReport() {
         summary={closing.length ? `Net ${closing.map((c) => `${c.net.toLocaleString("tr-TR")} ${c.cur}`).join(" · ")}` : undefined}
         empty={{ title: "İşlem bulunamadı", hint: "Dönemi genişletin ya da filtreleri gevşetin." }}
       />
-    </>
+    </ReportShell>
   );
 }
 

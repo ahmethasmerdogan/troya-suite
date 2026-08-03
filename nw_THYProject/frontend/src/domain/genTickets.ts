@@ -88,8 +88,23 @@ export function generateTickets(count: number): Ticket[] {
     const fops = [{ type: "credit" as const, detail: "VISA ····" + (1000 + Math.floor(rnd() * 8999)) }, { type: "cash" as const }];
     const fop = pick(fops);
 
+    // Parasal döküm — mali rapor ve dönem kapanışı bunu okur (metin ayrıştırma YOK).
+    const total = baseFare + tfc;
+    const domestic = currency === "TRY" && !roundTrip;
+    const vatRate = domestic ? 0.2 : 0;
+    const vatAmount = domestic ? Math.round(((baseFare + Math.round(tfc * 0.6)) * 0.2) / 1.2) : 0;
+    // İade edilen bilette ceza, kesinti ve vergi dağılımı deterministik türetilir.
+    const penalty = plan.status === "R" ? Math.round(baseFare * 0.15) : 0;
+    const noShowFee = plan.noShow ? Math.round(baseFare * 0.08) : 0;
+    const taxRefunded = plan.status === "R" ? Math.round(tfc * 0.4) : 0; // havalimanı harcı
+    const taxForfeited = plan.status === "R" ? Math.round(tfc * 0.6) : 0; // taşıyıcı ek ücreti
+
     const history: LifecycleEvent[] = [
-      { id: "g1", type: "TicketIssued", occurredAt: issued.toISOString(), actor: `${carrier} / IST-CTR`, detail: "Bilet kesildi", status: "O" },
+      {
+        id: "g1", type: "TicketIssued", occurredAt: issued.toISOString(),
+        actor: `${carrier} / IST-CTR`, detail: "Bilet kesildi", status: "O",
+        money: { currency, gross: total, ...(vatAmount ? { vat: vatAmount, vatRate } : {}) },
+      },
       ...segs.map((s, idx) => ({
         id: `gc${idx + 1}`, type: "CouponAdded" as const, occurredAt: issued.toISOString(), actor: carrier,
         couponSeq: idx + 1, detail: `${s.origin}→${s.destination} ${s.flightNumber}`, status: "O" as const,
@@ -97,9 +112,33 @@ export function generateTickets(count: number): Ticket[] {
     ];
     // statüye göre kapanış event'i
     if (plan.status === "F") history.push({ id: "gf", type: "CouponFlown", occurredAt: arr.toISOString(), actor: carrier, couponSeq: 1, detail: "Uçuş tamamlandı", status: "F" });
-    if (plan.status === "V") history.push({ id: "gv", type: "TicketVoided", occurredAt: issued.toISOString(), actor: `${carrier} / IST-CTR`, detail: "Satış kaydı iptal edildi", status: "V" });
-    if (plan.status === "R") history.push({ id: "gr", type: "CouponRefunded", occurredAt: new Date(issued.getTime() + 86400000).toISOString(), actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "İade edildi", status: "R" });
-    if (plan.status === "E") history.push({ id: "ge", type: "CouponExchanged", occurredAt: new Date(issued.getTime() + 172800000).toISOString(), actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "Tarih değişikliği — yeniden kesim", status: "E" });
+    if (plan.status === "V") history.push({
+      id: "gv", type: "TicketVoided", occurredAt: issued.toISOString(), actor: `${carrier} / IST-CTR`,
+      detail: "Satış kaydı iptal edildi", status: "V",
+      money: { currency, gross: total, ...(vatAmount ? { vat: vatAmount, vatRate } : {}) },
+    });
+    if (plan.status === "R") history.push({
+      id: "gr", type: "CouponRefunded", occurredAt: new Date(issued.getTime() + 86400000).toISOString(),
+      actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "İade edildi", status: "R",
+      money: {
+        currency,
+        gross: Math.max(0, baseFare - penalty + taxRefunded),
+        penalty, noShowFee, serviceCharge: 0,
+        taxRefunded, taxForfeited,
+        refundType: plan.noShow ? "voluntary" : (i % 5 === 0 ? "involuntary" : "voluntary"),
+        ...(vatAmount ? { vat: Math.round(vatAmount / 2), vatRate } : {}),
+      },
+    });
+    if (plan.status === "E") history.push({
+      id: "ge", type: "CouponExchanged", occurredAt: new Date(issued.getTime() + 172800000).toISOString(),
+      actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "Tarih değişikliği — yeniden kesim", status: "E",
+      money: {
+        currency, gross: total,
+        adc: Math.round(baseFare * 0.12),
+        penalty: Math.round(baseFare * 0.07),
+        taxRefunded: 0, taxForfeited: 0, residual: 0,
+      },
+    });
     if (plan.status === "I") history.push({ id: "gi", type: "IrregularOpsApplied", occurredAt: new Date(dep.getTime() - 7200000).toISOString(), actor: `${carrier} OPS`, couponSeq: 1, detail: "IRROP — uçuş aksaması", status: "I" });
     if (plan.noShow) history.push({ id: "gns", type: "NoShowRecorded", occurredAt: new Date(dep.getTime() + 3600000).toISOString(), actor: `${carrier} GATE`, couponSeq: 1, detail: "Yolcu uçuşa gelmedi (no-show)", status: "O" });
 
