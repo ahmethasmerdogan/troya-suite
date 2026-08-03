@@ -319,9 +319,23 @@ describe("kontrol devri — 1.1.5.1", () => {
   it("kontrol başkasındayken void/refund/exchange yapılamaz, kontrol talebi üretilir", async () => {
     const t = await issueTicket(makeInput(newIdempotencyKey()));
     await grantControl({ ticketNumber: t.ticketNumber, toCarrier: "LH", idempotencyKey: newIdempotencyKey() });
+
+    // ÜÇÜNÜ DE dene — testin adı üçünü vaat ediyor.
     await expect(
       refundTicket({ ticketNumber: t.ticketNumber, couponSeqs: [1], refundAmount: { amount: 100, currency: "TRY" }, idempotencyKey: newIdempotencyKey() }),
     ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      voidTicket({ ticketNumber: t.ticketNumber, idempotencyKey: newIdempotencyKey() }),
+    ).rejects.toBeInstanceOf(DomainError);
+    await expect(
+      exchangeTicket({
+        oldTicketNumber: t.ticketNumber,
+        newSegments: t.coupons.map((c) => c.segment),
+        adc: { amount: 0, currency: "TRY" },
+        idempotencyKey: newIdempotencyKey(),
+      }),
+    ).rejects.toBeInstanceOf(DomainError);
+
     const asked = await requestControl({ ticketNumber: t.ticketNumber, reason: "refund", idempotencyKey: newIdempotencyKey() });
     expect(asked.history.some((h) => h.type === "ControlRequested")).toBe(true);
   });

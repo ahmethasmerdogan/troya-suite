@@ -135,16 +135,29 @@ export function Field({
   className?: string;
   children: React.ReactNode;
 }) {
+  // Etiket ile kontrolü htmlFor/id çiftiyle bağla. Çağıran taraf id vermediyse
+  // üretilen id çocuğa enjekte edilir — böylece 100+ alanın hepsi erişilebilir
+  // bir ada kavuşur. (Label ile SARMALAMIYORUZ: alan her zaman native bir
+  // kontrol değil; popover açan bir buton label içine girerse tıklama ve ad
+  // hesabı bozulur.)
+  const autoId = React.useId();
+  const controlId = htmlFor ?? autoId;
+  const control = React.isValidElement(children)
+    ? React.cloneElement(children as React.ReactElement<{ id?: string }>, {
+        id: (children as React.ReactElement<{ id?: string }>).props.id ?? controlId,
+      })
+    : children;
+
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <span className="flex items-center gap-1.5">
-        <Label htmlFor={htmlFor}>
+        <Label htmlFor={controlId}>
           {label}
           {required && <span className="ml-0.5 text-[var(--t-red-d)]">*</span>}
         </Label>
         {info && <InfoDot help={info} />}
       </span>
-      {children}
+      {control}
       {/* Hata alanın ALTINDA durur — genel bir hata kutusu değil, alanın kendi sözü. */}
       {error ? (
         <span className="text-[12px] text-[var(--t-red-i)]">{error}</span>

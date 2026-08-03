@@ -171,12 +171,27 @@ export function MenuRule() {
 }
 
 /** Dışarı tıklayınca kapat. */
+/**
+ * Dışarı tıklama VE Escape ile kapanma. Menüler için tek kapı: klavye
+ * kullanıcısı açtığı menüyü fareye uzanmadan kapatabilmeli.
+ */
 export function useOutside(ref: RefObject<HTMLElement | null>, onOutside: () => void) {
+  // Satır-içi ok fonksiyonu gelse de effect her render yeniden kurulmasın.
+  const cb = useRef(onOutside);
+  cb.current = onOutside;
+
   useEffect(() => {
-    const h = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOutside();
+    const onDown = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) cb.current();
     };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [ref, onOutside]);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") cb.current();
+    };
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [ref]);
 }

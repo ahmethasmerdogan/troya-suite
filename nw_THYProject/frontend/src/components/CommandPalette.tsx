@@ -37,6 +37,12 @@ export function CommandPalette() {
       if (e.key === "k" && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         useUI.getState().toggleCommand();
+        return;
+      }
+      // Palette "ESC" rozetini gösteriyordu ama tuş bağlı değildi.
+      if (e.key === "Escape" && useUI.getState().commandOpen) {
+        e.preventDefault();
+        useUI.getState().setCommandOpen(false);
       }
     };
     document.addEventListener("keydown", onKey);

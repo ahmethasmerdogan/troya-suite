@@ -663,6 +663,18 @@ function FareStep({
 }
 
 /* --- 3 · ödeme -------------------------------------------------------- */
+
+/**
+ * Kart numarasını YAZARKEN maskeler: son dört hane dışındaki her rakam "X"
+ * olur. Böylece ham numara ne React state'ine, ne bilet kaydına, ne de olay
+ * geçmişine girer. (PCI-DSS'te tokenizasyon backend'in işidir; bu prototipin
+ * yapabileceği asgari şey numarayı hiç tutmamaktır.)
+ */
+export function maskCardInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "").slice(0, 19);
+  if (digits.length <= 4) return digits;
+  return "X".repeat(digits.length - 4) + digits.slice(-4);
+}
 const FOPS: { id: FormOfPaymentType; label: string; icon: React.ReactNode }[] = [
   { id: "credit", label: "Kredi Kartı", icon: <CreditCard size={16} strokeWidth={1.75} /> },
   { id: "cash", label: "Nakit", icon: <Banknote size={16} strokeWidth={1.75} /> },
@@ -688,8 +700,20 @@ function PayStep({
         ))}
       </div>
       {fop !== "cash" && (
-        <Field label={fop === "uatp" ? "UATP hesap no" : "Kart (maskeli)"} required error={error} hint="Son 4 hane yeterlidir; tam numara saklanmaz.">
-          <Input value={detail} onChange={(e) => setDetail(e.target.value)} placeholder={fop === "uatp" ? "TP1234567890" : "**** **** **** 4242"} className="num" />
+        <Field
+          label={fop === "uatp" ? "UATP hesap no" : "Kart (maskeli)"}
+          required error={error}
+          hint="Son 4 hane dışındaki rakamlar yazarken maskelenir; tam numara hiç saklanmaz."
+        >
+          <Input
+            value={detail}
+            // Maskeleme GİRİŞTE yapılır: ham numara state'e, kayda ya da
+            // olay geçmişine hiçbir noktada girmez.
+            onChange={(e) => setDetail(fop === "credit" ? maskCardInput(e.target.value) : e.target.value)}
+            placeholder={fop === "uatp" ? "TP1234567890" : "**** **** **** 4242"}
+            className="num"
+            inputMode={fop === "credit" ? "numeric" : "text"}
+          />
         </Field>
       )}
     </div>

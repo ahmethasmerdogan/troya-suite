@@ -2,7 +2,7 @@ import {
   LayoutDashboard, BookMarked, Ticket, PlaneTakeoff,
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText,
   MessagesSquare, Handshake, Users, ScrollText, Settings,
-  CalendarSearch, UserCheck, Banknote, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
+  CalendarSearch, Banknote, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/domain/auth";
 
@@ -119,8 +119,9 @@ export const MODULES: ModuleDef[] = [
       {
         titleKey: "nav.section.checkin",
         items: [
+          // Biniş ayrı bir sayfa değil, uçuş detayındaki ikinci sekmedir —
+          // aynı rotaya giden ikinci nav öğesi kaldırıldı.
           { labelKey: "nav.ci.flights", to: "/checkin", icon: PlaneTakeoff },
-          { labelKey: "nav.ci.boarding", to: "/checkin", icon: UserCheck },
         ],
       },
       {

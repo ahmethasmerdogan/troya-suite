@@ -99,6 +99,7 @@ export function FinancialReport() {
             <button
               key={p.id}
               onClick={() => setPeriod(p.id)}
+              aria-pressed={period === p.id}
               title={p.hint}
               className={cn("rounded-[10px] px-3 py-1.5 text-[13px] font-medium transition-colors",
                 period === p.id ? "bg-brand text-white" : "bg-inset text-ink-2 hover:text-ink")}

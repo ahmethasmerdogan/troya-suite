@@ -1,8 +1,15 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 // Dialog erişilebilirliği: açıkken Esc kapatır, focus içeride hapsedilir (Tab döngüsü),
 // body scroll kilitlenir, kapanınca focus tetikleyen öğeye iade edilir.
 export function useDialog(open: boolean, ref: React.RefObject<HTMLElement | null>, onClose: () => void) {
+  // onClose çağıran taraflarda genelde satır-içi ok fonksiyonudur; bağımlılığa
+  // koyarsak effect HER RENDER yeniden kurulur ve odak, kullanıcı yazarken
+  // ilk odaklanabilir öğeye (Kapat butonuna) geri sıçrar. Ref'te tutuyoruz:
+  // effect yalnız AÇILIŞTA kurulur.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+
   useEffect(() => {
     if (!open) return;
     const prevActive = document.activeElement as HTMLElement | null;
@@ -23,7 +30,7 @@ export function useDialog(open: boolean, ref: React.RefObject<HTMLElement | null
     (focusables()[0] ?? node)?.focus?.();
 
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); onClose(); return; }
+      if (e.key === "Escape") { e.preventDefault(); closeRef.current(); return; }
       if (e.key !== "Tab") return;
       const f = focusables();
       if (f.length === 0) { e.preventDefault(); return; }
@@ -38,5 +45,5 @@ export function useDialog(open: boolean, ref: React.RefObject<HTMLElement | null
       document.body.style.overflow = prevOverflow;
       prevActive?.focus?.();
     };
-  }, [open, ref, onClose]);
+  }, [open, ref]);
 }

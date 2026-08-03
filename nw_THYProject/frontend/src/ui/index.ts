@@ -7,7 +7,6 @@
 /*                                                                     */
 /*   import { Button, StatusPill, Modal, useToast } from "@/ui";        */
 /*                                                                     */
-/* Optional peer: `three` — only needed if you use <ThreeOrb />.        */
 /* ------------------------------------------------------------------ */
 
 /* primitives */
@@ -30,7 +29,6 @@ export * from "./Overlay";
 
 /* motion */
 export * from "./Motion";
-export * from "./ThreeOrb";
 
 /* theming — wrap your app in <ThemeProvider>, read with useTheme() */
 export * from "./theme";

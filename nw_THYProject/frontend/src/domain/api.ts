@@ -181,6 +181,8 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
   if (!t) throw new DomainError("Bilet bulunamadı.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
+  // 1.1.5.3 — void da bir statü değişikliğidir: kuponun zilyetliği bizde olmalı.
+  assertControl(t, "Void");
   assertPeriodOpen(t.issuedAt, "void"); // kapanmış dönemde satış iptali yok
   // 1.1.5.3 / satış günü kuralı: void yalnız satışın yapıldığı raporlama
   // döneminde mümkündür. Sonrası iade işlemidir.

@@ -10,7 +10,9 @@
 > uygulaması hissi veriyordu. **Tüm butonlar artık `shape="rect"`** (10px).
 > `components/ui/core.tsx` içindeki `Button`, HashUI `Button`'ın ince bir
 > adaptörüdür ve biçimi sabitler — 25 çağrı yeri tek anatomiyi paylaşır.
-> Pill ve rozetler yuvarlak kalır (onlar etiket, aksiyon değil).
+> Pill ve rozetler yuvarlak kalır (onlar etiket, aksiyon değil). Tek aksiyon
+> istisnası: alan etiketindeki 16px **(i) açıklama noktası** — kare olduğunda
+> nokta olmaktan çıkıyor.
 >
 > **R2 · Yeşil onay yüzü.** `variant="success"` eklendi: kabul/onay/tamamla
 > aksiyonları (yolcu kabul, biniş, iadeyi tamamla, exchange onayı) yeşil yüz
