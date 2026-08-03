@@ -130,11 +130,28 @@ describe("dönem kapanışı", () => {
     expect(ps[0].count).toBe(2);
   });
 
-  it("dönem AÇIKKEN void ve iade geri alma hakkı vardır", () => {
+  // Düzeltme (denetim bulgusu): "void edilebilir" kategori satırı saymaz —
+  // zaten iade/void görmüş belge void edilemez.
+  it("iadesi yapılmış belge 'void edilebilir' sayılmaz", () => {
     const p = summarizePeriod("2026-08-03", rows.filter((r) => r.periodId === "2026-08-03"), false);
     expect(p.closed).toBe(false);
-    expect(p.reversible.voidable).toBe(1);
+    expect(p.reversible.voidable).toBe(0); // aynı bilet iade edilmiş
     expect(p.reversible.refundCancellable).toBe(1);
+  });
+
+  it("dokunulmamış kesim void edilebilir sayılır", () => {
+    const only = [row({ category: "issue", periodId: "2026-08-05", ticketNumber: "2359999999999", amount: { amount: 100, currency: "TRY" } })];
+    const p = summarizePeriod("2026-08-05", only, false);
+    expect(p.reversible.voidable).toBe(1);
+  });
+
+  it("geri alınmış iade (negatif ters kayıt) sayaçtan düşer", () => {
+    const withReversal = [
+      row({ category: "refund", periodId: "2026-08-06", amount: { amount: 2000, currency: "TRY" } }),
+      row({ category: "refund", periodId: "2026-08-06", amount: { amount: -2000, currency: "TRY" } }),
+    ];
+    const p = summarizePeriod("2026-08-06", withReversal, false);
+    expect(p.reversible.refundCancellable).toBe(0);
   });
 
   it("dönem KAPANINCA geri alma hakları düşer", () => {
@@ -148,5 +165,49 @@ describe("dönem kapanışı", () => {
     const ps = periodsFrom(rows, ["2026-08-02"]);
     expect(ps.find((p) => p.periodId === "2026-08-02")!.closed).toBe(true);
     expect(ps.find((p) => p.periodId === "2026-08-03")!.closed).toBe(false);
+  });
+});
+
+
+// Denetim bulgularının regresyonu (2026-08-03).
+describe("rapor motoru — denetim düzeltmeleri", () => {
+  it("void edilen satışın KDV'si tahsilattan düşer", () => {
+    const rows = [
+      row({ category: "issue", amount: { amount: 12000, currency: "TRY" }, money: { currency: "TRY", gross: 12000, vat: 2000, vatRate: 0.2 } }),
+      row({ category: "void", amount: { amount: 12000, currency: "TRY" }, money: { currency: "TRY", gross: 12000, vat: 2000, vatRate: 0.2 } }),
+    ];
+    const [t] = financialReport(rows).byCurrency;
+    expect(t.vatCollected).toBe(0);
+    expect(t.vatBase).toBe(0);
+    // Oran kırılımı da geri alınır.
+    expect(financialReport(rows).vatByRate[0].amount).toBe(0);
+  });
+
+  it("Refund-Cancel ters kaydı iade toplamını geri alır", () => {
+    const rows = [
+      row({ category: "issue", amount: { amount: 10000, currency: "TRY" } }),
+      row({ category: "refund", amount: { amount: 4000, currency: "TRY" }, money: { currency: "TRY", gross: 4000 } }),
+      row({ category: "refund", amount: { amount: -4000, currency: "TRY" }, money: { currency: "TRY", gross: -4000 } }),
+    ];
+    const [c] = closingByCurrency(rows);
+    expect(c.refund).toBe(0);
+    expect(c.net).toBe(10000);
+  });
+
+  it("exchange'in NAKİT değeri (ADC) brüte girer, yeni biletin tamamı değil", () => {
+    const rows = [
+      row({ category: "exchange", amount: { amount: 15000, currency: "TRY" }, money: { currency: "TRY", gross: 15000, adc: 2500 } }),
+    ];
+    const [c] = closingByCurrency(rows);
+    expect(c.gross).toBe(2500);
+  });
+
+  it("settlement kalemi olay tipinden sayılır, metinden değil", () => {
+    const rows = [
+      row({ category: "checkin", type: "CouponFlown", amount: undefined }),
+      row({ category: "issue", type: "TicketIssued" }),
+    ];
+    const p = summarizePeriod("2026-08-03", rows, false);
+    expect(p.settlementItems).toBe(1); // yalnız CouponFlown
   });
 });

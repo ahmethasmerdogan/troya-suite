@@ -27,15 +27,27 @@ export interface CurrencyClosing {
 
 export function closingByCurrency(rows: TransactionRow[]): CurrencyClosing[] {
   const m = new Map<string, CurrencyClosing>();
+  const bucket = (cur: string) =>
+    m.get(cur) ?? { currency: cur, gross: 0, refund: 0, voided: 0, net: 0, count: 0 };
+
   for (const r of rows) {
-    const cur = r.amount?.currency;
+    const cur = r.money?.currency ?? r.amount?.currency;
     if (!cur) continue;
-    const e = m.get(cur) ?? { currency: cur, gross: 0, refund: 0, voided: 0, net: 0, count: 0 };
-    const amt = r.amount!.amount;
-    if (r.category === "issue" || r.category === "emd") { e.gross += amt; e.count += 1; }
-    else if (r.category === "refund") { e.refund += amt; e.count += 1; }
-    else if (r.category === "void") { e.voided += amt; e.count += 1; }
-    m.set(cur, e);
+    const amt = r.amount?.amount ?? 0;
+
+    if (r.category === "issue" || r.category === "emd") {
+      const e = bucket(cur); e.gross += amt; e.count += 1; m.set(cur, e);
+    } else if (r.category === "refund") {
+      // Refund-Cancel ters kayıt olarak NEGATİF gross taşır → iade toplamı azalır.
+      const e = bucket(cur); e.refund += amt; e.count += 1; m.set(cur, e);
+    } else if (r.category === "void") {
+      const e = bucket(cur); e.voided += amt; e.count += 1; m.set(cur, e);
+    } else if (r.category === "exchange") {
+      // Exchange'in NAKİT değeri yeni biletin toplamı değil, tahsil edilen ADC'dir.
+      // Yeni biletin tamamını brüte yazmak eski biletle çift sayım olurdu.
+      const adc = r.money?.adc ?? 0;
+      if (adc > 0) { const e = bucket(cur); e.gross += adc; e.count += 1; m.set(cur, e); }
+    }
   }
   return [...m.values()]
     .map((e) => ({ ...e, net: round2(e.gross - e.refund - e.voided) }))
@@ -114,17 +126,24 @@ export function financialReport(rows: TransactionRow[]): FinancialReport {
       e.vatRefunded += mo.vat ?? 0;
     } else if (r.category === "issue" || r.category === "emd") {
       e.vatCollected += mo.vat ?? 0;
+      e.vatBase += round2((mo.gross ?? 0) - (mo.vat ?? 0));
+    } else if (r.category === "void") {
+      // İptal edilen satışın KDV'si hiç doğmamıştır — tahsilattan ve matrahtan düşer.
+      e.vatCollected -= mo.vat ?? 0;
+      e.vatBase -= round2((mo.gross ?? 0) - (mo.vat ?? 0));
     }
 
     // Ceza taşıyıcı geliridir ve tazminat niteliğinde olduğu için KDV'siz.
     e.penaltyIncome += (mo.penalty ?? 0) + (mo.noShowFee ?? 0) + (mo.serviceCharge ?? 0);
 
-    if (mo.vat != null && mo.vatRate != null && (r.category === "issue" || r.category === "emd")) {
+    if (mo.vat != null && mo.vatRate != null &&
+        (r.category === "issue" || r.category === "emd" || r.category === "void")) {
+      const sign = r.category === "void" ? -1 : 1; // iptal beyanı geri alır
       const key = `${mo.currency}|${mo.vatRate}`;
       const v = vatMap.get(key) ?? { rate: mo.vatRate, base: 0, amount: 0, currency: mo.currency, count: 0 };
       // Matrah = KDV dahil tutardan verginin çıkarılmışı (iç yüzde).
-      v.amount += mo.vat;
-      v.base += round2((mo.gross ?? 0) - mo.vat);
+      v.amount += sign * mo.vat;
+      v.base += sign * round2((mo.gross ?? 0) - mo.vat);
       v.count += 1;
       vatMap.set(key, v);
     }
@@ -194,15 +213,40 @@ export function periodsFrom(rows: TransactionRow[], closedIds: string[]): Period
     .sort((a, b) => b.periodId.localeCompare(a.periodId));
 }
 
+/**
+ * Gerçekten geri alınabilir kalemler.
+ *
+ * Kategori satırını saymak yanıltıcıydı: zaten void/iade edilmiş bir satış
+ * "void edilebilir" görünüyordu. Burada belge bazında bakılır — dönemde
+ * kesilmiş ve aynı dönemde void/iade/değişim görmemiş belgeler void
+ * edilebilir; geri alınmamış iadeler ise refund-cancel'a açıktır.
+ */
+function countReversible(rows: TransactionRow[]): { voidable: number; refundCancellable: number } {
+  const consumed = new Set(
+    rows.filter((r) => r.category === "void" || r.category === "refund" || r.category === "exchange")
+      .map((r) => r.ticketNumber),
+  );
+  const voidable = new Set(
+    rows.filter((r) => r.category === "issue" && !consumed.has(r.ticketNumber)).map((r) => r.ticketNumber),
+  ).size;
+  // Ters kayıt (negatif gross) zaten geri alınmış iadeyi işaretler.
+  const refunds = rows.filter((r) => r.category === "refund" && (r.amount?.amount ?? 0) > 0).length;
+  const reversed = rows.filter((r) => r.category === "refund" && (r.amount?.amount ?? 0) < 0).length;
+  return { voidable, refundCancellable: Math.max(0, refunds - reversed) };
+}
+
 export function summarizePeriod(periodId: string, rows: TransactionRow[], closed: boolean): PeriodSummary {
   const issues = rows.filter((r) => r.category === "issue").length;
   const refunds = rows.filter((r) => r.category === "refund").length;
   const voids = rows.filter((r) => r.category === "void").length;
   const exchanges = rows.filter((r) => r.category === "exchange").length;
-  // SAC yalnız final statü doğuran işlemlerde üretilir (1.3.6).
-  const settlementItems = rows.filter((r) =>
-    r.category === "void" || r.category === "refund" || r.category === "exchange" ||
-    (r.detail?.includes("SAC") ?? false)).length;
+  // SAC yalnız final statü doğuran işlemlerde üretilir (1.3.6): E, F, P, V, X
+  // ve Refund-Cancel. Serbest metinde "SAC" aramak kırılgandı.
+  const SETTLING = new Set([
+    "TicketVoided", "CouponRefunded", "CouponExchanged", "CouponFlown",
+    "CouponPrinted", "CouponPrintExchanged", "RefundCancelled", "EmdVoided", "EmdRefunded",
+  ]);
+  const settlementItems = rows.filter((r) => SETTLING.has(r.type)).length;
   return {
     periodId,
     closed,
@@ -212,7 +256,7 @@ export function summarizePeriod(periodId: string, rows: TransactionRow[], closed
     closing: closingByCurrency(rows),
     settlementItems,
     // Dönem kapandığında bu haklar düşer.
-    reversible: closed ? { voidable: 0, refundCancellable: 0 } : { voidable: issues, refundCancellable: refunds },
+    reversible: closed ? { voidable: 0, refundCancellable: 0 } : countReversible(rows),
   };
 }
 

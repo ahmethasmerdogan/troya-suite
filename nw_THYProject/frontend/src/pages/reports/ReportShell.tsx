@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
  * Hiçbir tutar metinden ayrıştırılmaz.
  */
 const TABS = [
+  { to: "/reports", label: "Genel Bakış", hint: "Hangi rapor hangi soruya cevap veriyor" },
   { to: "/report", label: "Satış / İşlem", hint: "Brüt − iade − iptal = net" },
   { to: "/report/financial", label: "Mali", hint: "Ceza · vergi · KDV" },
   { to: "/report/period", label: "Dönem Kapanışı", hint: "Settlement ve geri alma penceresi" },

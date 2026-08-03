@@ -180,3 +180,67 @@ describe("iade — ceza ve vergi birlikte", () => {
     expect(q.notes.join(" ")).toMatch(/kalan değeri kullanılamaz/);
   });
 });
+
+// Bağımsız denetimin bulduğu iki para hatasının regresyonu (2026-08-03).
+const RT = (): [string, string][] => [["IST", "JFK"], ["JFK", "IST"]];
+describe("kısmi iade — değer iki kez iade edilemez", () => {
+  it("hiç kullanılmamış bilette YALNIZ bir kupon iade edilirse tam ücret DEĞİL, payı iade edilir", () => {
+    const t = ticket({ statuses: ["O", "O"], route: RT(), base: 10000, tfcs: [{ code: "TR", amount: 1000 }] });
+    const q = quoteRefund({ ticket: t, couponSeqs: [1], refundType: "voluntary" });
+    expect(q.method).toBe("voluntary_partial");
+    expect(q.fareComponent).toBe(5000); // 10000 / 2 kupon
+  });
+
+  it("kalan biletin TAMAMI iade edilirse tam ücret iade edilir", () => {
+    const t = ticket({ statuses: ["O", "O"], route: RT(), base: 10000, tfcs: [{ code: "TR", amount: 1000 }] });
+    const q = quoteRefund({ ticket: t, couponSeqs: [1, 2], refundType: "voluntary" });
+    expect(q.method).toBe("voluntary_unused");
+    expect(q.fareComponent).toBe(10000);
+  });
+
+  it("bir kuponu ZATEN iade edilmiş bilet 'hiç kullanılmamış' sayılmaz — ücret ikinci kez iade edilmez", () => {
+    // Kupon #1 daha önce iade edilmiş (R = final), #2 hâlâ açık.
+    const t = ticket({ statuses: ["R", "O"], route: RT(), base: 10000, tfcs: [{ code: "TR", amount: 1000 }] });
+    const q = quoteRefund({ ticket: t, couponSeqs: [2], refundType: "voluntary" });
+    // Kalan tek değerli kupon iade ediliyor → tam ücret DEĞİL, o kuponun payı.
+    expect(q.fareComponent).toBeLessThan(10000);
+    expect(q.fareComponent).toBe(5000);
+  });
+
+  it("involuntary iadede de aynı sınır geçerlidir", () => {
+    const t = ticket({ statuses: ["O", "O"], route: RT(), base: 10000, tfcs: [{ code: "TR", amount: 1000 }] });
+    const q = quoteRefund({ ticket: t, couponSeqs: [1], refundType: "involuntary", reason: "flight_cancellation" });
+    expect(q.fareComponent).toBeLessThan(10000);
+  });
+});
+
+describe("KDV düzeltmesi — iade edilen ücretle orantılı", () => {
+  const withVat = () => {
+    const t = ticket({ statuses: ["O", "O"], route: [["IST", "ESB"], ["ESB", "IST"]], base: 10000, tfcs: [{ code: "VQ", amount: 240 }] });
+    t.fare.vat = { regime: "taxable", rate: 0.2, base: 10000, amount: 2000, rateDate: "2026-08-01" };
+    return t;
+  };
+
+  it("biletin yarısı iade edilirse KDV'nin de yarısı düzeltilir", () => {
+    const q = quoteRefund({ ticket: withVat(), couponSeqs: [1], refundType: "voluntary" });
+    expect(q.vatRefunded).toBe(1000);
+  });
+
+  it("tamamı iade edilirse KDV'nin tamamı düzeltilir", () => {
+    const q = quoteRefund({ ticket: withVat(), couponSeqs: [1, 2], refundType: "voluntary" });
+    expect(q.vatRefunded).toBe(2000);
+  });
+
+  it("yalnız vergi iadesinde KDV düzeltmesi YOKTUR (ücret iade edilmiyor)", () => {
+    const q = quoteRefund({ ticket: withVat(), couponSeqs: [1], refundType: "voluntary", taxOnly: true });
+    expect(q.fareComponent).toBe(0);
+    expect(q.vatRefunded).toBe(0);
+  });
+
+  it("uluslararası (istisna) bilette KDV düzeltmesi yoktur", () => {
+    const t = ticket({ statuses: ["O", "O"], route: RT(), base: 10000, tfcs: [{ code: "TR", amount: 1000 }] });
+    t.fare.vat = { regime: "exempt", exemptionArticle: "KDV_14", rate: 0, base: 10000, amount: 0, rateDate: "2026-08-01" };
+    const q = quoteRefund({ ticket: t, couponSeqs: [1, 2], refundType: "voluntary" });
+    expect(q.vatRefunded).toBe(0);
+  });
+});

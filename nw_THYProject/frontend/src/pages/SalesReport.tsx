@@ -75,12 +75,16 @@ export function SalesReport() {
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
   }, [rows]);
 
+  // Personel kırılımı: farklı para birimleri TEK sayıya toplanamaz — kesim
+  // tutarı para birimi başına ayrı tutulur.
   const byActor = useMemo(() => {
-    const m = new Map<string, { n: number; gross: number }>();
+    const m = new Map<string, { n: number; gross: Map<string, number> }>();
     for (const r of rows) {
-      const e = m.get(r.actor) ?? { n: 0, gross: 0 };
+      const e = m.get(r.actor) ?? { n: 0, gross: new Map<string, number>() };
       e.n += 1;
-      if (r.category === "issue" && r.amount) e.gross += r.amount.amount;
+      if (r.category === "issue" && r.amount) {
+        e.gross.set(r.amount.currency, (e.gross.get(r.amount.currency) ?? 0) + r.amount.amount);
+      }
       m.set(r.actor, e);
     }
     return [...m.entries()].sort((a, b) => b[1].n - a[1].n).slice(0, 6);
@@ -115,7 +119,14 @@ export function SalesReport() {
     }),
     col.accessor((r) => r.amount?.amount ?? 0, {
       id: "amount", header: "Tutar",
-      meta: { align: "right", summary: closing[0] ? `${closing[0].net.toLocaleString("tr-TR")} ${closing[0].cur}` : undefined },
+      meta: {
+        align: "right",
+        // Karışık para birimli sütunun altına tek sayı basmak yanıltıcı olurdu;
+        // hangi para biriminin neti olduğu açıkça yazılır.
+        summary: closing.length
+          ? closing.map((c) => `${c.net.toLocaleString("tr-TR")} ${c.cur}`).join(" · ")
+          : undefined,
+      },
       cell: (c) => {
         const r = c.row.original;
         if (!r.amount) return <span className="text-ink-3">—</span>;
@@ -217,7 +228,8 @@ export function SalesReport() {
                 <div key={actor} className="flex items-baseline justify-between gap-3 text-[12.5px]">
                   <span className="truncate text-ink-2">{actor}</span>
                   <span className="num flex-shrink-0 text-ink-3">
-                    {v.n} işlem{v.gross > 0 ? ` · ${v.gross.toLocaleString("tr-TR")}` : ""}
+                    {v.n} işlem
+                    {[...v.gross.entries()].map(([cur, amt]) => ` · ${amt.toLocaleString("tr-TR")} ${cur}`).join("")}
                   </span>
                 </div>
               ))}
@@ -231,7 +243,7 @@ export function SalesReport() {
         columns={columns}
         loading={isLoading}
         onRowClick={(r) => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: r.ticketNumber } })}
-        rowKey={(r) => `${r.ticketNumber} ${r.category}`}
+        rowKey={(r) => r.id}
         rowTone={(r) => `var(--t-${CAT[r.category]?.tone ?? "gray"}-d)`}
         pageSize={15}
         exportName={`rapor-${range.from || "tum"}`}

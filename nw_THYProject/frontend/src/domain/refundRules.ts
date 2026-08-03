@@ -34,6 +34,7 @@ import { airportByCode } from "./airports";
 import { cheapestTotal } from "./pricing";
 import { convert } from "./fx";
 import { isTfcRefundable, tfcRefundReason } from "./taxCodes";
+import { isFinal } from "./couponStatus";
 import {
   computePenalty, fareRuleFor, isFareRefundable, waives,
   type FareRule, type WaiverCode,
@@ -144,6 +145,8 @@ export interface RefundQuoteInput {
 
 export interface RefundQuote {
   amount: Money;
+  /** İade ile düzeltilecek KDV — iade edilen ÜCRETLE orantılıdır (md.35). */
+  vatRefunded: number;
   assessmentCurrency: string;
   rateType: "original" | "bank" | "none";
   rate?: number;
@@ -182,6 +185,23 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
   const selected = ticket.coupons.filter((c) => couponSeqs.includes(c.seq));
   const usedCoupons = ticket.coupons.filter((c) => couponUsed(c.status));
   const partial = usedCoupons.length > 0;
+
+  // Değer taşıyan kuponlar: final statüye düşmüş olanlar (R/E/V/G/P/X/Z)
+  // artık iade edilecek bir değer TAŞIMAZ. Aksi hâlde bir kuponu iade edilmiş
+  // bilet hâlâ "hiç kullanılmamış" görünür ve ücretin tamamı ikinci kez iade
+  // edilebilirdi.
+  const valueCoupons = ticket.coupons.filter((c) => !isFinal(c.status));
+  /** Biletin kalan değerinin TAMAMI mı iade ediliyor? */
+  const wholeRemainingTicket =
+    valueCoupons.length > 0 && valueCoupons.every((c) => couponSeqs.includes(c.seq));
+  /**
+   * Bilete HİÇ dokunulmamış mı? Bir kuponu daha önce iade/exchange/void
+   * edilmiş bilette değerin bir kısmı çoktan çıkmıştır; "tam ücret" ödemek
+   * o değeri ikinci kez iade etmek olur.
+   */
+  const untouched = ticket.coupons.every((c) => !isFinal(c.status));
+  /** Ödenen ücretin tamamı ancak dokunulmamış biletin tamamı iade edilirken verilir. */
+  const fullFareApplies = untouched && wholeRemainingTicket;
 
   const base = ticket.fare.baseFare.amount;
   const perCoupon = base / n;
@@ -226,10 +246,15 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
     notes.push("Tarife kuralı iadeye izin vermiyor — çıplak ücret iade edilmez.");
     notes.push("Olaya bağlı devlet harçları (kalkış/servis) yine de iade edilir.");
   } else if (refundType === "involuntary") {
-    if (!partial) {
+    if (!partial && fullFareApplies) {
       method = "involuntary_unused";
       fareComponent = base;
       notes.push("15.1.2(a): biletin hiçbir bölümü kullanılmamış — ödenen ücretin tamamı iade edilir.");
+    } else if (!partial) {
+      // Kullanılmamış ama YALNIZ BİR BÖLÜMÜ iade ediliyor → seçilen kuponların payı.
+      method = "involuntary_partial";
+      fareComponent = round2(unusedShare);
+      notes.push("Bilet kullanılmamış ancak yalnız bir bölümü iade ediliyor — seçilen kuponların ücret payı iade edilir.");
     } else {
       method = "involuntary_partial";
       const owFare = oneWayFareOfUnused(ticket, selected.map((c) => c.seq));
@@ -252,15 +277,20 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
         ? "15.1.2(c): güvenlik/hukuki sebep veya yolcunun hâli/davranışı — masraf üstlenimi reddedilebilir."
         : "15.1.2(c): masraflar taşıyıcıya aittir; iptal cezası uygulanmaz.",
     );
-  } else if (!partial) {
+  } else if (!partial && fullFareApplies) {
     method = "voluntary_unused";
     fareComponent = base;
     notes.push("15.1.3.1(a): hiç kullanılmamış — tam ücret, kesintiler düşülerek.");
+  } else if (!partial) {
+    method = "voluntary_partial";
+    fareComponent = round2(unusedShare);
+    notes.push("Bilet kullanılmamış ancak yalnız bir bölümü iade ediliyor — seçilen kuponların ücret payı iade edilir.");
   } else {
     method = "voluntary_partial";
     const usedFare = perCoupon * usedCoupons.length;
-    fareComponent = Math.max(0, base - usedFare);
-    notes.push("15.1.3.1(b): ödenen ücret ile kullanılan taşımanın ücreti arasındaki fark.");
+    // Fark, yalnız SEÇİLEN kuponların payını aşamaz — kalan kuponlar duruyor.
+    fareComponent = round2(Math.min(Math.max(0, base - usedFare), unusedShare));
+    notes.push("15.1.3.1(b): ödenen ücret ile kullanılan taşımanın ücreti arasındaki fark (seçilen kupon payıyla sınırlı).");
   }
 
   // ---------------------------------------------------------------
@@ -347,8 +377,15 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
     notes.push("15.1.6(b)(ii): iade, iade günü banka kuru ile değerlendi.");
   }
 
+  // KDV bilet bedelinin içindedir; iade edilen ücret kadarı düzeltilir.
+  // Yalnız-vergi iadesinde ve ücret iade edilmediğinde KDV düzeltmesi YOKTUR.
+  const vatRefunded = ticket.fare.vat && ticket.fare.vat.regime === "taxable" && base > 0
+    ? round2(ticket.fare.vat.amount * (fareComponent / base))
+    : 0;
+
   return {
     amount: { amount: round2(net), currency: ticketCurrency },
+    vatRefunded,
     assessmentCurrency,
     rateType,
     rate,

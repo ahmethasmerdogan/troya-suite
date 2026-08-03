@@ -75,6 +75,8 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
   const existing = issuedKeys.get(input.idempotencyKey);
   if (existing) return store.find((t) => t.ticketNumber === existing)!;
 
+  // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
+  assertPeriodOpen(new Date().toISOString(), "yeni satış");
   const ticketNumber = buildTicketNumber("235", String(serialCounter++));
   const now = new Date().toISOString();
   const history: LifecycleEvent[] = [
@@ -180,6 +182,12 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
   if (!t) throw new DomainError("Bilet bulunamadı.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
   assertPeriodOpen(t.issuedAt, "void"); // kapanmış dönemde satış iptali yok
+  // 1.1.5.3 / satış günü kuralı: void yalnız satışın yapıldığı raporlama
+  // döneminde mümkündür. Sonrası iade işlemidir.
+  if (!inCurrentReportingPeriod(t.issuedAt))
+    throw new DomainError(
+      `Bilet ${reportingPeriodId(t.issuedAt)} döneminde kesilmiş; void yalnız satış döneminde yapılabilir — iade (refund) kullanın.`,
+    );
   // İnvariant: void için TÜM kuponlar O olmalı.
   const notOpen = t.coupons.filter((c) => c.status !== "O");
   if (notOpen.length)
@@ -260,6 +268,10 @@ export function isPeriodClosed(periodId: string): boolean {
 export async function closeReportingPeriod(periodId: string): Promise<string[]> {
   await delay(450);
   if (closedPeriods.has(periodId)) throw new DomainError(`${periodId} dönemi zaten kapatılmış.`);
+  // Kapanış geri alınamaz; henüz gelmemiş bir günü kapatmak o günün tüm
+  // satışlarını daha doğmadan void edilemez hâle getirirdi.
+  if (periodId > reportingPeriodId(new Date().toISOString()))
+    throw new DomainError(`${periodId} gelecek bir dönem — kapatılamaz.`);
   closedPeriods.add(periodId);
   return [...closedPeriods].sort();
 }
@@ -502,13 +514,17 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
   const money = {
     currency: input.refundAmount.currency,
     gross: input.refundAmount.amount,
+    // Sistemin hesabı da saklanır: gross ondan farklıysa elle müdahale var.
+    quotedGross: q.amount.amount,
     penalty: q.penalty,
     noShowFee: q.noShowFee,
     serviceCharge: q.deductions,
     taxRefunded: q.tfcComponent,
     taxForfeited: Math.max(0, round2(taxTotal - q.tfcComponent)),
     refundType: input.refundType ?? "voluntary",
-    ...(t.fare.vat ? { vat: t.fare.vat.amount, vatRate: t.fare.vat.rate } : {}),
+    // KDV: biletin TAMAMININ değil, iade edilen ÜCRETLE ORANTILI kısmı düzeltilir.
+    // (Aksi hâlde kısmi iadelerde tahsil edilenden fazla KDV iade edilmiş görünürdü.)
+    ...(t.fare.vat ? { vat: q.vatRefunded, vatRate: t.fare.vat.rate } : {}),
   };
 
   const waiverLabel = input.waiver === "death" ? "vefat (ceza muaf)" : input.waiver === "illness" ? "hastalık (ceza muaf)" : null;
@@ -626,7 +642,16 @@ export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
   if (!affected.length) throw new DomainError("Geri alınacak kupon bulunamadı.");
   const sac = stampSac(affected);
   rec.cancelledAt = new Date().toISOString();
+  // Ters kayıt: rapor motoru yalnız toplar, bu yüzden geri alma NEGATİF bir
+  // iade satırı olarak yazılır — aksi hâlde gerçekleşmemiş para çıkışı dönem
+  // netini kalıcı olarak düşürürdü.
+  const reversal = {
+    currency: rec.amount.currency,
+    gross: -rec.amount.amount,
+    refundType: rec.refundType,
+  };
   t.history.push(event("RefundCancelled", {
+    money: reversal,
     couponSeq: rec.couponSeqs[0],
     detail: `İade geri alındı (kupon ${rec.couponSeqs.join(", ")}) — kuponlar "open for use" · yeni SAC ${sac}` +
       (input.reason ? ` · ${input.reason}` : ""),
@@ -884,6 +909,9 @@ function txCategory(type: LifecycleEventType): TxCategory {
     case "TicketIssued": case "PtaIssued": return "issue";
     case "TicketVoided": return "void";
     case "CouponRefunded": return "refund";
+    // Refund-Cancel ve EMD iadesi de iade kovasına düşer; ters kayıt negatif gross taşır.
+    case "RefundCancelled": case "EmdRefunded": return "refund";
+    case "EmdVoided": return "void";
     case "CouponExchanged": case "TicketReissued": return "exchange";
     case "EmdIssued": return "emd";
     case "CouponCheckedIn": case "CouponLifted": case "CouponFlown": return "checkin";
@@ -991,15 +1019,17 @@ export async function voidEmd(input: EmdOpInput): Promise<Emd> {
   const notOpen = e.coupons.filter((c) => c.status !== "O");
   if (notOpen.length)
     throw new DomainError(`Void için EMD'nin tüm kuponları 'O' olmalı. Engel: ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")} (5.5).`);
+  assertPeriodOpen(e.issuedAt, "EMD void"); // kapanmış dönemde belge statüsü değişmez
   // 5.5 "V": yalnız Validating Carrier'ın raporlama dönemi içinde.
   if (!inCurrentReportingPeriod(e.issuedAt))
     throw new DomainError(
       `EMD ${reportingPeriodId(e.issuedAt)} döneminde kesilmiş; void yalnız kesim döneminde mümkündür — iade (refund) kullanın (5.5).`,
     );
   e.coupons.forEach((c) => { c.status = applyTransition(c.status, "V"); });
-  emdEvent(e, event("EmdVoided", { detail: `EMD void edildi${input.reason ? " · " + input.reason : ""}`, status: "V" }));
+  const voidMoney = { currency: e.total.currency, gross: e.total.amount };
+  emdEvent(e, event("EmdVoided", { detail: `EMD void edildi${input.reason ? " · " + input.reason : ""}`, status: "V", money: voidMoney }));
   const t = e.associatedTicket ? store.find((x) => x.ticketNumber === e.associatedTicket) : undefined;
-  t?.history.push(event("EmdVoided", { detail: `EMD ${e.emdNumber} void edildi`, status: "V" }));
+  t?.history.push(event("EmdVoided", { detail: `EMD ${e.emdNumber} void edildi`, status: "V", money: voidMoney }));
   opKeys.set(input.idempotencyKey, e.emdNumber);
   return e;
 }
@@ -1013,9 +1043,11 @@ export async function refundEmd(input: EmdOpInput): Promise<Emd> {
   if (!eligible.length)
     throw new DomainError(`İadeye uygun EMD kuponu yok — kuponlar O/A/Y olmalı (5.5).`);
   eligible.forEach((c) => { c.status = applyTransition(c.status, "R"); });
-  emdEvent(e, event("EmdRefunded", { detail: `EMD iadesi · ${e.total.amount.toLocaleString("en-US")} ${e.total.currency}${input.reason ? " · " + input.reason : ""}`, status: "R" }));
+  const refundedValue = eligible.reduce((sum, c) => sum + c.value.amount, 0);
+  const refundMoney = { currency: e.total.currency, gross: refundedValue, refundType: "voluntary" as const };
+  emdEvent(e, event("EmdRefunded", { detail: `EMD iadesi · ${refundedValue.toLocaleString("en-US")} ${e.total.currency}${input.reason ? " · " + input.reason : ""}`, status: "R", money: refundMoney }));
   const t = e.associatedTicket ? store.find((x) => x.ticketNumber === e.associatedTicket) : undefined;
-  t?.history.push(event("EmdRefunded", { detail: `EMD ${e.emdNumber} iade edildi`, status: "R" }));
+  t?.history.push(event("EmdRefunded", { detail: `EMD ${e.emdNumber} iade edildi`, status: "R", money: refundMoney }));
   opKeys.set(input.idempotencyKey, e.emdNumber);
   return e;
 }

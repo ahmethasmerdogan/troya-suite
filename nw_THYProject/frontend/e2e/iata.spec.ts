@@ -76,3 +76,18 @@ test("Rapor merkezi — üç sekme ve dönem kapanışı", async ({ page }) => {
   await expect(page.getByText("Dönem neden önemli")).toBeVisible();
   await expect(page.getByRole("button", { name: "Dönemi kapat" }).first()).toBeVisible();
 });
+
+test("Rapor merkezi — hub ve dönem belgesi", async ({ page }) => {
+  await page.goto("/reports");
+  await expect(page.getByRole("heading", { name: "Raporlar" })).toBeVisible();
+  await expect(page.getByText("Ne satıldı, ne iade edildi, net ne kaldı?")).toBeVisible();
+  await expect(page.getByText("Para nereye gitti?")).toBeVisible();
+  await expect(page.getByText("Hangi dönem hâlâ geri alınabilir?")).toBeVisible();
+
+  // Son dönemler listesinden resmî kapanış belgesine
+  await page.locator('a[href^="/report/period/2"]').first().click();
+  await expect(page).toHaveURL(/\/report\/period\/\d{4}-\d{2}-\d{2}/);
+  await expect(page.getByRole("heading", { name: "Dönem Kapanış Belgesi" })).toBeVisible();
+  await expect(page.getByText("Hareket özeti")).toBeVisible();
+  await expect(page.getByText("Settlement", { exact: true })).toBeVisible();
+});

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Lock, LockOpen, ShieldCheck } from "lucide-react";
+import { Link } from "@tanstack/react-router";
+import { FileText, Lock, LockOpen, ShieldCheck } from "lucide-react";
 import { closeReportingPeriod, listClosedPeriods, queryTransactions } from "@/domain/api";
 import { periodsFrom, type PeriodSummary } from "@/domain/reports";
 import { Money } from "@/components/domain/Money";
@@ -81,7 +82,14 @@ export function PeriodClosing() {
                   <StatusPill tone="green" dot><LockOpen size={11} strokeWidth={2} className="mr-1 inline" />Açık</StatusPill>
                 )}
                 <span className="num text-[12px] text-ink-3">{p.count} işlem</span>
-                <div className="ml-auto">
+                <div className="ml-auto flex items-center gap-1.5">
+                  <Link
+                    to="/report/period/$periodId"
+                    params={{ periodId: p.periodId }}
+                    className="inline-flex h-8 items-center gap-1.5 rounded-[10px] border border-line-firm bg-panel px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-inset"
+                  >
+                    <FileText size={14} strokeWidth={1.75} /> Belge
+                  </Link>
                   {p.closed ? (
                     <span className="inline-flex items-center gap-1.5 text-[12.5px] text-ink-3">
                       <ShieldCheck size={14} strokeWidth={1.75} /> Settlement'a iletildi

@@ -77,7 +77,14 @@ export function FinancialReport() {
     }),
   ] as ColumnDef<TransactionRow, unknown>[];
 
-  const moneyRows = rows.filter((r) => r.money);
+  // Tabloya yalnız gerçekten mali hareket taşıyan satırlar girer; yoksa
+  // sütunların tamamı "—" olan kesim satırlarıyla dolar.
+  const moneyRows = rows.filter((r) => {
+    const m = r.money;
+    if (!m) return false;
+    return !!(m.penalty || m.noShowFee || m.serviceCharge || m.taxRefunded
+      || m.taxForfeited || m.vat || m.adc || m.residual);
+  });
 
   return (
     <ReportShell
@@ -210,7 +217,7 @@ export function FinancialReport() {
         summary={rep.byCurrency.length
           ? `Ceza geliri ${rep.byCurrency.map((t) => `${t.penaltyIncome.toLocaleString("tr-TR")} ${t.currency}`).join(" · ")}`
           : undefined}
-        empty={{ title: "Parasal işlem yok", hint: "Dönemi genişletin." }}
+        empty={{ title: "Mali hareket yok", hint: "Bu dönemde ceza, vergi iadesi ya da KDV doğuran işlem bulunmuyor." }}
       />
     </ReportShell>
   );

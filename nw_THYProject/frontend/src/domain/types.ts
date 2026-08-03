@@ -197,8 +197,11 @@ export type LifecycleEventType =
  */
 export interface EventMoney {
   currency: string;
-  /** Brüt: kesimde bilet toplamı, iadede iade tutarı, EMD'de belge değeri. */
+  /** Brüt: kesimde bilet toplamı, iadede FİİLEN ödenen tutar, EMD'de belge değeri. */
   gross?: number;
+  /** Sistemin hesapladığı tutar. `gross` bundan farklıysa personel elle
+   *  değiştirmiştir; kayıt bu farkı saklar ki döküm kendi içinde çelişmesin. */
+  quotedGross?: number;
   /** Tarife kuralı cezası (iptal / değişiklik). */
   penalty?: number;
   /** No-show ücreti — cezadan ayrı kalem. */
