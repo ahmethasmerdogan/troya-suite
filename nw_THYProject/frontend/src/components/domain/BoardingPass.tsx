@@ -2,7 +2,7 @@ import { Plane } from "lucide-react";
 import type { CheckinPassenger, DepartureFlight } from "@/domain/checkin";
 import { airportByCode } from "@/domain/airports";
 import { BrandMark } from "@/components/BrandMark";
-import { cn } from "@/lib/utils";
+import { cn, flightCode } from "@/lib/utils";
 
 /**
  * Biniş dokümanı (boarding pass).
@@ -56,7 +56,7 @@ export function BoardingPass({
                 <div className="mt-1 truncate text-[11.5px] text-ink-3">{from?.city ?? ""}</div>
               </div>
               <div className="flex min-w-0 flex-1 flex-col items-center">
-                <span className="num text-[11px] text-ink-3">{flight.carrier}{flight.flightNumber}</span>
+                <span className="num text-[11px] text-ink-3">{flightCode(flight.carrier, flight.flightNumber)}</span>
                 <span className="mt-1 flex w-full items-center gap-1.5" aria-hidden>
                   <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand)]" />
                   <span className="h-px flex-1 bg-line-strong" />
@@ -113,7 +113,7 @@ export function BoardingPass({
               <MiniBox label="Bagaj" value={String(pax.bags)} />
             </div>
             <div className="num mt-3 text-[11px] text-ink-3">
-              {flight.carrier}{flight.flightNumber} · {flight.origin}→{flight.destination}
+              {flightCode(flight.carrier, flight.flightNumber)} · {flight.origin}→{flight.destination}
             </div>
             {etkt && <div className="num mt-1 text-[10.5px] text-ink-3">ETKT {etkt}</div>}
           </div>

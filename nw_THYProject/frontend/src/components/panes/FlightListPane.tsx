@@ -6,6 +6,7 @@ import { SearchInput } from "@/components/ui/core";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListHead, ListBody, ListFoot, ListRow } from "@/components/layout/views";
+import { flightCode } from "@/lib/utils";
 
 /** Uçuş liste paneli — QuickCheck-in'in sol yarısı. */
 const TONE: Record<string, Tone> = {
@@ -48,7 +49,7 @@ export function FlightListPane({ selected }: { selected?: string }) {
                 onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId: f.flightId } })}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="num text-[13px] font-medium text-ink">{f.carrier}{f.flightNumber}</span>
+                  <span className="num text-[13px] font-medium text-ink">{flightCode(f.carrier, f.flightNumber)}</span>
                   <Pill tone={TONE[f.status] ?? "gray"}>{LABEL[f.status] ?? f.status}</Pill>
                 </div>
                 <div className="flex items-baseline gap-2 text-[13px] text-ink-2">

@@ -2,6 +2,28 @@
 // Check-in, ilgili bilet kuponunu Troya'da O→C'ye taşır (cross-modül linkage; api.setCouponStatus).
 
 import { seatDenial } from "./seatRules";
+import { MOCK_TICKETS } from "./mockData";
+import { generateTickets } from "./genTickets";
+
+/**
+ * Check-in yolcusuna GERÇEK bir bilet bağla.
+ *
+ * Üretilen yolculara rastgele 13 hane yazmak, "check-in kuponu O→C taşır"
+ * vaadini sessizce boşa çıkarıyordu: numara hiçbir bilete denk gelmediği için
+ * `advanceCouponStatus` hiçbir şey yapmadan dönüyordu. Artık numaralar açık
+ * kuponu olan gerçek biletlerden seçilir.
+ */
+const LINKABLE = [...MOCK_TICKETS, ...generateTickets(30)]
+  .filter((t) => t.coupons.some((c) => c.status === "O"))
+  .map((t) => ({
+    ticketNumber: t.ticketNumber,
+    couponSeq: t.coupons.find((c) => c.status === "O")!.seq,
+  }));
+
+function pickRealTicket(rng: () => number, want: boolean): { ticketNumber?: string; couponSeq?: number } {
+  if (!want || LINKABLE.length === 0) return {};
+  return LINKABLE[Math.floor(rng() * LINKABLE.length)];
+}
 
 export type FlightStatus = "scheduled" | "checkin_open" | "boarding" | "departed" | "closed";
 export type CheckinStatus = "not_checked" | "checked_in" | "boarded";
@@ -159,8 +181,9 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
       surname: LAST[Math.floor(rng() * LAST.length)],
       givenName: FIRST[Math.floor(rng() * FIRST.length)],
       pnr: pnrOf(rng),
-      ticketNumber: hasTicket ? `235${digits(rng, 10)}` : undefined,
-      couponSeq: hasTicket ? 1 : undefined,
+      // Bilet numarası UYDURULMAZ: gerçek bilet store'undan seçilir, yoksa
+      // check-in kuponu ilerletemez ve cross-modül linkage sessizce ölürdü.
+      ...pickRealTicket(rng, hasTicket),
       cabin: biz ? "Business" : "Economy",
       status,
       seat: seated ? `${row}${"ABCDEF"[Math.floor(rng() * 6)]}` : undefined,
@@ -270,6 +293,11 @@ export async function searchPassengers(query: string): Promise<PaxHit[]> {
 // Koltuk haritası — deterministik üret (Math.random yok).
 export async function getSeatMap(flightId: string): Promise<Seat[]> {
   await delay(260);
+  // Fiilen atanmış koltuklar — harita bunları dolu göstermezse aynı koltuk
+  // iki yolcuya verilebiliyordu.
+  const taken = new Set(
+    (PASSENGERS[flightId] ?? []).filter((p) => p.seat).map((p) => p.seat!.toUpperCase()),
+  );
   const seats: Seat[] = [];
   const cols = ["A", "B", "C", "D", "E", "F"];
   const occupied = new Set<string>();
@@ -290,7 +318,7 @@ export async function getSeatMap(flightId: string): Promise<Seat[]> {
     for (const c of cols) {
       seats.push({
         id: `${r}${c}`, row: r, col: c,
-        occupied: occupied.has(`${r}${c}`),
+        occupied: occupied.has(`${r}${c}`) || taken.has(`${r}${c}`),
         cabin: cabinForRow(r),
         exit: EXIT_ROWS.has(r),
       });

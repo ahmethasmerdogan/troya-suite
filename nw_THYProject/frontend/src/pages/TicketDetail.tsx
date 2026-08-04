@@ -21,7 +21,7 @@ import {
   Alert, Button, Card, CommitGraph, InsetPanel, MetaRow, OutlineBadge, StatTile,
   type Commit,
 } from "@/ui";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, flightCode } from "@/lib/utils";
 
 /**
  * Bilet kaydı.
@@ -214,7 +214,7 @@ export function TicketDetail() {
                       <span className="num text-[17px] font-semibold tracking-tight text-ink">
                         {c.segment.origin} <span className="text-ink-3">→</span> {c.segment.destination}
                       </span>
-                      <span className="num text-[13px] text-ink-2">{c.segment.marketingCarrier}{c.segment.flightNumber}</span>
+                      <span className="num text-[13px] text-ink-2">{flightCode(c.segment.marketingCarrier, c.segment.flightNumber)}</span>
                       <span className="num text-[12.5px] text-ink-3">{formatDateTime(c.segment.departure)}</span>
                       <span className="ml-auto flex items-center gap-1.5">
                         {c.noShow && <OutlineBadge tone="amber">No-show</OutlineBadge>}

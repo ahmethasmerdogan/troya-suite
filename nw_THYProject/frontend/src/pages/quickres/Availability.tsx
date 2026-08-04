@@ -6,7 +6,7 @@ import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/s
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/i18n";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, flightCode } from "@/lib/utils";
 
 // Uygunluk sorgusu — hangi uçuşta hangi sınıfta kaç koltuk var.
 export function Availability() {
@@ -54,7 +54,7 @@ export function Availability() {
           {rows.map((f) => (
             <Panel key={f.flightNumber}>
               <PanelHead
-                title={<span className="num">{f.carrier}{f.flightNumber}</span>}
+                title={<span className="num">{flightCode(f.carrier, f.flightNumber)}</span>}
                 hint={<span className="num">{f.origin} → {f.destination} · {formatDateTime(f.departure)} · {Math.floor(f.durationMin / 60)}sa {f.durationMin % 60}dk</span>}
               />
               <PanelBody className="flex flex-wrap gap-2">

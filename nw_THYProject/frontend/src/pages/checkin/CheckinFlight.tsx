@@ -14,7 +14,7 @@ import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, flightCode } from "@/lib/utils";
 
 // Uçuş detayı — yolcu kabul (check-in) ve biniş (boarding).
 const PAX_TONE: Record<string, Tone> = { not_checked: "gray", checked_in: "blue", boarded: "green" };
@@ -77,7 +77,7 @@ export function CheckinFlight() {
       <DetailHead
         title={
           <>
-            <span className="num text-[19px] font-semibold text-ink">{flight.carrier}{flight.flightNumber}</span>
+            <span className="num text-[19px] font-semibold text-ink">{flightCode(flight.carrier, flight.flightNumber)}</span>
             <span className="num text-[14px] text-ink-2">{flight.origin} → {flight.destination}</span>
             {flight.gate && <Pill tone="gray">Gate {flight.gate}</Pill>}
           </>

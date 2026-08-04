@@ -6,7 +6,7 @@ import { STATUS_META } from "@/domain/couponStatus";
 import { BrandMark } from "@/components/BrandMark";
 import { Money } from "./Money";
 import { STATUS_TONE } from "./statusTone";
-import { cn } from "@/lib/utils";
+import { cn, flightCode } from "@/lib/utils";
 
 /**
  * Bilet önizlemesi — kaydın belge yüzü.
@@ -63,7 +63,7 @@ export function TicketPreview({ ticket, className }: { ticket: Ticket; className
 
                 <div className="flex min-w-0 flex-1 flex-col items-center">
                   <span className="num text-[11px] text-ink-3">
-                    {seg.marketingCarrier}{seg.flightNumber}
+                    {flightCode(seg.marketingCarrier, seg.flightNumber)}
                   </span>
                   <span className="mt-1 flex w-full items-center gap-1.5" aria-hidden>
                     <span className="h-1.5 w-1.5 rounded-full bg-[var(--brand)]" />

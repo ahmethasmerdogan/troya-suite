@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Meta, MetaGrid, Rule, Line } from "@/components/ui/surface";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Money } from "@/components/domain/Money";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, flightCode } from "@/lib/utils";
 
 /**
  * Itinerary / Receipt — yolcuya verilen belge (Handbook App B).
@@ -46,7 +46,7 @@ export function Itinerary() {
           {ticket.coupons.map((c) => (
             <div key={c.seq} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-hair pb-3 last:border-0">
               <span className="num text-[15px] font-semibold text-ink">{c.segment.origin} → {c.segment.destination}</span>
-              <span className="num text-[13px] text-ink-2">{c.segment.marketingCarrier}{c.segment.flightNumber}</span>
+              <span className="num text-[13px] text-ink-2">{flightCode(c.segment.marketingCarrier, c.segment.flightNumber)}</span>
               <span className="num text-[13px] text-ink-2">{formatDateTime(c.segment.departure)}</span>
               <span className="num ml-auto text-[12px] text-ink-3">
                 {tr ? "Sınıf" : "Class"} {c.segment.rbd} · {c.segment.fareBasis}

@@ -11,7 +11,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/i18n";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, flightCode } from "@/lib/utils";
 
 // PNR detay — yolcular, segmentler, kesilmiş biletler (Troya linkage).
 const TONE: Record<string, Tone> = { active: "blue", ticketed: "green", cancelled: "red" };
@@ -90,7 +90,7 @@ export function PnrDetail() {
             {pnr.segments.map((s, i) => (
               <div key={i} className="flex items-center gap-3 border-b border-hair py-3 last:border-0">
                 <Plane size={15} strokeWidth={1.75} className="flex-shrink-0 text-ink-3" />
-                <span className="num text-[13px] font-medium text-ink">{s.carrier}{s.flightNumber}</span>
+                <span className="num text-[13px] font-medium text-ink">{flightCode(s.carrier, s.flightNumber)}</span>
                 <span className="num text-[13px] text-ink-2">{s.origin} → {s.destination}</span>
                 <span className="num ml-auto text-[12px] text-ink-3">{formatDateTime(s.departure)}</span>
                 <Pill tone="gray">{s.status}</Pill>

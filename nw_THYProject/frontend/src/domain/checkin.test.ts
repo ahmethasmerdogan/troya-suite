@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { FLIGHTS, listPassengers, searchPassengers } from "./checkin";
+import { FLIGHTS, listPassengers, searchPassengers, listFlights, getSeatMap } from "./checkin";
+import { getTicket } from "./api";
 
 describe("checkin — yolcu arama (regresyon: 'check-in'de uçuş bulunamıyor')", () => {
   it("her uçuşta yolcu vardır (boş liste yok)", async () => {
@@ -24,5 +25,28 @@ describe("checkin — yolcu arama (regresyon: 'check-in'de uçuş bulunamıyor')
 
   it("eşleşmeyen sorguda boş döner (patlamaz)", async () => {
     expect(await searchPassengers("ZZZQQQ999")).toEqual([]);
+  });
+});
+
+// Sistem turunda bulunan iki kusurun regresyonu (2026-08-04).
+describe("cross-modül bağ ve koltuk senkronu", () => {
+  it("üretilen yolcuların bilet numaraları GERÇEK biletlere denk gelir", async () => {
+    const f = (await listFlights())[0];
+    const pax = await listPassengers(f.flightId);
+    const withTicket = pax.filter((x) => x.ticketNumber);
+    expect(withTicket.length).toBeGreaterThan(0);
+    // Uydurma 13 hane değil, bilet store'undan seçilmiş olmalı.
+    const resolved = await Promise.all(withTicket.map((p) => getTicket(p.ticketNumber!)));
+    expect(resolved.every(Boolean)).toBe(true);
+  }, 20_000);
+
+  it("atanmış koltuklar haritada DOLU görünür (aynı koltuk iki kez verilemez)", async () => {
+    const f = (await listFlights())[0];
+    const pax = await listPassengers(f.flightId);
+    const map = await getSeatMap(f.flightId);
+    const occupied = new Set(map.filter((s) => s.occupied).map((s) => s.id));
+    for (const p of pax.filter((x) => x.seat)) {
+      expect(occupied.has(p.seat!.toUpperCase())).toBe(true);
+    }
   });
 });

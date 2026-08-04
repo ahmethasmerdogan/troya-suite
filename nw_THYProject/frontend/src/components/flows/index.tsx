@@ -21,7 +21,7 @@ import { Drawer } from "@/components/ui/overlay";
 import { Banner } from "@/components/ui/banner";
 import { Inset, Line, Rule } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime, flightCode } from "@/lib/utils";
 
 /* ====================================================================
    İşlem katmanları — kayıt üzerinde çalışan akışlar.
@@ -94,7 +94,7 @@ function CouponPicker({
           >
             <span className="num grid h-6 w-6 flex-shrink-0 place-items-center rounded-full bg-sunken text-[11px] text-ink-2">{c.seq}</span>
             <span className="num min-w-0 flex-1 text-[13px] text-ink">
-              {c.segment.origin} → {c.segment.destination} · {c.segment.marketingCarrier}{c.segment.flightNumber}
+              {c.segment.origin} → {c.segment.destination} · {flightCode(c.segment.marketingCarrier, c.segment.flightNumber)}
             </span>
             <StatusPill status={c.status} />
           </button>
