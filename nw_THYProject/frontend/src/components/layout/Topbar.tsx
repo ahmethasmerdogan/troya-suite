@@ -2,10 +2,11 @@ import { useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell, BookOpen, BookText, Check, ChevronDown, Command as CommandIcon, Globe,
-  LogOut, Menu as MenuIcon, MessageSquare, Moon, Search, Sun,
+  LogOut, Menu as MenuIcon, MessageSquare, Moon, Search, Sun, UserRound,
 } from "lucide-react";
 import { useUI, type Lang } from "@/store/ui";
 import { useChatUnreadTotal } from "@/store/chat";
+import { ScreenHelpButton } from "@/components/layout/ScreenHelp";
 import { useT } from "@/i18n";
 import { usePerm } from "@/lib/usePerm";
 import { ROLE_DESC, ROLE_LABEL, ROLE_ORDER, type Role } from "@/domain/auth";
@@ -100,6 +101,7 @@ export function Topbar() {
           <LanguageMenu />
           <NotificationMenu />
           <span className="mx-1 hidden h-6 w-px bg-line sm:block" aria-hidden />
+          <ScreenHelpButton />
           <AccountMenu onSettings={() => navigate({ to: "/admin/$section", params: { section: "settings" } })} />
         </div>
       </div>
@@ -254,6 +256,10 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
               </div>
             </div>
           </div>
+          <MenuRule />
+          <Link to="/profile" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] text-ink hover:bg-inset">
+            <UserRound size={15} strokeWidth={1.75} className="text-ink-3" /> {t("nav.profile")}
+          </Link>
           <MenuRule />
           <MenuLabel>Rol (demo)</MenuLabel>
           {ROLE_ORDER.map((r) => (

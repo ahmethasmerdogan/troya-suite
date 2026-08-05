@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Megaphone, TriangleAlert, X } from "lucide-react";
 import { getOpsBoard } from "@/domain/ops";
 import { listRevenueAlerts } from "@/domain/api";
-import { CHANNELS } from "@/domain/chat";
+import { OPS_CHANNEL_ID } from "@/domain/chat";
 import { useChat } from "@/store/chat";
 import { TONE_DOT, TONE_INK, TONE_WASH, type Tone } from "@/components/ui/pill";
 import { cn } from "@/lib/utils";
@@ -38,7 +38,8 @@ const RANK: Record<NoticeSeverity, number> = { critical: 0, warning: 1, info: 2 
 export function useNotices(): Notice[] {
   const { data: board } = useQuery({ queryKey: ["opsBoard"], queryFn: getOpsBoard, refetchInterval: 30_000 });
   const { data: revenue = [] } = useQuery({ queryKey: ["revenueAlerts"], queryFn: listRevenueAlerts });
-  const opsChannel = useChat((s) => s.messages[CHANNELS[0].id]);
+  // Kanal listesi artık dinamik; duyuru şeridi sabit id ile bağlanır.
+  const opsChannel = useChat((s) => s.messages[OPS_CHANNEL_ID]);
 
   const out: Notice[] = [];
 

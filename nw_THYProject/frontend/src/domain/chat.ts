@@ -40,13 +40,54 @@ export interface ChannelDef {
   id: string; // "ch:ops"
   name: string;
   desc: string;
+  /** Kanalı açan personel — tohum kanallarda yok. */
+  createdBy?: string;
+  createdAt?: string;
 }
 
-export const CHANNELS: ChannelDef[] = [
-  { id: "ch:ops", name: "İstasyon Operasyon", desc: "Gate / IRROP / operasyon duyuruları" },
+/** Operasyon kanalı — duyuru şeridi bu kanalın son mesajını okur. */
+export const OPS_CHANNEL_ID = "ch:ops";
+
+const SEED_CHANNELS: ChannelDef[] = [
+  { id: OPS_CHANNEL_ID, name: "İstasyon Operasyon", desc: "Gate / IRROP / operasyon duyuruları" },
   { id: "ch:shift", name: "Vardiya Koordinasyon", desc: "Vardiya planı ve devir notları" },
   { id: "ch:ticketing", name: "Biletleme", desc: "Bilet / EMD / refund soruları" },
 ];
+
+const LS_CHANNELS = "troya.chat.v1.channels";
+
+export function loadChannels(): ChannelDef[] {
+  try {
+    const raw = localStorage.getItem(LS_CHANNELS);
+    const saved = raw ? (JSON.parse(raw) as ChannelDef[]) : [];
+    // Tohum kanallar HER ZAMAN durur; kullanıcı kanalları üstüne eklenir.
+    const extra = saved.filter((c) => !SEED_CHANNELS.some((s) => s.id === c.id));
+    return [...SEED_CHANNELS, ...extra];
+  } catch {
+    return [...SEED_CHANNELS];
+  }
+}
+
+export function saveChannels(list: ChannelDef[]): void {
+  try {
+    localStorage.setItem(LS_CHANNELS, JSON.stringify(list.filter((c) => c.createdBy)));
+  } catch { /* depo kapalı */ }
+}
+
+/** Kanal adından id — "Gate Ekibi" → "ch:gate-ekibi". Çakışırsa sayı eklenir. */
+export function channelIdFrom(name: string, existing: ChannelDef[]): string {
+  const map: Record<string, string> = { ç: "c", ğ: "g", ı: "i", ö: "o", ş: "s", ü: "u" };
+  const base = "ch:" + name.toLocaleLowerCase("tr-TR")
+    .replace(/[çğıöşü]/g, (m) => map[m] ?? m)
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 32);
+  let id = base;
+  let n = 2;
+  while (existing.some((c) => c.id === id)) id = `${base}-${n++}`;
+  return id;
+}
+
+/** Geriye dönük ad — eski çağrı yerleri kırılmasın. */
+export const CHANNELS = SEED_CHANNELS;
 
 /** DM thread kimliği — iki taraf için de aynı (sıralı çift). */
 export function dmThreadId(a: string, b: string): string {

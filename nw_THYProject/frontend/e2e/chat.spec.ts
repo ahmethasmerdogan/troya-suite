@@ -15,7 +15,8 @@ test.describe("Mesajlaşma", () => {
     await page.goto("/chat");
 
     await page.getByRole("button", { name: "Bilet ekle" }).click();
-    const row = page.getByRole("button", { name: /\d{13}/ }).first();
+    // Sol paneldeki sohbet önizlemesi de bilet no taşıyabilir — seçiciyi modala daralt.
+    const row = page.getByRole("dialog").getByRole("button", { name: /\d{13}/ }).first();
     await expect(row).toBeVisible({ timeout: 10_000 });
     const ticketNo = (await row.innerText()).match(/\d{13}/)![0];
     await row.click();
@@ -26,7 +27,8 @@ test.describe("Mesajlaşma", () => {
     await page.getByRole("button", { name: "Gönder" }).click();
 
     // Baloncuk + kayıt kartı.
-    await expect(page.getByText("Bu bilete bakar mısın?")).toBeVisible();
+    // Sol paneldeki sohbet önizlemesi aynı metni taşıyor — mesaj alanına daralt.
+    await expect(page.locator("section").getByText("Bu bilete bakar mısın?")).toBeVisible();
     const card = page.getByRole("button", { name: `${ticketNo} kaydını görüntüle` });
     await expect(card).toBeVisible();
 

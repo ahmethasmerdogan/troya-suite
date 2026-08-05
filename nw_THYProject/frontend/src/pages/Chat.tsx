@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Hash, Paperclip, Send, Ticket as TicketIcon, X } from "lucide-react";
+import { ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, X } from "lucide-react";
 import {
-  CHANNELS, dmThreadId, isChannel, unreadCount, PRESENCE_META,
+  dmThreadId, isChannel, unreadCount, PRESENCE_META,
   type ChatRef, type PresenceStatus,
 } from "@/domain/chat";
-import { DEMO_USERS } from "@/domain/users";
+import { useUsers } from "@/store/users";
+import { usePerm } from "@/lib/usePerm";
+import { PersonCard } from "@/components/domain/PersonCard";
 import { ROLE_LABEL } from "@/domain/auth";
 import { getTicket, searchTickets } from "@/domain/api";
 import { isOnline, presenceOf, useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
-import { Button, IconButton, Input, SearchInput } from "@/components/ui/core";
+import { Button, Field, IconButton, Input, SearchInput } from "@/components/ui/core";
 import { Empty, Rule } from "@/components/ui/surface";
 import { Dot } from "@/components/ui/pill";
-import { Modal } from "@/components/ui/overlay";
+import { Modal, useOutside } from "@/components/ui/overlay";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { Money } from "@/components/domain/Money";
 import { cn } from "@/lib/utils";
@@ -32,19 +34,62 @@ import { cn } from "@/lib/utils";
  */
 export function Chat() {
   const me = useUI((s) => s.user);
-  const { messages, lastRead, presence, typing, status, send, setStatus, markRead, notifyTyping } = useChat();
-  const [thread, setThread] = useState<string>(CHANNELS[0]?.id ?? "");
+  const { can } = usePerm();
+  const {
+    messages, lastRead, presence, typing, status, channels,
+    send, setStatus, markRead, notifyTyping, createChannel, consumePendingThread,
+  } = useChat();
+  const users = useUsers((s) => s.users);
+  const [thread, setThread] = useState<string>("");
+  const [dirQ, setDirQ] = useState("");
+  const [newChannel, setNewChannel] = useState(false);
+  const [newChat, setNewChat] = useState(false);
   const [text, setText] = useState("");
   const [attach, setAttach] = useState<ChatRef | null>(null);
   const [picker, setPicker] = useState(false);
   const [viewing, setViewing] = useState<ChatRef | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
-  const others = useMemo(() => DEMO_USERS.filter((u) => u.id !== me?.id), [me]);
-  const list = messages[thread] ?? [];
+  const others = useMemo(() => users.filter((u) => u.id !== me?.id), [users, me]);
+  const list = thread ? messages[thread] ?? [] : [];
   const onlineCount = others.filter((u) => isOnline(presence, u.id)).length;
 
-  useEffect(() => { markRead(thread); }, [thread, list.length, markRead]);
+  // İlk açılışta ve başka ekrandan gelen istekte doğru sohbeti aç.
+  useEffect(() => {
+    const pending = consumePendingThread();
+    if (pending) { setThread(pending); return; }
+    if (!thread && channels[0]) setThread(channels[0].id);
+  }, [channels, thread, consumePendingThread]);
+
+  // Sohbet listesi: mesajı olan thread'ler, son mesaja göre; okunmamış üstte.
+  const conversations = useMemo(() => {
+    if (!me) return [];
+    return Object.entries(messages)
+      .filter(([id, msgs]) => msgs.length > 0 && (isChannel(id) ? true : id.includes(me.id)))
+      .map(([id, msgs]) => {
+        const last = msgs[msgs.length - 1];
+        const ch = channels.find((c) => c.id === id);
+        const otherId = isChannel(id) ? null : id.replace("dm:", "").split("|").find((x) => x !== me.id);
+        const person = otherId ? users.find((u) => u.id === otherId) : undefined;
+        return {
+          id,
+          title: ch?.name ?? person?.name ?? otherId ?? id,
+          preview: last.text || (last.ref ? `📄 ${last.ref.id}` : ""),
+          at: last.at,
+          unread: unreadCount(msgs, lastRead[id], me.id),
+          channel: isChannel(id),
+        };
+      })
+      .sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.at.localeCompare(a.at));
+  }, [messages, lastRead, channels, users, me]);
+
+  const dirMatch = (u: { name: string; title: string; unit: string; location: string }) => {
+    const q = dirQ.trim().toLocaleLowerCase("tr-TR");
+    if (!q) return true;
+    return [u.name, u.title, u.unit, u.location].some((f) => f.toLocaleLowerCase("tr-TR").includes(q));
+  };
+
+  useEffect(() => { if (thread) markRead(thread); }, [thread, list.length, markRead]);
   useEffect(() => { endRef.current?.scrollIntoView({ block: "end" }); }, [list.length, thread]);
 
   const submit = (e: React.FormEvent) => {
@@ -62,6 +107,21 @@ export function Chat() {
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden bg-panel">
+      <NewChannelModal
+        open={newChannel}
+        onClose={() => setNewChannel(false)}
+        onCreate={(name, desc) => {
+          const c = createChannel(name, desc);
+          setNewChannel(false);
+          if (c) setThread(c.id);
+        }}
+      />
+      <NewChatModal
+        open={newChat}
+        users={others}
+        onClose={() => setNewChat(false)}
+        onPick={(id) => { setThread(dmThreadId(me?.id ?? "", id)); setNewChat(false); }}
+      />
       {/* ---------- sol: kendi durumum, kanallar, kişiler ---------- */}
       <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-line md:flex">
         <div className="border-b border-line p-3">
@@ -94,34 +154,77 @@ export function Chat() {
           </div>
         </div>
 
-        <div className="microlabel border-b border-line px-3 py-2.5">Kanallar</div>
-        <div className="flex flex-col p-1.5">
-          {CHANNELS.map((c) => {
-            const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
-            return (
-              <Row key={c.id} active={thread === c.id} onClick={() => setThread(c.id)} unread={n}
-                icon={<Hash size={14} strokeWidth={2} />} label={c.name} />
-            );
-          })}
+        <div className="border-b border-line p-2">
+          <SearchInput value={dirQ} onChange={setDirQ} placeholder="Kişi · birim · kanal ara" />
         </div>
 
-        <div className="flex items-center justify-between border-y border-line px-3 py-2.5">
-          <span className="microlabel">Kişiler</span>
-          <span className="num text-[11px] text-ink-3">{onlineCount} çevrimiçi</span>
-        </div>
-        <div className="flex flex-col overflow-y-auto p-1.5">
-          {others.map((u) => {
-            const id = dmThreadId(me?.id ?? "", u.id);
-            const n = unreadCount(messages[id], lastRead[id], me?.id ?? "");
-            const p = presenceOf(presence, u.id);
-            return (
-              <Row key={u.id} active={thread === id} onClick={() => setThread(id)} unread={n}
-                icon={<Dot tone={p.online ? PRESENCE_META[p.status].tone : "gray"} />}
-                label={u.name}
-                hint={p.online ? PRESENCE_META[p.status].label : ROLE_LABEL[u.role]}
-                muted={!p.online} />
-            );
-          })}
+        <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+          {conversations.length > 0 && !dirQ.trim() && (
+            <>
+              <div className="microlabel border-b border-line px-3 py-2.5">Sohbetler</div>
+              <div className="flex flex-col p-1.5">
+                {conversations.map((c) => (
+                  <Row
+                    key={c.id}
+                    active={thread === c.id}
+                    onClick={() => setThread(c.id)}
+                    unread={c.unread}
+                    icon={c.channel ? <Hash size={14} strokeWidth={2} /> : <Dot tone={isOnline(presence, c.id.replace("dm:", "").split("|").find((x) => x !== me?.id) ?? "") ? "green" : "gray"} />}
+                    label={c.title}
+                    preview={c.preview}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center justify-between border-y border-line px-3 py-2">
+            <span className="microlabel">Kanallar</span>
+            {can("chat.channel.create") && (
+              <IconButton label="Yeni kanal" size="sm" onClick={() => setNewChannel(true)}>
+                <Plus size={14} strokeWidth={2} />
+              </IconButton>
+            )}
+          </div>
+          <div className="flex flex-col p-1.5">
+            {channels.filter((c) => dirMatch({ name: c.name, title: c.desc, unit: "", location: "" })).map((c) => {
+              const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
+              return (
+                <Row key={c.id} active={thread === c.id} onClick={() => setThread(c.id)} unread={n}
+                  icon={<Hash size={14} strokeWidth={2} />} label={c.name} />
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between border-y border-line px-3 py-2">
+            <span className="microlabel">Kişiler</span>
+            <span className="flex items-center gap-1.5">
+              <span className="num text-[11px] text-ink-3">{onlineCount} çevrimiçi</span>
+              <IconButton label="Yeni sohbet" size="sm" onClick={() => setNewChat(true)}>
+                <MessageSquarePlus size={14} strokeWidth={1.75} />
+              </IconButton>
+            </span>
+          </div>
+          <div className="flex flex-col p-1.5">
+            {others.filter(dirMatch).map((u) => {
+              const id = dmThreadId(me?.id ?? "", u.id);
+              const n = unreadCount(messages[id], lastRead[id], me?.id ?? "");
+              const p = presenceOf(presence, u.id);
+              return (
+                <PersonRow
+                  key={u.id}
+                  userId={u.id}
+                  active={thread === id}
+                  unread={n}
+                  online={p.online}
+                  tone={p.online ? PRESENCE_META[p.status].tone : "gray"}
+                  name={u.name}
+                  hint={u.title}
+                  onClick={() => setThread(id)}
+                />
+              );
+            })}
+          </div>
         </div>
       </aside>
 
@@ -213,8 +316,14 @@ function ThreadHead({
   typers: string[];
   presence: Record<string, { at: number; status: PresenceStatus }>;
 }) {
+  const channels = useChat((s) => s.channels);
+  const users = useUsers((s) => s.users);
+  const [card, setCard] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
+  useOutside(cardRef, () => setCard(false));
+
   if (isChannel(thread)) {
-    const ch = CHANNELS.find((c) => c.id === thread);
+    const ch = channels.find((c) => c.id === thread);
     return (
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Hash size={15} strokeWidth={2} className="text-ink-3" />
@@ -225,15 +334,21 @@ function ThreadHead({
     );
   }
   const otherId = thread.replace("dm:", "").split("|").find((x) => x !== me);
-  const u = DEMO_USERS.find((x) => x.id === otherId);
+  const u = users.find((x) => x.id === otherId);
   const p = presenceOf(presence, otherId ?? "");
   return (
-    <div className="flex items-center gap-2.5 border-b border-line px-4 py-3">
-      <span className="grid h-7 w-7 place-items-center rounded-full bg-inset text-[10.5px] font-semibold text-ink-2">
+    <div ref={cardRef} className="relative flex items-center gap-2.5 border-b border-line px-4 py-3">
+      <button
+        onClick={() => u && setCard((c) => !c)}
+        aria-label={u ? `${u.name} kişi kartı` : "Sohbet"}
+        className="grid h-7 w-7 place-items-center rounded-full bg-inset text-[10.5px] font-semibold text-ink-2 transition-opacity hover:opacity-80"
+      >
         {u?.initials ?? "??"}
-      </span>
+      </button>
       <div className="min-w-0">
-        <div className="truncate text-[14px] font-semibold text-ink">{u?.name ?? "Sohbet"}</div>
+        <button onClick={() => u && setCard((c) => !c)} className="truncate text-left text-[14px] font-semibold text-ink hover:underline">
+          {u?.name ?? "Sohbet"}
+        </button>
         <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3">
           <Dot tone={p.online ? PRESENCE_META[p.status].tone : "gray"} />
           {p.online
@@ -244,6 +359,9 @@ function ThreadHead({
         </div>
       </div>
       {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">yazıyor…</span>}
+      <Modal open={card && !!u} onClose={() => setCard(false)} title={u?.name ?? ""} width="sm">
+        {u && <PersonCard userId={u.id} variant="panel" onNavigate={() => setCard(false)} />}
+      </Modal>
     </div>
   );
 }
@@ -385,10 +503,13 @@ function TicketPicker({ onPick, onClose }: { onPick: (r: ChatRef) => void; onClo
 }
 
 function Row({
-  active, onClick, icon, label, hint, unread, muted,
+  active, onClick, icon, label, hint, preview, unread, muted,
 }: {
   active: boolean; onClick: () => void; icon: React.ReactNode;
-  label: string; hint?: string; unread: number; muted?: boolean;
+  label: string; hint?: string;
+  /** Son mesajın ilk satırı — başlığın ALTINDA durur (Teams/Slack alışkanlığı). */
+  preview?: string;
+  unread: number; muted?: boolean;
 }) {
   return (
     <button
@@ -400,11 +521,135 @@ function Row({
       )}
     >
       <span className="flex-shrink-0 text-ink-3">{icon}</span>
-      <span className="min-w-0 flex-1 truncate">{label}</span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate">{label}</span>
+        {preview && <span className="block truncate text-[11px] font-normal text-ink-3">{preview}</span>}
+      </span>
       {hint && !unread && <span className="flex-shrink-0 text-[11px] text-ink-3">{hint}</span>}
       {unread > 0 && (
         <span className="num grid h-4 min-w-4 flex-shrink-0 place-items-center rounded-full bg-brand px-1 text-[9.5px] font-semibold text-white">{unread}</span>
       )}
     </button>
+  );
+}
+
+/* --- kişi satırı: hover'da Teams benzeri kart açar ------------------- */
+function PersonRow({
+  userId, active, unread, online, tone, name, hint, onClick,
+}: {
+  userId: string; active: boolean; unread: number; online: boolean;
+  tone: "green" | "red" | "amber" | "gray"; name: string; hint: string; onClick: () => void;
+}) {
+  const [card, setCard] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutside(ref, () => setCard(false));
+
+  return (
+    <div ref={ref} className="relative">
+      <div className="flex items-center">
+        <button
+          onClick={onClick}
+          className={cn(
+            "flex min-w-0 flex-1 items-center gap-2 rounded-[10px] px-2.5 py-1.5 text-left text-[13px] transition-colors",
+            active ? "bg-inset font-medium text-ink" : "text-ink-2 hover:bg-inset hover:text-ink",
+            !online && !active && "text-ink-3",
+          )}
+        >
+          <span className="flex-shrink-0"><Dot tone={tone} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate">{name}</span>
+            <span className="block truncate text-[11px] text-ink-3">{hint}</span>
+          </span>
+          {unread > 0 && (
+            <span className="num flex h-4 min-w-4 flex-shrink-0 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold text-white">
+              {unread}
+            </span>
+          )}
+        </button>
+        <IconButton label={`${name} kişi kartı`} size="sm" variant="ghost" onClick={() => setCard((c) => !c)}>
+          <Info size={13} strokeWidth={1.75} />
+        </IconButton>
+      </div>
+      {/* Kart modal olarak açılır: sol panel kaydırmalı olduğu için satır
+          içinde açılan bir katman aşağıda kırpılıyordu. */}
+      <Modal open={card} onClose={() => setCard(false)} title={name} width="sm">
+        <PersonCard userId={userId} variant="panel" onNavigate={() => setCard(false)} />
+      </Modal>
+    </div>
+  );
+}
+
+/* --- yeni kanal ------------------------------------------------------- */
+function NewChannelModal({
+  open, onClose, onCreate,
+}: { open: boolean; onClose: () => void; onCreate: (name: string, desc: string) => void }) {
+  const [name, setName] = useState("");
+  const [desc, setDesc] = useState("");
+  useEffect(() => { if (open) { setName(""); setDesc(""); } }, [open]);
+
+  return (
+    <Modal
+      open={open} onClose={onClose} title="Yeni kanal"
+      hint="Kanal herkese açıktır; açıldığı anda diğer pencerelerde de görünür."
+      width="sm"
+      footer={
+        <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc)}>
+          Kanalı aç
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label="Kanal adı" required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gate Ekibi" maxLength={40} />
+        </Field>
+        <Field label="Açıklama" hint="Kanalın ne için kullanıldığı.">
+          <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Gate operasyonu koordinasyonu" maxLength={80} />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+/* --- yeni sohbet ------------------------------------------------------ */
+function NewChatModal({
+  open, users, onClose, onPick,
+}: {
+  open: boolean;
+  users: { id: string; name: string; title: string; unit: string; location: string; initials: string }[];
+  onClose: () => void;
+  onPick: (id: string) => void;
+}) {
+  const [q, setQ] = useState("");
+  useEffect(() => { if (open) setQ(""); }, [open]);
+  const hits = users.filter((u) => {
+    const s = q.trim().toLocaleLowerCase("tr-TR");
+    return !s || [u.name, u.title, u.unit, u.location].some((f) => f.toLocaleLowerCase("tr-TR").includes(s));
+  });
+
+  return (
+    <Modal open={open} onClose={onClose} title="Yeni sohbet" hint="Kişiyi ad, unvan ya da birimle bulun." width="sm">
+      <div className="flex flex-col gap-3">
+        <SearchInput value={q} onChange={setQ} placeholder="Ad · unvan · birim" />
+        <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
+          {hits.length === 0 ? (
+            <Empty title="Kişi bulunamadı" hint="Farklı bir ad ya da birim deneyin." />
+          ) : hits.map((u) => (
+            <button
+              key={u.id}
+              onClick={() => onPick(u.id)}
+              className="flex items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-left transition-colors hover:bg-inset"
+            >
+              <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-brand text-[11px] font-semibold text-white">
+                {u.initials}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-medium text-ink">{u.name}</span>
+                <span className="block truncate text-[11.5px] text-ink-3">{u.title} · {u.unit}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Modal>
   );
 }

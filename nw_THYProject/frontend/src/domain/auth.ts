@@ -39,6 +39,8 @@ export type Permission =
   | "messages.view"
   | "revenue.view"
   | "admin.users"
+  | "admin.users.write"
+  | "chat.channel.create"
   | "admin.settings"
   | "admin.roles";
 
@@ -60,7 +62,9 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "order.view": "Order görüntüle",
   "messages.view": "Interline mesajları",
   "revenue.view": "Gelir koruma",
-  "admin.users": "Kullanıcı yönetimi",
+  "admin.users": "Kullanıcı listesi & denetim kaydı",
+  "admin.users.write": "Kullanıcı ekle / düzenle / devre dışı bırak",
+  "chat.channel.create": "Mesajlaşma kanalı aç",
   "admin.settings": "Sistem ayarları",
   "admin.roles": "Rol & yetki yönetimi",
 };
@@ -68,9 +72,9 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
 // Her rolün KENDİ getirdiği yetkiler; alt roller kümülatif eklenir.
 const INCREMENTAL: Record<Role, Permission[]> = {
   staff: ["ticket.issue", "ticket.emd", "ticket.print", "pta.manage", "checkin.accept", "checkin.board", "order.view", "messages.view"],
-  supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate"],
+  supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate", "chat.channel.create"],
   chief: ["ticket.irrop", "ticket.suspend", "revenue.view", "ops.view"],
-  manager: ["admin.users", "admin.settings"],
+  manager: ["admin.users", "admin.users.write", "admin.settings"],
   admin: ["admin.roles"],
 };
 

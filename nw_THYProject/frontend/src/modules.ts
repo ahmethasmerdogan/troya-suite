@@ -1,4 +1,5 @@
 import {
+  MessageSquare,
   LayoutDashboard, BookMarked, Ticket, PlaneTakeoff,
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText,
   MessagesSquare, Handshake, Users, ScrollText, Settings,
@@ -94,12 +95,23 @@ export const MODULES: ModuleDef[] = [
         items: [
           { labelKey: "nav.messages", to: "/messages", icon: MessagesSquare, perm: "messages.view" },
           { labelKey: "nav.agreements", to: "/agreements", icon: Handshake, perm: "messages.view" },
+          { labelKey: "nav.chat", to: "/chat", icon: MessageSquare, perm: "messages.view" },
+        ],
+      },
+      {
+        // Raporlar kendi bölümünde: dört rapor da menüden doğrudan açılır,
+        // `ReportShell` yetki kapısı arkada zaten duruyor.
+        titleKey: "nav.section.reports",
+        items: [
+          { labelKey: "nav.reports", to: "/reports", icon: ClipboardList, perm: "revenue.view" },
+          { labelKey: "nav.report", to: "/report", icon: ClipboardList, perm: "revenue.view" },
+          { labelKey: "nav.report.financial", to: "/report/financial", icon: ClipboardList, perm: "revenue.view" },
+          { labelKey: "nav.report.period", to: "/report/period", icon: ClipboardList, perm: "revenue.view" },
         ],
       },
       {
         titleKey: "nav.section.admin",
         items: [
-          { labelKey: "nav.reports", to: "/reports", icon: ClipboardList, perm: "revenue.view" },
           { labelKey: "nav.revenue", to: "/admin/revenue", icon: ShieldAlert, perm: "revenue.view" },
           { labelKey: "nav.roles", to: "/admin/roles", icon: ShieldAlert, perm: "admin.roles" },
           { labelKey: "nav.users", to: "/admin/users", icon: Users, perm: "admin.users" },

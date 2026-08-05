@@ -2,7 +2,8 @@ import { create } from "zustand";
 import {
   appendMessage, loadLastRead, loadMessages, saveLastRead, saveMessages,
   seedIfEmpty, unreadCount, isChannel, dmThreadId,
-  type ChatMessage, type ChatRef, type PresenceStatus,
+  loadChannels, saveChannels, channelIdFrom,
+  type ChatMessage, type ChatRef, type PresenceStatus, type ChannelDef,
 } from "@/domain/chat";
 
 // Gerçek chat durumu — taşıma BroadcastChannel (+ storage event yedeği), kalıcılık localStorage.
@@ -16,7 +17,8 @@ const TYPING_TTL_MS = 3_000;
 type WireEvent =
   | { kind: "msg"; msg: ChatMessage }
   | { kind: "presence"; userId: string; at: number; status: PresenceStatus }
-  | { kind: "typing"; threadId: string; userId: string; name: string };
+  | { kind: "typing"; threadId: string; userId: string; name: string }
+  | { kind: "channel"; channel: ChannelDef };
 
 interface TypingInfo { userId: string; name: string; until: number }
 
@@ -33,7 +35,14 @@ interface ChatState {
   /** Kendi bildirdiğim durum — kalp atışıyla yayınlanır. */
   status: PresenceStatus;
   typing: Record<string, TypingInfo>;
+  /** Açık kanallar — tohum + personelin açtıkları. */
+  channels: ChannelDef[];
+  /** Başka bir ekrandan istenen sohbet (kişi kartı → "Mesaj gönder"). */
+  pendingThread: string | null;
   bind: (userId: string | null, name?: string) => void;
+  createChannel: (name: string, desc: string) => ChannelDef | null;
+  openThread: (threadId: string) => void;
+  consumePendingThread: () => string | null;
   send: (threadId: string, text: string, ref?: ChatRef) => void;
   setStatus: (s: PresenceStatus) => void;
   markRead: (threadId: string) => void;
@@ -42,11 +51,14 @@ interface ChatState {
 
 let bc: BroadcastChannel | null = null;
 let heartbeat: ReturnType<typeof setInterval> | null = null;
+let storageHandler: ((e: StorageEvent) => void) | null = null;
 
 export const useChat = create<ChatState>((set, get) => {
   const receive = (ev: WireEvent) => {
     if (ev.kind === "msg") {
       set((s) => ({ messages: appendMessage(s.messages, ev.msg) }));
+    } else if (ev.kind === "channel") {
+      set((s) => (s.channels.some((c) => c.id === ev.channel.id) ? s : { channels: [...s.channels, ev.channel] }));
     } else if (ev.kind === "presence") {
       set((s) => ({ presence: { ...s.presence, [ev.userId]: { at: ev.at, status: ev.status } } }));
     } else if (ev.kind === "typing") {
@@ -65,6 +77,8 @@ export const useChat = create<ChatState>((set, get) => {
     presence: {},
     status: "available",
     typing: {},
+    channels: [],
+    pendingThread: null,
 
     bind: (userId, name = "") => {
       // önceki oturumu kapat
@@ -72,17 +86,25 @@ export const useChat = create<ChatState>((set, get) => {
       if (bc) { bc.close(); bc = null; }
       if (!userId) { set({ myId: null, myName: "", presence: {} }); return; }
 
-      set({ myId: userId, myName: name, messages: seedIfEmpty(), lastRead: loadLastRead(userId) });
+      set({
+        myId: userId, myName: name, messages: seedIfEmpty(),
+        lastRead: loadLastRead(userId), channels: loadChannels(),
+      });
 
       if (typeof BroadcastChannel !== "undefined") {
         bc = new BroadcastChannel("troya.chat");
         bc.onmessage = (e) => receive(e.data as WireEvent);
       }
-      // Yedek taşıma: başka pencere localStorage'a yazdığında mesajları tazele.
+      // Yedek taşıma: başka pencere localStorage'a yazdığında tazele.
+      // Dinleyici modül düzeyinde TUTULUR ve yeniden bağlanmada kaldırılır;
+      // aksi hâlde her `bind` bir dinleyici daha bırakıyordu (sızıntı).
       if (typeof window !== "undefined") {
-        window.addEventListener("storage", (e) => {
+        if (storageHandler) window.removeEventListener("storage", storageHandler);
+        storageHandler = (e: StorageEvent) => {
           if (e.key === "troya.chat.v1.msgs") set({ messages: loadMessages() });
-        });
+          if (e.key === "troya.chat.v1.channels") set({ channels: loadChannels() });
+        };
+        window.addEventListener("storage", storageHandler);
       }
 
       const tick = () => {
@@ -139,6 +161,32 @@ export const useChat = create<ChatState>((set, get) => {
         saveLastRead(myId, lastRead);
         return { lastRead };
       });
+    },
+
+    /** Yeni kanal — anında diğer pencerelere de yayınlanır. */
+    createChannel: (name, desc) => {
+      const { myId, channels } = get();
+      const trimmed = name.trim();
+      if (!myId || !trimmed) return null;
+      const channel: ChannelDef = {
+        id: channelIdFrom(trimmed, channels),
+        name: trimmed,
+        desc: desc.trim(),
+        createdBy: myId,
+        createdAt: new Date().toISOString(),
+      };
+      const next = [...channels, channel];
+      saveChannels(next);
+      set({ channels: next, pendingThread: channel.id });
+      broadcast({ kind: "channel", channel });
+      return channel;
+    },
+
+    openThread: (threadId) => set({ pendingThread: threadId }),
+    consumePendingThread: () => {
+      const t = get().pendingThread;
+      if (t) set({ pendingThread: null });
+      return t;
     },
 
     notifyTyping: (threadId) => {

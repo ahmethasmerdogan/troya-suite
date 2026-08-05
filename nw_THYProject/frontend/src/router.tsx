@@ -11,6 +11,7 @@ const rootRoute = createRootRoute({ component: AppShell });
 
 // Panel (birleşik anasayfa)
 const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", component: lazyRouteComponent(() => import("@/pages/Panel"), "Panel") });
+const profileRoute = createRoute({ getParentRoute: () => rootRoute, path: "/profile", component: lazyRouteComponent(() => import("@/pages/Profile"), "Profile") });
 
 // QuickRes (rezervasyon)
 const resSearchRoute = createRoute({ getParentRoute: () => rootRoute, path: "/res", component: lazyRouteComponent(() => import("@/pages/quickres/PnrSearch"), "PnrSearch") });
@@ -96,7 +97,7 @@ const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   resSearchRoute, resNewRoute, resAvailRoute, resDetailRoute,
-  searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
+  profileRoute, searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
   emdReceiptRoute, reportRoute, reportFinancialRoute, reportPeriodRoute, reportPeriodDocRoute, reportsHubRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
   adminRoute, guideRoute, docsRoute, chatRoute,

@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ArrowRight, Eye, EyeOff, LogIn } from "lucide-react";
 import { useUI } from "@/store/ui";
-import { DEMO_USERS, userById, type DemoUser } from "@/domain/users";
+import { type DemoUser } from "@/domain/users";
+import { useUsers } from "@/store/users";
 import { ROLE_DESC, ROLE_LABEL } from "@/domain/auth";
 import { BrandMark } from "@/components/BrandMark";
 import { Field, Input } from "@/components/ui/core";
@@ -22,6 +23,7 @@ const PANEL = [
 
 export function Login() {
   const login = useUI((s) => s.login);
+  const users = useUsers((s) => s.users);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPw, setShowPw] = useState(false);
@@ -29,6 +31,12 @@ export function Login() {
   const [pending, setPending] = useState<string | null>(null);
 
   const submit = (u: DemoUser) => {
+    // Devre dışı personel giriş yapamaz — yetkilendirmenin en basit kuralı
+    // bile arayüzde zorlanmalı (gerçekte bu kontrol OIDC tarafındadır).
+    if (u.status === "suspended") {
+      setError(`${u.name} devre dışı bırakılmış. Yönetim > Kullanıcılar bölümünden yeniden etkinleştirilmelidir.`);
+      return;
+    }
     setError(null);
     setPending(u.id);
     setTimeout(() => login(u), 400); // mock auth gecikmesi — gerçekte OIDC
@@ -36,7 +44,7 @@ export function Login() {
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const u = userById(username.trim().toLowerCase());
+    const u = users.find((x) => x.id === username.trim().toLowerCase());
     if (!u) {
       setError("Kullanıcı bulunamadı. Aşağıdaki test kullanıcılarından biriyle hızlı giriş yapabilirsiniz.");
       return;
@@ -123,7 +131,7 @@ export function Login() {
           </div>
 
           <div className="anim-stagger flex flex-col gap-2">
-            {DEMO_USERS.map((u) => (
+            {users.map((u) => (
               <button
                 key={u.id}
                 onClick={() => submit(u)}
