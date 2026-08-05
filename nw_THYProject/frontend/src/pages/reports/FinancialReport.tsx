@@ -9,6 +9,7 @@ import { Money } from "@/components/domain/Money";
 import { Field, Input } from "@/components/ui/core";
 import { DataTable } from "@/components/ui/table";
 import { Card, InsetPanel, OutlineBadge, StatusPill } from "@/ui";
+import { csvNumber } from "@/lib/csv";
 import { formatDateTime, cn } from "@/lib/utils";
 import { ReportShell } from "./ReportShell";
 import { PERIODS, periodRange, type PeriodId } from "./period";
@@ -44,7 +45,11 @@ export function FinancialReport() {
   const rep = useMemo(() => financialReport(rows), [rows]);
 
   const columns = [
-    col.accessor("occurredAt", { header: "Zaman", cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span> }),
+    col.accessor("occurredAt", {
+      header: "Zaman",
+      meta: { exportValue: (r: TransactionRow) => formatDateTime(r.occurredAt) },
+      cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span>,
+    }),
     col.accessor("ticketNumber", { header: "Belge No", cell: (c) => <span className="num text-ink">{c.getValue()}</span> }),
     col.accessor("passengerName", { header: "Yolcu", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
     col.accessor((r) => r.money?.refundType ?? "", {
@@ -56,23 +61,28 @@ export function FinancialReport() {
       },
     }),
     col.accessor((r) => r.money?.penalty ?? 0, {
-      id: "penalty", header: "Ceza", meta: { align: "right" },
+      id: "penalty", header: "Ceza",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.penalty ?? 0) },
       cell: (c) => <Amount n={c.getValue() as number} cur={c.row.original.money?.currency} />,
     }),
     col.accessor((r) => r.money?.noShowFee ?? 0, {
-      id: "noshow", header: "No-show", meta: { align: "right" },
+      id: "noshow", header: "No-show",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.noShowFee ?? 0) },
       cell: (c) => <Amount n={c.getValue() as number} cur={c.row.original.money?.currency} />,
     }),
     col.accessor((r) => r.money?.taxRefunded ?? 0, {
-      id: "taxref", header: "İade edilen vergi", meta: { align: "right" },
+      id: "taxref", header: "İade edilen vergi",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.taxRefunded ?? 0) },
       cell: (c) => <Amount n={c.getValue() as number} cur={c.row.original.money?.currency} />,
     }),
     col.accessor((r) => r.money?.taxForfeited ?? 0, {
-      id: "taxforf", header: "Yanan vergi", meta: { align: "right" },
+      id: "taxforf", header: "Yanan vergi",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.taxForfeited ?? 0) },
       cell: (c) => <Amount n={c.getValue() as number} cur={c.row.original.money?.currency} tone="out" />,
     }),
     col.accessor((r) => r.money?.vat ?? 0, {
-      id: "vat", header: "KDV (dahil)", meta: { align: "right" },
+      id: "vat", header: "KDV (dahil)",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.vat ?? 0) },
       cell: (c) => <Amount n={c.getValue() as number} cur={c.row.original.money?.currency} />,
     }),
   ] as ColumnDef<TransactionRow, unknown>[];

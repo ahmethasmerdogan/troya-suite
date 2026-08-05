@@ -6,20 +6,19 @@ import {
   CreditCard, FileOutput, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
-import { STATUS_META } from "@/domain/couponStatus";
 import { ssrByCode } from "@/domain/ssr";
 import { usePerm } from "@/lib/usePerm";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { ControlIndicator } from "@/components/domain/ControlIndicator";
 import { Money } from "@/components/domain/Money";
-import { TicketPreview } from "@/components/domain/TicketPreview";
+import { TicketDocument } from "@/components/domain/document/TicketDocument";
+import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
 import { TicketFlows, type FlowId } from "@/components/flows";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Alert, Button, Card, CommitGraph, InsetPanel, MetaRow, OutlineBadge, StatTile,
-  type Commit,
+  Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge, StatTile,
 } from "@/ui";
 import { formatDateTime, flightCode } from "@/lib/utils";
 
@@ -30,18 +29,6 @@ import { formatDateTime, flightCode } from "@/lib/utils";
  * kuponlar zaman çizgisi gibi, sağda ücret dökümü, altta yaşam döngüsü.
  * Yoğunluk yerine hiyerarşi; her bölüm kendi kutusunda durur.
  */
-const EVENT_LABEL: Record<string, string> = {
-  TicketIssued: "Bilet kesildi", CouponAdded: "Kupon eklendi", ControlGranted: "Kontrol devredildi",
-  ControlReturned: "Kontrol iade edildi", CouponCheckedIn: "Check-in yapıldı", CouponLifted: "Uçağa alındı",
-  CouponFlown: "Uçuş tamamlandı", TicketVoided: "Bilet void edildi", CouponExchanged: "Kupon değiştirildi",
-  TicketReissued: "Yeniden kesim", CouponRefunded: "İade edildi", CouponSuspended: "Askıya alındı",
-  IrregularOpsApplied: "Olağandışı operasyon (IRROP)", EndorsementApplied: "Ciro / kısıtlama",
-  PtaIssued: "PTA'ya karşı kesildi", EmdIssued: "EMD kesildi", NoShowRecorded: "No-show",
-  CouponRevalidated: "Revalidation", CouponPrinted: "Kağıda basıldı",
-  ControlRequested: "Kontrol talep edildi", CouponPrintExchanged: "Print exchange",
-  RefundCancelled: "İade geri alındı", EmdVoided: "EMD void edildi", EmdRefunded: "EMD iade edildi",
-  PtaAcknowledged: "PTA teslim alındı", PtaRefunded: "PTA iadesi",
-};
 
 export function TicketDetail() {
   const { ticketNumber } = useParams({ from: "/tickets/$ticketNumber" });
@@ -75,37 +62,6 @@ export function TicketDetail() {
   const flown = ticket.coupons.filter((c) => c.status === "F").length;
   const overdue = isControlOverdue(ticket);
 
-  /**
-   * Yaşam döngüsü commit grafiği.
-   *
-   * Ana hat biletin kendi olayları (kesim, void, reissue, ciro); DAL ise
-   * belirli bir kupona ait olaylar (check-in, uçuş, iade). Böylece "bilete
-   * ne oldu" ile "hangi kupona ne oldu" görsel olarak ayrışır — event
-   * sourcing'in gerçekten dallanan yapısı grafiğe birebir oturuyor.
-   *
-   * Düğüm rengi statü ailesinden gelir (pill'lerle aynı sözlük); içi boş
-   * düğüm henüz sonlanmamış statüyü, dolu düğüm final statüyü gösterir.
-   */
-  const NEGATIVE = new Set(["TicketVoided", "CouponRefunded", "NoShowRecorded", "CouponSuspended"]);
-  const events = [...ticket.history].sort(
-    (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
-  );
-  const commits: Commit[] = events.map((ev, i) => {
-    const tone = ev.status ? STATUS_TONE[ev.status] : null;
-    const onCoupon = ev.couponSeq != null;
-    return {
-      msg: [EVENT_LABEL[ev.type] ?? ev.type, onCoupon ? `· kupon #${ev.couponSeq}` : null]
-        .filter(Boolean).join(" "),
-      meta: `${formatDateTime(ev.occurredAt)} · ${ev.actor}`,
-      lane: onCoupon ? 1 : 0,
-      branch: NEGATIVE.has(ev.type) ? "red" : "orange",
-      color: tone?.hex,
-      open: ev.status ? !STATUS_META[ev.status].final : true,
-      highlight: i === 0,
-      dim: i > 0,
-    };
-  });
-
   return (
     <>
       {/* --- başlık şeridi --- */}
@@ -134,7 +90,7 @@ export function TicketDetail() {
         </div>
       </div>
 
-      <TicketPreview ticket={ticket} className="mb-4" />
+      <TicketDocument ticket={ticket} compact className="mb-4" />
 
       {/* --- dört ölçü --- */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -210,7 +166,7 @@ export function TicketDetail() {
                   <InsetPanel key={c.seq} className="p-4">
                     <div className="flex flex-wrap items-center gap-3">
                       <span className="num grid h-7 w-7 flex-shrink-0 place-items-center rounded-full text-[12px] font-semibold text-white"
-                        style={{ background: tone.hex }}>{c.seq}</span>
+                        style={{ background: tone.dot }}>{c.seq}</span>
                       <span className="num text-[17px] font-semibold tracking-tight text-ink">
                         {c.segment.origin} <span className="text-ink-3">→</span> {c.segment.destination}
                       </span>
@@ -292,12 +248,13 @@ export function TicketDetail() {
           <Card className="p-5">
             <div className="mb-1 flex items-baseline justify-between">
               <span className="microlabel">Yaşam döngüsü</span>
-              <span className="num text-[11.5px] text-ink-3">{commits.length} olay</span>
+              <span className="num text-[11.5px] text-ink-3">{ticket.history.length} olay</span>
             </div>
-            <p className="mb-4 text-[12px] leading-snug text-ink-3">
-              Ana hat bilet olayları, dal kupon olayları. İçi boş düğüm sürüyor, dolu düğüm sonlandı.
+            <p className="mb-3 text-[12px] leading-snug text-ink-3">
+              Belgeye ne olduğu zaman sırasıyla. Girintili satırlar tek bir kupona ait;
+              düğüm rengi statü ailesini, kırmızı halka olumsuz olayı gösterir.
             </p>
-            <CommitGraph commits={commits} />
+            <LifecycleTimeline ticket={ticket} />
           </Card>
         </div>
 

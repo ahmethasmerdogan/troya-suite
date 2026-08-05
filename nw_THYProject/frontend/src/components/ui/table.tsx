@@ -11,6 +11,7 @@ import { Button, IconButton } from "./core";
 import { Empty } from "./surface";
 import { Skeleton } from "./skeleton";
 import { useOutside } from "./overlay";
+import { toCsv, downloadCsv, csvFileName } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -25,11 +26,40 @@ import { cn } from "@/lib/utils";
    sayısı ve sayfalama bir arada durur.
    ==================================================================== */
 
-export interface TableColumnMeta {
+export interface TableColumnMeta<T = unknown> {
   align?: "right" | "center";
   width?: string;
   /** Alt toplam şeridinde bu kolonun altına yazılacak değer. */
   summary?: ReactNode;
+  /** Başlık bir bileşense CSV ve kolon menüsü bu etiketi kullanır. */
+  label?: string;
+  /**
+   * CSV'ye yazılacak değer.
+   *
+   * `row.getValue` yalnız accessor'ı çalıştırır, `cell` render'ını YOK SAYAR:
+   * ekranda "01.07.2026" görünen tarih dosyaya ISO olarak, pill etiketi ham
+   * statü kodu olarak düşüyordu. Kolon kendi dışa aktarım değerini söyler.
+   */
+  exportValue?: (row: T) => string | number | null | undefined;
+  /** Yalnız arayüz için olan kolon (aksiyon vb.) — dosyaya girmez. */
+  exportSkip?: boolean;
+  /**
+   * Yalnız dosya için olan kolon — ekranda hiç görünmez.
+   *
+   * Para birimi gibi alanlar ekranda tutarın yanında zaten yazıyor; ama
+   * Excel'de tutarın SAYI kalması için ayrı sütun gerekiyor.
+   */
+  exportOnly?: boolean;
+}
+
+type Leaf = { id: string; columnDef: { header?: unknown; meta?: unknown } };
+const metaOf = <R,>(c: Leaf) => c.columnDef.meta as TableColumnMeta<R> | undefined;
+/** Kolonun insan okunur adı: meta.label → string başlık → id. */
+function colLabel(c: Leaf): string {
+  const m = metaOf(c);
+  if (m?.label) return m.label;
+  const h = c.columnDef.header;
+  return typeof h === "string" && h.trim() ? h : c.id;
 }
 
 export function DataTable<T>({
@@ -68,7 +98,16 @@ export function DataTable<T>({
   className?: string;
 }) {
   const [sorting, setSorting] = useState<SortingState>([]);
-  const [visibility, setVisibility] = useState<VisibilityState>({});
+  // exportOnly kolonları hiç render edilmez; yalnız CSV'de yer alır.
+  const [visibility, setVisibility] = useState<VisibilityState>(() => {
+    const v: VisibilityState = {};
+    for (const c of columns) {
+      const m = (c as { meta?: TableColumnMeta }).meta;
+      const id = (c as { id?: string }).id;
+      if (m?.exportOnly && id) v[id] = false;
+    }
+    return v;
+  });
   const [pageSize, setPageSize] = useState(initialPageSize ?? 0);
   const [colMenu, setColMenu] = useState(false);
   const colRef = useRef<HTMLDivElement>(null);
@@ -99,24 +138,36 @@ export function DataTable<T>({
 
   const rows = table.getRowModel().rows;
   const total = table.getCoreRowModel().rows.length;
-  const hideable = table.getAllLeafColumns().filter((c) => c.getCanHide());
+  const hideable = table.getAllLeafColumns().filter((c) => c.getCanHide() && !metaOf(c)?.exportOnly);
   const leafs = table.getVisibleLeafColumns();
   const hasSummary = useMemo(
-    () => leafs.some((c) => (c.columnDef.meta as TableColumnMeta | undefined)?.summary != null),
+    () => leafs.some((c) => metaOf(c)?.summary != null),
     [leafs],
   );
 
   const exportCsv = () => {
-    const head = leafs.map((c) => `"${typeof c.columnDef.header === "string" ? c.columnDef.header : c.id}"`).join(",");
+    const cols = table.getAllLeafColumns().filter((c) => {
+      const m = metaOf(c);
+      if (m?.exportSkip) return false;
+      return m?.exportOnly || c.getIsVisible();
+    });
+    const head = cols.map((c) => colLabel(c));
     const body = table.getSortedRowModel().rows.map((r) =>
-      leafs.map((c) => `"${String(r.getValue(c.id) ?? "").replace(/"/g, '""')}"`).join(","),
+      cols.map((c) => {
+        const ex = metaOf<T>(c)?.exportValue;
+        // Kolon kendi değerini söylüyorsa onu al; yoksa accessor değerine düş.
+        return ex ? ex(r.original) : (r.getValue(c.id) as unknown);
+      }),
     );
-    const blob = new Blob(["﻿" + [head, ...body].join("\n")], { type: "text/csv;charset=utf-8" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `${exportName ?? "export"}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+    // Ekranda görünen toplam satırı dosyada da bulunsun (muhasebe tutarlılığı).
+    if (hasSummary) {
+      body.push(cols.map((c, i) => {
+        const s = metaOf(c)?.summary;
+        if (typeof s === "string" || typeof s === "number") return s;
+        return i === 0 ? "TOPLAM" : "";
+      }));
+    }
+    downloadCsv(toCsv(head, body), csvFileName(exportName ?? "export", new Date()));
   };
 
   const rowH = dense ? "h-8" : "h-11";
@@ -152,7 +203,7 @@ export function DataTable<T>({
                           c.getIsVisible() ? "border-[var(--brand)] bg-brand text-white" : "border-line-firm")}>
                           {c.getIsVisible() && <Check size={11} strokeWidth={3} />}
                         </span>
-                        {typeof c.columnDef.header === "string" ? c.columnDef.header : c.id}
+                        {colLabel(c)}
                       </button>
                     ))}
                   </div>
@@ -175,7 +226,7 @@ export function DataTable<T>({
                   {/* durum şeridi kolonu */}
                   {rowTone && <th className="w-[3px] border-b border-line p-0" aria-hidden />}
                   {hg.headers.map((h) => {
-                    const meta = h.column.columnDef.meta as TableColumnMeta | undefined;
+                    const meta = metaOf(h.column);
                     const sortable = h.column.getCanSort();
                     const dir = h.column.getIsSorted();
                     return (
@@ -203,7 +254,7 @@ export function DataTable<T>({
                       </th>
                     );
                   })}
-                  {rowActions && <th className="w-0 border-b border-line p-0" aria-hidden />}
+                  {rowActions && <th className="w-px border-b border-line px-2 text-right" scope="col"><span className="microlabel">İşlem</span></th>}
                 </tr>
               ))}
             </thead>
@@ -213,17 +264,17 @@ export function DataTable<T>({
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i} className="border-b border-hair last:border-0">
                     {rowTone && <td className="p-0" />}
-                    {columns.map((_c, j) => (
+                    {leafs.map((_c, j) => (
                       <td key={j} className={cn("border-r border-hair px-3 last:border-r-0", rowH)}>
                         <Skeleton className="h-3.5" style={{ width: `${45 + ((i * 7 + j * 13) % 45)}%` }} />
                       </td>
                     ))}
-                    {rowActions && <td className="p-0" />}
+                    {rowActions && <td className="w-px px-2" />}
                   </tr>
                 ))
               ) : rows.length === 0 ? (
                 <tr>
-                  <td colSpan={columns.length + (rowTone ? 1 : 0) + (rowActions ? 1 : 0)}>
+                  <td colSpan={leafs.length + (rowTone ? 1 : 0) + (rowActions ? 1 : 0)}>
                     <Empty title={empty?.title ?? "Kayıt bulunamadı"} hint={empty?.hint} icon={empty?.icon} />
                   </td>
                 </tr>
@@ -244,7 +295,7 @@ export function DataTable<T>({
                       <td className="w-[3px] p-0" aria-hidden style={{ background: rowTone(row.original) ?? "transparent" }} />
                     )}
                     {row.getVisibleCells().map((cell) => {
-                      const meta = cell.column.columnDef.meta as TableColumnMeta | undefined;
+                      const meta = metaOf(cell.column);
                       return (
                         <td
                           key={cell.id}
@@ -260,8 +311,10 @@ export function DataTable<T>({
                       );
                     })}
                     {rowActions && (
-                      <td className="w-0 whitespace-nowrap p-0 pr-2">
-                        <span className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                      // Aksiyon hücresi satır tıklamasını yutar; dokunmatikte
+                      // butonlar HER ZAMAN görünür (hover yok), farede eskisi gibi belirir.
+                      <td className="w-px whitespace-nowrap px-2" onClick={(e) => e.stopPropagation()}>
+                        <span className="flex items-center justify-end gap-1 opacity-100 transition-opacity [@media(hover:hover)]:opacity-55 [@media(hover:hover)]:group-hover:opacity-100 group-focus-within:!opacity-100">
                           {rowActions(row.original)}
                         </span>
                       </td>
@@ -277,7 +330,7 @@ export function DataTable<T>({
                 <tr className="bg-elev">
                   {rowTone && <td className="border-t border-line p-0" aria-hidden />}
                   {leafs.map((c, i) => {
-                    const meta = c.columnDef.meta as TableColumnMeta | undefined;
+                    const meta = metaOf(c);
                     return (
                       <td
                         key={c.id}
@@ -291,7 +344,7 @@ export function DataTable<T>({
                       </td>
                     );
                   })}
-                  {rowActions && <td className="border-t border-line p-0" aria-hidden />}
+                  {rowActions && <td className="w-px border-t border-line px-2" aria-hidden />}
                 </tr>
               </tfoot>
             )}

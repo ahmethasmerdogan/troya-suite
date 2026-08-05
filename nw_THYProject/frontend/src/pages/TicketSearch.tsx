@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
-import { SlidersHorizontal, TicketPlus, X } from "lucide-react";
+import { ArrowUpRight, FileText, SlidersHorizontal, TicketPlus, X } from "lucide-react";
 import { searchTickets } from "@/domain/api";
 import type { TicketSummary } from "@/domain/types";
+import { STATUS_META } from "@/domain/couponStatus";
 import { isValidTicketNumber } from "@/domain/ticketNumber";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { STATUS_TONE } from "@/components/domain/statusTone";
@@ -13,10 +14,11 @@ import { Money } from "@/components/domain/Money";
 import { DataTable } from "@/components/ui/table";
 import { PageTitle } from "@/components/ui/surface";
 import { SearchField, Card, InsetPanel } from "@/ui";
-import { Button } from "@/components/ui/core";
+import { Button, IconButton } from "@/components/ui/core";
 import { Field, Input } from "@/components/ui/core";
 import { useT } from "@/i18n";
 import { formatDate, cn } from "@/lib/utils";
+import { csvNumber } from "@/lib/csv";
 
 /**
  * Bilet arama — tek akıllı çubuk + hücre çerçeveli veri tablosu.
@@ -55,11 +57,27 @@ const columns = [
   col.accessor("passengerName", { header: "Yolcu", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
   col.accessor("route", { header: "Güzergah", enableSorting: false, cell: (c) => <RouteCell route={c.getValue()} /> }),
   col.accessor("validatingCarrier", { header: "Carrier", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
-  col.accessor("issuedAt", { header: "Kesim", cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span> }),
-  col.accessor("overallStatus", { header: "Durum", enableSorting: false, cell: (c) => <StatusPill status={c.getValue()} /> }),
+  col.accessor("issuedAt", {
+    header: "Kesim",
+    // Dosyada da ekrandaki gün görünsün; ISO damgası muhasebede okunmuyor.
+    meta: { exportValue: (t: TicketSummary) => formatDate(t.issuedAt) },
+    cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
+  }),
+  col.accessor("overallStatus", {
+    header: "Durum", enableSorting: false,
+    // Ham kod yerine pill'in söylediği etiket.
+    meta: { exportValue: (t: TicketSummary) => STATUS_META[t.overallStatus].label },
+    cell: (c) => <StatusPill status={c.getValue()} />,
+  }),
   col.accessor((t) => t.total.amount, {
-    id: "total", header: "Toplam", meta: { align: "right" },
+    id: "total", header: "Toplam",
+    // Tutar SAYI kalsın diye para birimi ayrı kolona çıkar (Excel'de toplanabilsin).
+    meta: { align: "right", exportValue: (t: TicketSummary) => csvNumber(t.total.amount) },
     cell: (c) => <Money value={c.row.original.total} size="sm" />,
+  }),
+  // Ekranda tutarın yanında zaten yazıyor; dosyada tutarın SAYI kalması için ayrı sütun.
+  col.accessor((t) => t.total.currency, {
+    id: "currency", header: "Para Birimi", meta: { exportOnly: true },
   }),
 ] as ColumnDef<TicketSummary, unknown>[];
 
@@ -193,21 +211,32 @@ export function TicketSearch() {
         data={shown}
         columns={columns.map((c) =>
           (c as { id?: string }).id === "total"
-            ? { ...c, meta: { align: "right", summary: totalsBy(shown).split(" · ")[0] } }
+            // meta'yı EZME: kolonun dışa aktarım değeri burada kaybolmasın.
+            // Toplam çok para birimliyse hepsi yazılır — tek para birimini
+            // göstermek karışık listede yanıltıcı olurdu.
+            ? { ...c, meta: { ...(c.meta ?? {}), align: "right" as const, summary: totalsBy(shown) } }
             : c,
         )}
         loading={isLoading}
         onRowClick={(r) => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: r.ticketNumber }, search: action ? { flow: action } : {} })}
         rowKey={(r) => `${r.ticketNumber} ${r.passengerName}`}
-        rowTone={(r) => STATUS_TONE[r.overallStatus].hex}
+        rowTone={(r) => STATUS_TONE[r.overallStatus].dot}
         rowActions={(r) => (
           <>
-            <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}>
-              Aç
-            </Button>
-            <Button variant="secondary" size="sm" onClick={(e) => { e.stopPropagation(); navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}>
-              Belge
-            </Button>
+            <IconButton
+              label={`${r.ticketNumber} biletini aç`} title="Bilet kaydını aç"
+              variant="secondary" size="sm"
+              onClick={(e) => { e.stopPropagation(); navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}
+            >
+              <ArrowUpRight size={15} strokeWidth={1.75} />
+            </IconButton>
+            <IconButton
+              label={`${r.ticketNumber} yol belgesi`} title="Yolcu güzergâh belgesi"
+              variant="secondary" size="sm"
+              onClick={(e) => { e.stopPropagation(); navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}
+            >
+              <FileText size={15} strokeWidth={1.75} />
+            </IconButton>
           </>
         )}
         pageSize={12}

@@ -9,6 +9,7 @@ import { Field, Input, Select } from "@/components/ui/core";
 import { DataTable } from "@/components/ui/table";
 import { Card, InsetPanel, OutlineBadge, SearchField, StatusPill, type Tone } from "@/ui";
 import { useT } from "@/i18n";
+import { csvNumber } from "@/lib/csv";
 import { formatDateTime, cn } from "@/lib/utils";
 import { ReportShell } from "./reports/ReportShell";
 import { PERIODS, periodRange, type PeriodId } from "./reports/period";
@@ -91,9 +92,14 @@ export function SalesReport() {
   }, [rows]);
 
   const columns = [
-    col.accessor("occurredAt", { header: "Zaman", cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span> }),
+    col.accessor("occurredAt", {
+      header: "Zaman",
+      meta: { exportValue: (r: TransactionRow) => formatDateTime(r.occurredAt) },
+      cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span>,
+    }),
     col.accessor("category", {
       header: "İşlem", enableSorting: false,
+      meta: { exportValue: (r: TransactionRow) => CAT[r.category]?.label ?? r.category },
       cell: (c) => <StatusPill tone={CAT[c.getValue()]?.tone ?? "gray"} dot>{CAT[c.getValue()]?.label ?? c.getValue()}</StatusPill>,
     }),
     col.accessor("ticketNumber", { header: "Belge No", cell: (c) => <span className="num text-ink">{c.getValue()}</span> }),
@@ -102,7 +108,8 @@ export function SalesReport() {
     col.accessor("carrier", { header: "Carrier", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
     col.accessor("detail", { header: "Açıklama", enableSorting: false, cell: (c) => <span className="text-ink-3">{c.getValue() ?? "—"}</span> }),
     col.accessor((r) => (r.money?.penalty ?? 0) + (r.money?.noShowFee ?? 0), {
-      id: "penalty", header: "Ceza", meta: { align: "right" },
+      id: "penalty", header: "Ceza",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber((r.money?.penalty ?? 0) + (r.money?.noShowFee ?? 0)) },
       cell: (c) => {
         const n = c.getValue() as number;
         if (!n) return <span className="text-ink-3">—</span>;
@@ -110,7 +117,8 @@ export function SalesReport() {
       },
     }),
     col.accessor((r) => r.money?.taxRefunded ?? 0, {
-      id: "taxref", header: "İade edilen vergi", meta: { align: "right" },
+      id: "taxref", header: "İade edilen vergi",
+      meta: { align: "right", exportValue: (r: TransactionRow) => csvNumber(r.money?.taxRefunded ?? 0) },
       cell: (c) => {
         const n = c.getValue() as number;
         if (!n) return <span className="text-ink-3">—</span>;
@@ -121,6 +129,7 @@ export function SalesReport() {
       id: "amount", header: "Tutar",
       meta: {
         align: "right",
+        exportValue: (r: TransactionRow) => csvNumber(r.amount?.amount ?? 0),
         // Karışık para birimli sütunun altına tek sayı basmak yanıltıcı olurdu;
         // hangi para biriminin neti olduğu açıkça yazılır.
         summary: closing.length

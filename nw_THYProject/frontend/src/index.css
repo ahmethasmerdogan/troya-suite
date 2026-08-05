@@ -68,6 +68,18 @@
   --t-red-w: rgba(220, 38, 38, 0.10);     --t-red-i: #b31d1d;    --t-red-d: #dc2626;
   --t-gray-w: rgba(26, 26, 23, 0.055);    --t-gray-i: #63615b;   --t-gray-d: #9a978f;
 
+  /* --- statü NOKTASI: 17 kod, aile içinde de ayrışır ----------------
+     Aile rengi kimliği, adım tonu kodu anlatır. Grafik ve zaman çizgisi
+     düğümleri buradan okur; tema değişince ikisi birden döner. */
+  --st-O: #059669;  --st-F: #065f46;
+  --st-A: #3b82f6;  --st-C: #2563eb;  --st-L: #1d4ed8;
+  --st-I: #ea580c;
+  --st-S: #b45309;  --st-U: #d97706;  --st-Y: #f59e0b;
+  --st-E: #7c3aed;  --st-G: #a78bfa;
+  --st-R: #db2777;
+  --st-V: #dc2626;
+  --st-N: #78716c;  --st-P: #a8a29e;  --st-X: #8b8681;  --st-Z: #57534e;
+
   /* --- ölçü -------------------------------------------------------- */
   --r-sm: 10px;   /* chip, ikon karosu, menü satırı */
   --r-md: 12px;   /* alan, panel içi bölüm */
@@ -130,6 +142,16 @@
   --t-pink-w: rgba(236, 72, 153, 0.15);   --t-pink-i: #f59fce;   --t-pink-d: #ec4899;
   --t-red-w: rgba(220, 38, 38, 0.16);     --t-red-i: #f79b9b;    --t-red-d: #ef4444;
   --t-gray-w: rgba(255, 255, 255, 0.07);  --t-gray-i: #a5a39d;   --t-gray-d: #6f6d67;
+
+  /* koyu zeminde aynı aileler, yükseltilmiş parlaklık */
+  --st-O: #34d399;  --st-F: #10b981;
+  --st-A: #93c5fd;  --st-C: #60a5fa;  --st-L: #3b82f6;
+  --st-I: #fb923c;
+  --st-S: #f59e0b;  --st-U: #fbbf24;  --st-Y: #fcd34d;
+  --st-E: #a78bfa;  --st-G: #c4b5fd;
+  --st-R: #f472b6;
+  --st-V: #f87171;
+  --st-N: #a8a29e;  --st-P: #d6d3d1;  --st-X: #b8b3ad;  --st-Z: #8b8681;
 
   /* köprü — koyu temada da aynı bağlar */
   --surface: var(--panel);
@@ -375,6 +397,30 @@ body {
 .anim-stagger > *:nth-child(5) { animation-delay: 120ms }
 .anim-stagger > *:nth-child(n + 6) { animation-delay: 150ms }
 
+
+/* --- belge teatrali: kesim ve koparma -------------------------------
+   Bilet kesmek bu sistemde bir SATIŞ kaydıdır; ekranın bunu bir olay gibi
+   göstermesi personelin işlemin gerçekten tamamlandığını görmesini sağlar.
+   Makas perforasyon hattı boyunca iner, koçan kopar ve düşer. */
+@keyframes doc-in      { 0% { opacity: 0; transform: translateY(26px) scale(0.97) } 100% { opacity: 1; transform: none } }
+@keyframes doc-scissor { 0% { top: -10%; opacity: 0 } 10% { opacity: 1 } 90% { opacity: 1 } 100% { top: 104%; opacity: 0 } }
+@keyframes doc-tear    { 0% { transform: none; opacity: 1 } 100% { transform: translate(16px, 78px) rotate(7deg); opacity: 0 } }
+@keyframes doc-shake   { 0%, 100% { transform: none } 25% { transform: translateX(-2px) } 75% { transform: translateX(2px) } }
+@keyframes doc-ring    { 0% { transform: scale(0.7); opacity: 0.55 } 100% { transform: scale(1.9); opacity: 0 } }
+@keyframes doc-check   { to { stroke-dashoffset: 0 } }
+@keyframes doc-feed    { from { transform: translateY(-100%) } to { transform: none } }
+
+.anim-doc-in      { animation: doc-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both }
+.anim-doc-scissor { animation: doc-scissor 1000ms cubic-bezier(0.5, 0, 0.5, 1) 220ms both }
+.anim-doc-tear    { animation: doc-tear 900ms cubic-bezier(0.4, 0, 0.7, 1) 1180ms both }
+.anim-doc-shake   { animation: doc-shake 260ms ease-in-out 1180ms }
+.anim-doc-ring    { animation: doc-ring 1500ms ease-out infinite }
+.anim-doc-check   { stroke-dasharray: 34; stroke-dashoffset: 34; animation: doc-check 420ms cubic-bezier(0.65, 0, 0.35, 1) 140ms both }
+.anim-doc-feed    { animation: doc-feed 900ms cubic-bezier(0.35, 0, 0.2, 1) both }
+
+/* Gecikmeli kademe — `both` şart, yoksa öğe bekleme süresince görünür kalır. */
+.anim-doc-rise    { animation: t-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
@@ -401,6 +447,17 @@ body {
   }
   html, body { background: #fff !important; }
 
+  /* Marka bandı ve renkli yüzeyler kâğıda da bassın: aksi hâlde THY
+     kırmızısı beyaz-üstüne-beyaz kalıyor ve barkod tamamen kayboluyordu. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Belge sayfayı kaplasın; kart kenarlığı kâğıtta çerçeve gibi durmasın. */
+  [data-print-sheet] {
+    border: 0 !important; border-radius: 0 !important;
+    box-shadow: none !important; margin: 0 !important; max-width: none !important;
+  }
+  [data-print-break] { break-before: page; }
+
   /* Kaydırma kutuları basımda içeriğini kesmesin. */
   * { overflow: visible !important; }
   main { display: block !important; height: auto !important; }
@@ -408,5 +465,5 @@ body {
   /* Belge kutuları sayfa ortasında bölünmesin. */
   .rounded-2xl, table, tr { break-inside: avoid; }
 
-  @page { margin: 12mm; }
+  @page { size: A4; margin: 14mm 12mm; }
 }

@@ -17,7 +17,7 @@ import { formatDateTime } from "@/lib/utils";
    Dönem Kapanış Belgesi.
 
    Ekranlar sorgulamak içindir; bu BELGEDİR — muhasebenin dosyaladığı,
-   imzalanan, basılan çıktı. Bilet (TicketPreview), biniş kartı ve EMD
+   imzalanan, basılan çıktı. Bilet (TicketDocument), biniş kartı ve EMD
    makbuzu ile aynı dil: marka bandı, kutulu alanlar, tek sayfa.
 
    İçerik dönemin kendisinden türer; hiçbir tutar elle girilmez.

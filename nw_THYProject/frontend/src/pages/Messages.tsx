@@ -20,10 +20,18 @@ export function Messages() {
   const { data, isLoading } = useQuery({ queryKey: ["messages"], queryFn: listMessages });
 
   const columns = [
-    col.accessor("occurredAt", { header: "Zaman", cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span> }),
+    col.accessor("occurredAt", {
+      header: "Zaman",
+      meta: { exportValue: (m: InterlineMessage) => formatDateTime(m.occurredAt) },
+      cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span>,
+    }),
     col.accessor("standard", { header: "Standart", cell: (c) => <Pill tone="gray">{c.getValue()}</Pill> }),
     col.accessor("messageType", { header: "Tip", cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
-    col.accessor("direction", { header: "Yön", cell: (c) => <span className="text-ink-2">{c.getValue() === "outbound" ? "Giden" : "Gelen"}</span> }),
+    col.accessor("direction", {
+      header: "Yön",
+      meta: { exportValue: (m: InterlineMessage) => (m.direction === "outbound" ? "Giden" : "Gelen") },
+      cell: (c) => <span className="text-ink-2">{c.getValue() === "outbound" ? "Giden" : "Gelen"}</span>,
+    }),
     col.accessor("partnerCarrier", { header: "Partner", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
     col.accessor("ticketNumber", { header: "Belge", cell: (c) => <span className="num text-ink-2">{c.getValue() ?? "—"}</span> }),
     col.accessor("status", { header: "Durum", enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),

@@ -74,7 +74,7 @@ export function Panel() {
               const segs: Seg[] = stats.data.statusDist.map((s) => ({
                 label: `${STATUS_META[s.status].short} (${s.status})`,
                 value: s.count,
-                color: STATUS_TONE[s.status].hex,
+                color: STATUS_TONE[s.status].dot,
               }));
               return <Donut segments={segs} center={total} />;
             })()}

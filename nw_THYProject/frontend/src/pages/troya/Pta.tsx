@@ -13,6 +13,7 @@ import { DataTable } from "@/components/ui/table";
 import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { toast } from "@/components/ui/toast";
+import { csvNumber } from "@/lib/csv";
 import { formatDate } from "@/lib/utils";
 
 /**
@@ -90,18 +91,29 @@ export function PtaPage() {
     col.accessor("beneficiaryName", { header: "Yolcu", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
     col.accessor("route", { header: "Güzergah", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
     col.accessor("pickupLocation", { header: "Teslim", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
-    col.accessor("createdAt", { header: "Tarih", cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span> }),
-    col.accessor((p) => p.amount.amount, { id: "amount", header: "Tutar", meta: { align: "right" }, cell: (c) => <Money value={c.row.original.amount} size="sm" /> }),
+    col.accessor("createdAt", {
+      header: "Tarih",
+      meta: { exportValue: (p: Pta) => formatDate(p.createdAt) },
+      cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
+    }),
+    col.accessor((p) => p.amount.amount, {
+      id: "amount", header: "Tutar",
+      meta: { align: "right", exportValue: (p: Pta) => csvNumber(p.amount.amount) },
+      cell: (c) => <Money value={c.row.original.amount} size="sm" />,
+    }),
+    col.accessor((p) => p.amount.currency, {
+      id: "currency", header: "Para Birimi", meta: { exportOnly: true },
+    }),
     col.accessor("status", { header: "Durum", enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
     col.display({
-      id: "ack", header: "Teslim", enableSorting: false,
+      id: "ack", header: "Teslim", enableSorting: false, meta: { label: "Teslim", exportSkip: true },
       cell: (c) => c.row.original.acknowledgedAt
         ? <Pill tone="green">Teslim alındı</Pill>
         : <Button size="sm" variant="ghost" disabled={ack.isPending}
             onClick={(e) => { e.stopPropagation(); ack.mutate(c.row.original); }}>Teslim al</Button>,
     }),
     col.display({
-      id: "act", header: "", meta: { align: "right" },
+      id: "act", header: "", meta: { align: "right", label: "İşlem", exportSkip: true },
       cell: (c) => {
         const p = c.row.original;
         return (

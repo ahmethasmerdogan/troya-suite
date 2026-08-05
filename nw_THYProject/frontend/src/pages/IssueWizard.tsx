@@ -12,8 +12,9 @@ import { computeFareOffers, type FareOffer } from "@/domain/pricing";
 import { SSR_CATALOG, SSR_CATEGORY_LABEL, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
-import type { FormOfPaymentType, Passenger, Segment } from "@/domain/types";
+import type { FormOfPaymentType, Passenger, Segment, Ticket } from "@/domain/types";
 import { Money } from "@/components/domain/Money";
+import { IssueSuccess } from "@/components/domain/document/IssueSuccess";
 import { Field, Input, Select } from "@/components/ui/core";
 import { useOutside } from "@/components/ui/overlay";
 import { PageTitle, Rule, Line, Empty } from "@/components/ui/surface";
@@ -74,7 +75,7 @@ function legFromSegment(s: ReservationSegment): Leg {
 export function IssueWizard() {
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
-  const [issued, setIssued] = useState<string | null>(null);
+  const [issued, setIssued] = useState<Ticket | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [ack, setAck] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -203,11 +204,21 @@ export function IssueWizard() {
       baggageAllowanceKg: offer!.baggageKg,
       idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: (t) => { setConfirming(false); setIssued(t.ticketNumber); },
+    onSuccess: (t) => { setConfirming(false); setIssued(t); },
     onError: (e: Error) => { setConfirming(false); toast.danger("Bilet kesilemedi", e.message); },
   });
 
-  if (issued) return <Success ticketNumber={issued} onOpen={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: issued } })} />;
+  if (issued) {
+    const tn = issued.ticketNumber;
+    return (
+      <IssueSuccess
+        ticket={issued}
+        onOpen={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: tn } })}
+        onPrint={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: tn } })}
+        onNew={() => window.location.reload()}
+      />
+    );
+  }
 
   return (
     <>
@@ -830,26 +841,6 @@ function ReviewStep({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-/* --- başarı ----------------------------------------------------------- */
-function Success({ ticketNumber, onOpen }: { ticketNumber: string; onOpen: () => void }) {
-  useEffect(() => {
-    const id = setTimeout(onOpen, 3500);
-    return () => clearTimeout(id);
-  }, [onOpen]);
-  return (
-    <div className="grid min-h-[60vh] place-items-center">
-      <div className="anim-rise flex flex-col items-center text-center">
-        <span className="grid h-16 w-16 place-items-center rounded-full bg-[var(--t-green-w)] text-[var(--t-green-i)]">
-          <Check size={30} strokeWidth={2.5} />
-        </span>
-        <h2 className="mt-5 text-[22px] font-semibold tracking-tight text-ink">Bilet Kesildi</h2>
-        <p className="num mt-1.5 text-[15px] text-ink-2">{ticketNumber}</p>
-        <Button variant="green" className="mt-6" onClick={onOpen}>Bileti aç</Button>
-      </div>
     </div>
   );
 }

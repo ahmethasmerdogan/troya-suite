@@ -21,6 +21,7 @@ export function Agreements() {
     col.accessor("partnerCarrier", { header: "Kod", cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
     col.accessor("partnerName", { header: "Partner", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
     col.accessor("capabilities", {
+      // Dizi alanı; dosyada okunur biçimde virgülle yazılır.
       header: "Yetenekler", enableSorting: false,
       cell: (c) => <span className="flex flex-wrap gap-1">{c.getValue().map((x) => <Pill key={x} tone="gray">{x}</Pill>)}</span>,
     }),
@@ -30,7 +31,11 @@ export function Agreements() {
         ? <span className="inline-flex items-center gap-1 text-[12.5px] text-[var(--t-green-i)]"><Check size={14} strokeWidth={2.5} /> var</span>
         : <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3"><X size={14} strokeWidth={2.5} /> yok</span>,
     }),
-    col.accessor("since", { header: "Başlangıç", cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span> }),
+    col.accessor("since", {
+      header: "Başlangıç",
+      meta: { exportValue: (a: BilateralAgreement) => formatDate(a.since) },
+      cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
+    }),
     col.accessor("status", { header: "Durum", enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
   ] as ColumnDef<BilateralAgreement, unknown>[];
 

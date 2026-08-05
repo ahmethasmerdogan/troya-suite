@@ -2,8 +2,8 @@ import { test, expect } from "@playwright/test";
 
 // Bilet kesme sihirbazı (IssueWizard). Adımlar: Yolcu → Sefer → Ücret Seçimi →
 // Ödeme → Onay → Bileti Kes. Ücret ELLE GİRİLMEZ — sistem tarifesinden seçilir.
-// Mock issueTicket idempotent bileti döner; IssueSuccess overlay "Bilete git" ile
-// detay route'una yönlendirir.
+// Mock issueTicket idempotent bileti döner; IssueSuccess overlay kesilen BELGEYİ
+// gösterir (makas + koparma) ve personel "Bilet kaydını aç" ile detaya geçer.
 
 // Onboarding modal'ını atla.
 test.beforeEach(async ({ page }) => {
@@ -84,10 +84,11 @@ test.describe("Issue wizard", () => {
     // Başarı overlay'i (z-[70]) hemen üste biner — force ile tek seferde tıkla.
     await confirmBtn.click({ force: true });
 
-    // IssueSuccess overlay göründü → bilet kesildi.
-    await expect(page.getByText("Bilet Kesildi")).toBeVisible({ timeout: 15_000 });
-    // "Bileti aç" düğmesi detaya yönlendirir (overlay 3.5sn sonra otomatik de yönlendirir).
-    await page.getByRole("button", { name: /Bileti aç/ }).click();
+    // IssueSuccess overlay göründü → belge belirir, makas perforasyondan geçer,
+    // koçan kopar. Otomatik yönlendirme YOK; personel ne yapacağını seçer.
+    await expect(page.getByRole("dialog", { name: "Bilet kesildi" })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Satış kaydedildi ve denetim kaydına yazıldı.")).toBeVisible();
+    await page.getByRole("button", { name: /Bilet kaydını aç/ }).click();
 
     // Yeni bilet detay route'u (235… ile başlayan numara).
     await expect(page).toHaveURL(/\/tickets\/235\d+/, { timeout: 15_000 });
