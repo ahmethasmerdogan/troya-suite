@@ -1,7 +1,8 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { Check, X } from "lucide-react";
-import { listRevenueAlerts } from "@/domain/api";
+import { listRevenueAlerts, queryTransactions } from "@/domain/api";
 import { DEMO_USERS } from "@/domain/users";
 import {
   PERMISSION_LABEL, ROLE_DESC, ROLE_LABEL, ROLE_ORDER, can, permissionsFor, type Permission, type Role,
@@ -10,6 +11,8 @@ import { useUI } from "@/store/ui";
 import { usePerm } from "@/lib/usePerm";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty, Meta, MetaGrid } from "@/components/ui/surface";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { StatusPill } from "@/components/domain/StatusPill";
+import { Input } from "@/components/ui/core";
 import { Banner } from "@/components/ui/banner";
 import { formatDateTime, cn } from "@/lib/utils";
 
@@ -134,23 +137,48 @@ function Users() {
   );
 }
 
+/**
+ * Denetim kaydı — GERÇEK.
+ *
+ * Önceki sürüm demo kullanıcıları için satır uyduruyordu (sahte IP, sahte
+ * "Void denemesi"). Oysa audit bu sistemde zaten var: her komut event store'a
+ * yazar. Bu ekran o olayları okur — kim (actor), ne zaman, hangi belgede,
+ * hangi işlem, hangi statü. Uydurulan hiçbir satır kalmadı.
+ */
+const CATEGORY_LABEL: Record<string, string> = {
+  issue: "Kesim", void: "Void", refund: "İade", exchange: "Exchange / Reissue",
+  emd: "EMD", checkin: "Check-in / Biniş", other: "Diğer",
+};
+
 function Logs() {
-  const rows = DEMO_USERS.flatMap((u, i) => [
-    { at: new Date(Date.now() - (i + 1) * 36e5).toISOString(), who: u.name, role: u.role, act: "Bilet kesildi", ok: true, ip: `10.0.${i}.12` },
-    { at: new Date(Date.now() - (i + 2) * 52e5).toISOString(), who: u.name, role: u.role, act: "Void denemesi", ok: i % 2 === 0, ip: `10.0.${i}.12` },
-  ]);
+  const [q, setQ] = useState("");
+  const { data = [], isLoading } = useQuery({ queryKey: ["auditLog"], queryFn: () => queryTransactions({}) });
+  const rows = data.filter((r) => {
+    if (!q.trim()) return true;
+    const s = q.trim().toUpperCase();
+    return r.ticketNumber.includes(s) || r.actor.toUpperCase().includes(s)
+      || r.passengerName.toUpperCase().includes(s) || (r.detail?.toUpperCase().includes(s) ?? false);
+  }).slice(0, 200);
+
   return (
     <Panel>
-      <PanelHead title="Denetim kaydı" hint="Kim, ne zaman, ne yaptı — event store'dan türer." />
+      <PanelHead
+        title="Denetim kaydı"
+        hint={`Kim, ne zaman, ne yaptı — event store'dan türer (${data.length} olay).`}
+        action={<Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Belge · personel · yolcu" className="w-56" />}
+      />
       <PanelBody className="pt-1">
-        {rows.map((r, i) => (
-          <div key={i} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
-            <span className="num w-40 flex-shrink-0 text-[12px] text-ink-3">{formatDateTime(r.at)}</span>
-            <span className="text-[13px] text-ink">{r.who}</span>
-            <Pill tone="gray">{ROLE_LABEL[r.role]}</Pill>
-            <span className="text-[13px] text-ink-2">{r.act}</span>
-            <Pill tone={r.ok ? "green" : "red"}>{r.ok ? "başarılı" : "reddedildi"}</Pill>
-            <span className="num ml-auto text-[11.5px] text-ink-3">{r.ip}</span>
+        {isLoading ? null : rows.length === 0 ? (
+          <Empty title="Kayıt yok" hint="Bu filtreyle eşleşen denetim kaydı bulunmuyor." />
+        ) : rows.map((r) => (
+          <div key={r.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
+            <span className="num w-40 flex-shrink-0 text-[12px] text-ink-3">{formatDateTime(r.occurredAt)}</span>
+            <span className="num text-[12.5px] text-ink-2">{r.actor}</span>
+            <Pill tone="gray">{CATEGORY_LABEL[r.category] ?? r.category}</Pill>
+            <Link to="/tickets/$ticketNumber" params={{ ticketNumber: r.ticketNumber }}
+              className="num text-[12.5px] font-medium text-brand hover:underline">{r.ticketNumber}</Link>
+            <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2" title={r.detail}>{r.detail ?? r.type}</span>
+            {r.status && <StatusPill status={r.status} />}
           </div>
         ))}
       </PanelBody>

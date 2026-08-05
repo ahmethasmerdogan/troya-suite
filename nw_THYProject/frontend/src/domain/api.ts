@@ -4,7 +4,7 @@ import {
   MOCK_TICKETS, MOCK_EMDS, MOCK_MESSAGES, MOCK_AGREEMENTS, MOCK_ORDERS, MOCK_PTAS, MOCK_REVENUE_ALERTS, toSummary,
 } from "./mockData";
 import type {
-  Ticket, TicketSummary, LifecycleEvent, LifecycleEventType, Emd, EmdType, InterlineMessage, BilateralAgreement, Order,
+  Ticket, TicketSummary, LifecycleEvent, LifecycleEventType, Emd, EmdType, InterlineMessage, BilateralAgreement, Order, OrderStatus,
   Segment, Money, CouponStatus, Pta, RevenueAlert, Passenger, RefundRecord, Coupon, TaxFeeCharge, EventMoney,
 } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
@@ -14,6 +14,7 @@ import { quoteRefund, type InvoluntaryReason, type RefundType } from "./refundRu
 import type { WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
+import { attachTicketToPnr } from "./reservation";
 
 /** İade ve reissue tarifesi — akışlar tutarı buradan alır (personel elle yazmaz). */
 export { quoteRefund, quoteReissue };
@@ -123,6 +124,8 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
 
   store.unshift(ticket);
   issuedKeys.set(input.idempotencyKey, ticketNumber);
+  // Rezervasyon → bilet bağı: PNR "biletlendi" olur, doküman numarası oraya yazılır.
+  if (input.pnr) attachTicketToPnr(input.pnr, ticketNumber);
   return ticket;
 }
 
@@ -199,6 +202,7 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
     cascadeEmdA(t.ticketNumber, c.seq, "V"); // EMD-A senkronu (5.3)
   });
   stampSac(t.coupons); // 1.3.6: işlem başına TEK kod, tüm kuponlara aynısı
+  emitStatusUpdate(t, undefined, "V");
   t.history.push(event("TicketVoided", {
     detail: input.reason || "Satış kaydı iptal edildi",
     status: "V",
@@ -261,7 +265,30 @@ export function inCurrentReportingPeriod(iso: string): boolean {
  * kaydı artık void edilemez ve iade geri alınamaz — kalemler settlement'a
  * gitmiştir. (Gerçekte bu, muhasebe kapanışının kilididir.)
  */
-const closedPeriods = new Set<string>();
+/**
+ * Kapanış KALICIDIR: sayfa yenilendiğinde geri açılan bir muhasebe dönemi
+ * kilidi kilit değildir. Mock veriler bellekte yaşasa da bu karar tarayıcıda
+ * saklanır (gerçekte tabloda tutulur).
+ */
+const CLOSED_KEY = "troya.closedPeriods";
+const closedPeriods = new Set<string>(readClosedPeriods());
+
+function readClosedPeriods(): string[] {
+  try {
+    const raw = localStorage.getItem(CLOSED_KEY);
+    const list: unknown = raw ? JSON.parse(raw) : [];
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function persistClosedPeriods(): void {
+  try {
+    localStorage.setItem(CLOSED_KEY, JSON.stringify([...closedPeriods]));
+  } catch {
+    // depolama kapalıysa kilit yalnız oturum boyunca yaşar
+  }
+}
 
 export function isPeriodClosed(periodId: string): boolean {
   return closedPeriods.has(periodId);
@@ -275,6 +302,7 @@ export async function closeReportingPeriod(periodId: string): Promise<string[]> 
   if (periodId > reportingPeriodId(new Date().toISOString()))
     throw new DomainError(`${periodId} gelecek bir dönem — kapatılamaz.`);
   closedPeriods.add(periodId);
+  persistClosedPeriods();
   return [...closedPeriods].sort();
 }
 
@@ -322,6 +350,30 @@ function assertControl(t: Ticket, action: string): void {
       `${action} için kupon kontrolü ${SESSION_CARRIER}'da olmalı — şu an ${t.control.holder}'da (1.1.5.3). Önce kontrolü isteyin.`,
     );
   }
+}
+
+/**
+ * Statü güncellemesi yayını (ETSU — 1.1.4.3 / 1.1.4.4).
+ *
+ * Marketing/Operating Carrier veritabanı Validating Carrier ile senkron
+ * tutulur. Daha önce yalnız kontrol talebi mesaj üretiyordu; artık statü
+ * değiştiren her komut interline kuyruğuna bir zarf bırakır.
+ */
+function emitStatusUpdate(t: Ticket, couponSeq: number | undefined, status: CouponStatus): void {
+  const partner = t.control.holder !== t.validatingCarrier ? t.control.holder : t.coupons[0]?.segment.marketingCarrier;
+  if (!partner || partner === SESSION_CARRIER) return; // kendi kendimize bildirim yok
+  MOCK_MESSAGES.unshift({
+    id: "m-" + crypto.randomUUID().slice(0, 8),
+    standard: "EDIFACT",
+    messageType: "ETSU",
+    direction: "outbound",
+    partnerCarrier: partner,
+    ticketNumber: t.ticketNumber,
+    occurredAt: new Date().toISOString(),
+    status: "sent",
+    summary: `Statü güncelleme · ${t.ticketNumber}${couponSeq != null ? ` kupon ${couponSeq}` : ""} → ${status}`,
+    payloadPreview: `ETSU\nTKT:${t.ticketNumber}\nCPN:${couponSeq ?? "*"}\nSTS:${status}\nFROM:${SESSION_CARRIER}\nTO:${partner}`,
+  });
 }
 
 /** İlgili bilateral anlaşma — kontrol devri için şart (1.1.5.1(b)). */
@@ -600,6 +652,9 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
     }));
   }
 
+  // 1.1.4.3 — iade edilen her kupon için partner veritabanına statü bildirilir.
+  for (const seq of input.couponSeqs) emitStatusUpdate(t, seq, input.taxOnly ? "Y" : "R");
+
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }
@@ -659,6 +714,8 @@ export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
       (input.reason ? ` · ${input.reason}` : ""),
     status: "O",
   }));
+  // 1.1.4.3 — kupon yeniden kullanılabilir; partner veritabanı bunu bilmeli.
+  for (const c of affected) emitStatusUpdate(t, c.seq, "O");
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }
@@ -703,6 +760,7 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
   openCoupons.forEach((c) => {
     c.status = applyTransition(c.status, "E");
     cascadeEmdA(old.ticketNumber, c.seq, "E"); // EMD-A senkronu (5.3)
+    emitStatusUpdate(old, c.seq, "E"); // 1.1.4.3 — partner veritabanı senkronu
   });
   stampSac(openCoupons); // 1.3.6: bu değişim işlemi için tek SAC
   old.history.push(event("CouponExchanged", {
@@ -1064,14 +1122,51 @@ export async function listAgreements(): Promise<BilateralAgreement[]> {
   return [...MOCK_AGREEMENTS];
 }
 
+/**
+ * Order görünümü CANLI belgelerden türer.
+ *
+ * Order "system of record" iddiasındadır; oysa kalem statüleri sabit yazılmıştı
+ * ve bilet void/iade edildiğinde order hâlâ "Fulfilled · O" görünüyordu — yani
+ * kaydın kendisi yalan söylüyordu. Artık her kalem bağlı ET/EMD'den okunur,
+ * order statüsü de kalemlerden çıkar:
+ *   · hepsi iptal/void            → Cancelled
+ *   · hepsi final (uçuldu/kapandı)→ Closed
+ *   · en az biri kullanıldı       → Fulfilled
+ *   · aksi                        → Confirmed
+ */
+function projectOrder(o: Order): Order {
+  const items = o.items.map((it) => {
+    if (it.kind === "ticket") {
+      const t = store.find((x) => x.ticketNumber === it.reference);
+      // Temsili statü: ilk açık kupon, yoksa ilk kuponun (final) statüsü.
+      const rep = t && (t.coupons.find((c) => !isFinal(c.status))?.status ?? t.coupons[0]?.status);
+      return rep ? { ...it, statusSummary: rep } : it;
+    }
+    const e = emdStore.find((x) => x.emdNumber === it.reference);
+    return e?.coupons[0] ? { ...it, statusSummary: e.coupons[0].status } : it;
+  });
+
+  const codes = items.map((i) => i.statusSummary);
+  const dead: CouponStatus[] = ["V", "R"];
+  const used: CouponStatus[] = ["C", "L", "F"];
+  const status: OrderStatus =
+    codes.every((c) => dead.includes(c)) ? "Cancelled"
+      : codes.every((c) => isFinal(c)) ? "Closed"
+        : codes.some((c) => used.includes(c)) ? "Fulfilled"
+          : "Confirmed";
+
+  return { ...o, items, status };
+}
+
 export async function listOrders(): Promise<Order[]> {
   await delay(240);
-  return [...MOCK_ORDERS];
+  return MOCK_ORDERS.map(projectOrder);
 }
 
 export async function getOrder(orderId: string): Promise<Order | undefined> {
   await delay(220);
-  return MOCK_ORDERS.find((o) => o.orderId === orderId);
+  const o = MOCK_ORDERS.find((x) => x.orderId === orderId);
+  return o && projectOrder(o);
 }
 
 /**
@@ -1113,6 +1208,102 @@ export async function advanceCouponStatus(ticketNumber: string, couponSeq: numbe
   }
   cascadeEmdA(ticketNumber, couponSeq, to); // EMD-A senkronu (5.2.2)
   t.history.push(event("CouponCheckedIn", { couponSeq, detail: `QuickCheck-in → ${to}`, status: to }));
+  emitStatusUpdate(t, couponSeq, to); // 1.1.4.3 interline senkronu
+}
+
+/**
+ * Havalimanı kontrolü al (O→A, Handbook 1.1.4.1 "A").
+ *
+ * Operating Carrier kalkıştan önce kuponu havalimanı kontrolüne alır; böylece
+ * statüyü link izni beklemeden yerelde günceller. Kupon zincirinin ilk halkası
+ * buydu ve hiçbir ekrandan yazılamıyordu.
+ */
+export async function takeAirportControl(ticketNumber: string, couponSeq: number): Promise<void> {
+  await delay(150);
+  const t = store.find((x) => x.ticketNumber === ticketNumber);
+  const c = t?.coupons.find((x) => x.seq === couponSeq);
+  if (!t || !c) return;
+  if (c.status !== "O") return; // zaten kontrolde ya da ilerlemiş
+  c.status = applyTransition(c.status, "A");
+  const now = new Date().toISOString();
+  t.control = {
+    ...t.control,
+    acquiredAt: t.control.acquiredAt ?? now,
+    deadlineAt: controlDeadline(c.segment.departure, t.control.acquiredAt ?? now, "A"),
+  };
+  t.history.push(event("ControlGranted", {
+    couponSeq,
+    detail: `Havalimanı kontrolü alındı — statü "O" bildirildi (1.1.4.1 A)`,
+    status: "A",
+  }));
+  emitStatusUpdate(t, couponSeq, "A");
+}
+
+// =====================================================================
+// Askıya alma / serbest bırakma — "S" (Suspended, 1.1.4).
+//
+// "S" statüsü tanımlıydı ama hiçbir komut onu yazamıyordu: sistemde şüpheli
+// bir belge (chargeback, sahtecilik incelemesi, ödeme itirazı) donduralamıyordu.
+// Askıdaki kupon KULLANILAMAZ ama biletin değeri de yok olmaz — inceleme
+// bitince O'ya geri döner (FSM: O/A→S, S→O|V).
+// =====================================================================
+export interface SuspendInput {
+  ticketNumber: string;
+  couponSeqs: number[];
+  reason: string;
+  idempotencyKey: string;
+}
+
+export async function suspendCoupons(input: SuspendInput): Promise<Ticket> {
+  await delay(400);
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (opKeys.has(input.idempotencyKey)) return t; // idempotent
+  assertControl(t, "Askıya alma");
+  if (!input.reason.trim()) throw new DomainError("Askıya alma gerekçesi zorunlu (denetim kaydı).");
+
+  const targets = t.coupons.filter((c) => input.couponSeqs.includes(c.seq));
+  if (!targets.length) throw new DomainError("Askıya alınacak kupon seçilmedi.");
+  const bad = targets.find((c) => !canTransition(c.status, "S"));
+  if (bad) throw new DomainError(`Kupon #${bad.seq} (${bad.status}) askıya alınamaz — yalnız "O" ve "A" kuponlar askıya alınır.`);
+
+  for (const c of targets) {
+    c.status = applyTransition(c.status, "S");
+    t.history.push(event("CouponSuspended", {
+      couponSeq: c.seq,
+      detail: `Askıya alındı — ${input.reason}`,
+      status: "S",
+    }));
+    emitStatusUpdate(t, c.seq, "S");
+  }
+  opKeys.set(input.idempotencyKey, t.ticketNumber);
+  return t;
+}
+
+/** Askıdan çıkar (S→O) — inceleme kapandı, kupon yeniden kullanılabilir. */
+export async function releaseCoupons(input: SuspendInput): Promise<Ticket> {
+  await delay(400);
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (opKeys.has(input.idempotencyKey)) return t;
+  assertControl(t, "Askıdan çıkarma");
+
+  const targets = t.coupons.filter((c) => input.couponSeqs.includes(c.seq));
+  if (!targets.length) throw new DomainError("Serbest bırakılacak kupon seçilmedi.");
+  const bad = targets.find((c) => c.status !== "S");
+  if (bad) throw new DomainError(`Kupon #${bad.seq} askıda değil (${bad.status}).`);
+
+  for (const c of targets) {
+    c.status = applyTransition(c.status, "O");
+    t.history.push(event("CouponSuspended", {
+      couponSeq: c.seq,
+      detail: `Askıdan çıkarıldı — ${input.reason || "inceleme kapandı"}`,
+      status: "O",
+    }));
+    emitStatusUpdate(t, c.seq, "O");
+  }
+  opKeys.set(input.idempotencyKey, t.ticketNumber);
+  return t;
 }
 
 // =====================================================================
@@ -1193,6 +1384,7 @@ export async function irropReroute(input: IrropInput): Promise<{ ticket: Ticket;
     const c = t.coupons.find((x) => x.seq === seq)!;
     if (c.status === "O" || c.status === "A") c.status = applyTransition(c.status, "I"); // önce IRROP
     c.status = applyTransition(c.status, "G"); // FIM ile reaccommodate (final)
+    emitStatusUpdate(t, c.seq, "G"); // 1.1.4.3 — yönlendiren taşıyıcıya bildirim
   });
   t.endorsement = `INVOL ${input.reason.toUpperCase()} / RTG ${input.endorseTo} ${flight} / ${fim}`;
   t.history.push(
@@ -1304,6 +1496,7 @@ export async function printToPaper(input: PrintToPaperInput): Promise<Ticket> {
   input.couponSeqs.forEach((seq) => {
     const c = t.coupons.find((x) => x.seq === seq)!;
     c.status = applyTransition(c.status, "P"); // O → P (final)
+    emitStatusUpdate(t, c.seq, "P");
     printed.push(c);
     // 1.1.5.3 "Print to Paper": kağıt belge ORİJİNAL ET NUMARASINI taşır.
     t.paperDocuments = [
@@ -1355,6 +1548,7 @@ export async function printExchange(input: PrintExchangeInput): Promise<Ticket> 
   input.couponSeqs.forEach((seq) => {
     const c = t.coupons.find((x) => x.seq === seq)!;
     c.status = applyTransition(c.status, "X"); // O → X (final)
+    emitStatusUpdate(t, c.seq, "X");
     affected.push(c);
     t.paperDocuments = [
       ...(t.paperDocuments ?? []),
@@ -1558,9 +1752,83 @@ export async function refundPta(input: RefundPtaInput): Promise<Pta> {
 // =====================================================================
 // 14.7 — Revenue Protection (anomali bayrakları)
 // =====================================================================
+/**
+ * Anomali taraması — CANLI.
+ *
+ * Uyarılar artık sabit bir listeden değil, store'daki gerçek biletlerden
+ * türetilir; ekranda gördüğü bayrağa tıklayan personel gerçekten o durumdaki
+ * bileti bulur. Üç kural doğrudan handbook invariant'larının ihlalidir:
+ *   · sıra dışı kullanım (1.1.4.4) — önceki kupon "O" iken sonraki honor edilmiş
+ *   · gecikmiş kontrol (1.1.4.1) — kontrol süresi dolmuş, kupon hâlâ dışarıda
+ *   · mükerrer kesim — aynı FOID + aynı güzergâh ile ikinci canlı belge
+ * Askıya alınan kupon (S) ayrıca "inceleme altında" olarak bayraklanır.
+ */
+export function scanRevenueAlerts(tickets: Ticket[] = store): RevenueAlert[] {
+  const out: RevenueAlert[] = [];
+  const USED: CouponStatus[] = ["C", "L", "F"];
+
+  for (const t of tickets) {
+    for (const c of t.coupons) {
+      if (USED.includes(c.status) && t.coupons.some((x) => x.seq < c.seq && x.status === "O")) {
+        out.push({
+          id: `seq-${t.ticketNumber}-${c.seq}`, kind: "out_of_sequence", severity: "high",
+          ticketNumber: t.ticketNumber,
+          detail: `Kupon #${c.seq} (${c.segment.origin}→${c.segment.destination}) kendinden önceki açık kupondan önce honor edilmiş.`,
+          detectedAt: t.history[t.history.length - 1]?.occurredAt ?? t.issuedAt,
+        });
+      }
+      if (c.status === "S") {
+        out.push({
+          id: `susp-${t.ticketNumber}-${c.seq}`, kind: "status_mismatch", severity: "medium",
+          ticketNumber: t.ticketNumber,
+          detail: `Kupon #${c.seq} askıda (S) — inceleme kapanana kadar kullanılamaz.`,
+          detectedAt: [...t.history].reverse().find((h) => h.type === "CouponSuspended")?.occurredAt ?? t.issuedAt,
+        });
+      }
+    }
+
+    if (isControlOverdue(t) && t.coupons.some((c) => !isFinal(c.status))) {
+      out.push({
+        id: `ctl-${t.ticketNumber}`, kind: "control_overdue", severity: "medium",
+        ticketNumber: t.ticketNumber,
+        detail: `Kontrol ${t.control.holder}'da ve süresi ${formatDeadline(t.control.deadlineAt!)} doldu (1.1.4.1 lease aşımı).`,
+        detectedAt: t.control.deadlineAt!,
+      });
+    }
+  }
+
+  // Mükerrer kesim: aynı kimlik belgesi + aynı güzergâh ile ikinci canlı bilet.
+  const byKey = new Map<string, Ticket[]>();
+  for (const t of tickets) {
+    if (!t.passenger.foid || t.coupons.every((c) => isFinal(c.status))) continue;
+    const key = `${t.passenger.foid}|${t.coupons.map((c) => c.segment.origin + c.segment.destination).join(">")}`;
+    byKey.set(key, [...(byKey.get(key) ?? []), t]);
+  }
+  for (const [, group] of byKey) {
+    if (group.length < 2) continue;
+    for (const t of group.slice(1)) {
+      out.push({
+        id: `dup-${t.ticketNumber}`, kind: "duplicate", severity: "high",
+        ticketNumber: t.ticketNumber,
+        detail: `Aynı FOID (${t.passenger.foid}) ve güzergâh ile ${group.length} canlı belge — olası mükerrer kesim.`,
+        detectedAt: t.issuedAt,
+      });
+    }
+  }
+  return out;
+}
+
+function formatDeadline(iso: string): string {
+  return new Date(iso).toLocaleString("tr-TR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+
 export async function listRevenueAlerts(): Promise<RevenueAlert[]> {
   await delay(220);
-  return [...MOCK_REVENUE_ALERTS].sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
+  // Canlı tarama + tarihî örnek kayıtlar (demo verisinde geçmiş vakalar).
+  const live = scanRevenueAlerts();
+  const liveTickets = new Set(live.map((a) => a.ticketNumber + a.kind));
+  const seeded = MOCK_REVENUE_ALERTS.filter((a) => !liveTickets.has(a.ticketNumber + a.kind));
+  return [...live, ...seeded].sort((a, b) => new Date(b.detectedAt).getTime() - new Date(a.detectedAt).getTime());
 }
 
 // Statü pill rengi için yardımcı (read-only kullanım)

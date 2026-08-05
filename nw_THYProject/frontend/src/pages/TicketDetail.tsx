@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
-  CreditCard, FileOutput, Luggage, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
+  CreditCard, FileOutput, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
 import { STATUS_META } from "@/domain/couponStatus";
@@ -444,6 +444,7 @@ function MoreMenu({
     { id: "printexchange", icon: <FileOutput size={15} strokeWidth={1.75} />, label: "Print Exchange", hint: "Farklı kağıt belge no → X (1.3.4)", perm: "ticket.print" },
     { id: "control", icon: <KeyRound size={15} strokeWidth={1.75} />, label: "Kupon Kontrolü", hint: "Devret / geri al / iste (1.1.5.1)", perm: "ticket.exchange" },
     { id: "refundcancel", icon: <RotateCcw size={15} strokeWidth={1.75} />, label: "İadeyi Geri Al", hint: "Aynı dönem içinde refund-cancel (12.13.2)", perm: "ticket.refund" },
+    { id: "suspend", icon: <PauseOctagon size={15} strokeWidth={1.75} />, label: "Askıya Al / Çıkar", hint: "Şüpheli belgeyi dondur (S, 1.1.4)", perm: "ticket.suspend" },
   ];
 
   return (

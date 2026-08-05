@@ -30,6 +30,7 @@ export type Permission =
   | "ticket.emd"
   | "ticket.revalidate"
   | "ticket.print"
+  | "ticket.suspend"
   | "pta.manage"
   | "checkin.accept"
   | "checkin.board"
@@ -51,6 +52,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "ticket.emd": "EMD / Fazla bagaj",
   "ticket.revalidate": "Revalidation (uçuş/saat)",
   "ticket.print": "Kağıda bas (P)",
+  "ticket.suspend": "Kuponu askıya al (S)",
   "pta.manage": "PTA (Prepaid)",
   "checkin.accept": "Check-in kabul",
   "checkin.board": "Biniş (boarding)",
@@ -67,7 +69,7 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
 const INCREMENTAL: Record<Role, Permission[]> = {
   staff: ["ticket.issue", "ticket.emd", "ticket.print", "pta.manage", "checkin.accept", "checkin.board", "order.view", "messages.view"],
   supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate"],
-  chief: ["ticket.irrop", "revenue.view", "ops.view"],
+  chief: ["ticket.irrop", "ticket.suspend", "revenue.view", "ops.view"],
   manager: ["admin.users", "admin.settings"],
   admin: ["admin.roles"],
 };

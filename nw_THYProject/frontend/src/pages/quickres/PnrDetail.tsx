@@ -41,7 +41,7 @@ export function PnrDetail() {
         }
         actions={
           pnr.status !== "cancelled" && (
-            <Button onClick={() => navigate({ to: "/issue" })}>
+            <Button onClick={() => navigate({ to: "/issue", search: { pnr: pnr.recordLocator } })}>
               <TicketPlus size={15} strokeWidth={1.75} /> {t("nav.issue")}
             </Button>
           )

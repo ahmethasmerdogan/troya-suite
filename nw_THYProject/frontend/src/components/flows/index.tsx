@@ -4,7 +4,8 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   addEmd, endorseTicket, exchangeTicket, grantControl, irropReroute, listAgreements,
   markNoShow, newIdempotencyKey, printExchange, printToPaper, quoteRefund, recordBaggage,
-  refundCancel, refundTicket, requestControl, returnControl, revalidateCoupon, voidTicket,
+  refundCancel, refundTicket, releaseCoupons, requestControl, returnControl, revalidateCoupon,
+  suspendCoupons, voidTicket,
   SESSION_CARRIER,
 } from "@/domain/api";
 import { INVOLUNTARY_REASON_LABEL, ruleOfTicket, type InvoluntaryReason, type RefundType } from "@/domain/refundRules";
@@ -34,7 +35,7 @@ import { cn, formatDateTime, flightCode } from "@/lib/utils";
 export type FlowId =
   | "exchange" | "refund" | "void" | "irrop" | "endorse"
   | "revalidate" | "print" | "noshow" | "baggage" | "emd" | "bagrecord"
-  | "control" | "refundcancel" | "printexchange";
+  | "control" | "refundcancel" | "printexchange" | "suspend";
 
 interface Props {
   ticket: Ticket;
@@ -58,6 +59,7 @@ export function TicketFlows({ ticket, flow, onClose }: Props) {
       <ControlFlow ticket={ticket} open={flow === "control"} onClose={onClose} />
       <RefundCancelFlow ticket={ticket} open={flow === "refundcancel"} onClose={onClose} />
       <PrintExchangeFlow ticket={ticket} open={flow === "printexchange"} onClose={onClose} />
+      <SuspendFlow ticket={ticket} open={flow === "suspend"} onClose={onClose} />
     </>
   );
 }
@@ -117,6 +119,9 @@ function useRefresh() {
     qc.invalidateQueries({ queryKey: ["tickets"] });
     qc.invalidateQueries({ queryKey: ["ticketsAll"] });
     qc.invalidateQueries({ queryKey: ["emds"] });
+    // Uyarılar artık store'dan türetiliyor — komut sonrası taranmalı.
+    qc.invalidateQueries({ queryKey: ["revenueAlerts"] });
+    qc.invalidateQueries({ queryKey: ["orders"] });
   };
 }
 
@@ -852,6 +857,59 @@ function PrintFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
         <Banner kind="warning">P final bir statüdür; basılan kupon elektronik olarak kullanılamaz.</Banner>
         <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle} only={(c) => c.status === "O"} />
         <Field label="Sebep"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Sistem kesintisi, ortak talebi…" /></Field>
+      </div>
+    </Drawer>
+  );
+}
+
+/* --- askıya alma / serbest bırakma (S, 1.1.4) ------------------------- */
+
+function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const refresh = useRefresh();
+  const [sel, toggle] = useToggle();
+  const [reason, setReason] = useState("");
+  // Askıdaki kupon varsa ekran "serbest bırak" moduna döner — aynı kapıdan iki yön.
+  const suspended = ticket.coupons.filter((c) => c.status === "S");
+  const releasing = suspended.length > 0;
+
+  const run = useMutation({
+    mutationFn: () => {
+      const input = { ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: newIdempotencyKey() };
+      return releasing ? releaseCoupons(input) : suspendCoupons(input);
+    },
+    onSuccess: () => {
+      toast.success(releasing ? "Kuponlar askıdan çıkarıldı" : "Kuponlar askıya alındı");
+      refresh(ticket.ticketNumber);
+      onClose();
+    },
+    onError: (e: Error) => toast.danger(releasing ? "Askıdan çıkarılamadı" : "Askıya alınamadı", e.message),
+  });
+
+  return (
+    <Drawer
+      open={open} onClose={onClose}
+      title={releasing ? "Askıdan Çıkar" : "Askıya Al"}
+      hint={releasing ? "İnceleme kapandı; kupon yeniden kullanılabilir hâle gelir (S→O)." : "Şüpheli belge kullanıma kapatılır; değeri korunur (O/A→S)."}
+      footer={
+        <Button variant={releasing ? "success" : "danger"} disabled={!sel.length || (!releasing && !reason.trim()) || run.isPending} onClick={() => run.mutate()}>
+          {run.isPending ? "Uygulanıyor…" : releasing ? "Askıdan çıkar" : "Askıya al"}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Banner kind={releasing ? "info" : "warning"}>
+          {releasing
+            ? "Askıdaki kupon O'ya döner; iade/exchange gibi işlemler yeniden açılır."
+            : "Askıdaki kupon check-in edilemez, iade/exchange edilemez. Belge iptal edilmez — inceleme sonunda O'ya döner ya da void edilir."}
+        </Banner>
+        <CouponPicker
+          coupons={ticket.coupons} selected={sel} onToggle={toggle}
+          only={(c) => (releasing ? c.status === "S" : c.status === "O" || c.status === "A")}
+        />
+        <Field label="Gerekçe" hint="Denetim kaydına yazılır." required={!releasing}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)}
+            placeholder={releasing ? "İnceleme kapandı, ödeme doğrulandı…" : "Chargeback itirazı, sahtecilik incelemesi…"} />
+        </Field>
       </div>
     </Drawer>
   );

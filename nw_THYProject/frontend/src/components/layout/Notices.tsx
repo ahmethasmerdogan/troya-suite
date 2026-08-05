@@ -79,10 +79,22 @@ export function useNotices(): Notice[] {
   return out.sort((a, b) => RANK[a.severity] - RANK[b.severity]);
 }
 
+// Kapatılan duyurular tarayıcıda kalır: her sayfa yenilemesinde aynı uyarıyı
+// yeniden kapatmak zorunda bırakmak duyuru şeridini gürültüye çevirir.
+const DISMISS_KEY = "troya.dismissedNotices";
+function readDismissed(): string[] {
+  try {
+    const list: unknown = JSON.parse(localStorage.getItem(DISMISS_KEY) ?? "[]");
+    return Array.isArray(list) ? list.filter((x): x is string => typeof x === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Üst şerit — en öncelikli açık duyuru. */
 export function AnnouncementBar() {
   const notices = useNotices();
-  const [dismissed, setDismissed] = useState<string[]>([]);
+  const [dismissed, setDismissed] = useState<string[]>(readDismissed);
   const open = notices.filter((n) => !dismissed.includes(n.id));
   const top = open[0];
   if (!top) return null;
@@ -117,7 +129,11 @@ export function AnnouncementBar() {
         </Link>
       )}
       <button
-        onClick={() => setDismissed((d) => [...d, top.id])}
+        onClick={() => setDismissed((d) => {
+          const next = [...d, top.id];
+          try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next.slice(-60))); } catch { /* depolama kapalı */ }
+          return next;
+        })}
         aria-label="Duyuruyu kapat"
         className="flex-shrink-0 rounded-sm p-0.5 opacity-60 transition-opacity hover:opacity-100"
       >

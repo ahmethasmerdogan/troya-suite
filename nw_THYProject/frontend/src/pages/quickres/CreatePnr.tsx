@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { createPnr, type ReservationSegment } from "@/domain/reservation";
 import type { Passenger } from "@/domain/types";
@@ -20,8 +20,17 @@ const emptySeg = (): ReservationSegment => ({
 export function CreatePnr() {
   const t = useT();
   const navigate = useNavigate();
+  // Uygunluk sorgusundan seçilen sefer (?o=&d=&cx=&fn=&rbd=&dep=&arr=) formu doldurur.
+  const q = useSearch({ from: "/res/new" });
   const [pax, setPax] = useState<Passenger[]>([emptyPax()]);
-  const [segs, setSegs] = useState<ReservationSegment[]>([emptySeg()]);
+  const [segs, setSegs] = useState<ReservationSegment[]>([
+    q.fn && q.dep
+      ? {
+        origin: q.o ?? "IST", destination: q.d ?? "", carrier: q.cx ?? "TK", flightNumber: q.fn,
+        rbd: q.rbd ?? "Y", departure: q.dep, arrival: q.arr ?? q.dep, status: "HK",
+      }
+      : emptySeg(),
+  ]);
   const [contact, setContact] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -47,6 +56,11 @@ export function CreatePnr() {
       <PageTitle title={t("nav.res.new")} hint="Yolcu ve uçuş bilgilerini girin; sistem PNR (record locator) üretir." />
 
       <div className="flex flex-col gap-4">
+        {q.fn && q.dep && (
+          <Banner kind="info" title="Uygunluk sorgusundan gelindi">
+            {q.cx}{q.fn} · {q.o} → {q.d} · sınıf {q.rbd} segment olarak dolduruldu. Yolcu bilgilerini girip rezervasyonu oluşturun.
+          </Banner>
+        )}
         <Panel>
           <PanelHead
             title="Yolcular"

@@ -2,6 +2,7 @@
 // Check-in, ilgili bilet kuponunu Troya'da O→C'ye taşır (cross-modül linkage; api.setCouponStatus).
 
 import { seatDenial } from "./seatRules";
+import { airportByCode } from "./airports";
 import { MOCK_TICKETS } from "./mockData";
 import { generateTickets } from "./genTickets";
 
@@ -237,10 +238,53 @@ export function seatFromId(id: string): Seat | null {
 }
 
 export interface CheckInInput { flightId: string; passengerId: string; seat: string; bags: number; idempotencyKey: string; }
+/**
+ * APIS kapısı (Advance Passenger Information).
+ *
+ * Uluslararası uçuşta yolcu bilgisi kalkıştan önce varış ülkesine iletilir;
+ * bilgisi eksik yolcu KABUL EDİLMEZ — gişede bu bir kuraldır, öneri değil.
+ * `apis` alanı veri modelinde vardı ama hiçbir yerde zorlanmıyordu: eksik
+ * APIS'li yolcu sorunsuz check-in ediliyordu.
+ */
+export function isInternational(flight: DepartureFlight): boolean {
+  const o = airportByCode(flight.origin)?.countryCode;
+  const d = airportByCode(flight.destination)?.countryCode;
+  return !!o && !!d && o !== d;
+}
+
+export function apisMissing(pax: CheckinPassenger): string[] {
+  const gaps: string[] = [];
+  if (!pax.passport?.trim()) gaps.push("pasaport numarası");
+  if (!pax.nationality?.trim()) gaps.push("uyruk");
+  if (pax.apis === false) gaps.push("APIS teyidi");
+  return gaps;
+}
+
+/** APIS bilgisini tamamla — gişede pasaport okutulunca çağrılır. */
+export async function recordApis(
+  flightId: string, passengerId: string, data: { passport: string; nationality: string },
+): Promise<CheckinPassenger> {
+  await delay(320);
+  const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
+  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (!data.passport.trim()) throw new Error("Pasaport numarası zorunlu");
+  if (data.nationality.trim().length !== 2) throw new Error("Uyruk iki harfli ülke kodu olmalı (ISO-2)");
+  pax.passport = data.passport.trim().toUpperCase();
+  pax.nationality = data.nationality.trim().toUpperCase();
+  pax.apis = true;
+  return pax;
+}
+
 export async function checkInPassenger(input: CheckInInput): Promise<CheckinPassenger> {
   await delay(550);
   const pax = PASSENGERS[input.flightId]?.find((p) => p.id === input.passengerId);
   if (!pax) throw new Error("Yolcu bulunamadı");
+  // APIS kapısı — uluslararası uçuşta eksik bilgiyle kabul yok.
+  const flightRef = FLIGHTS.find((f) => f.flightId === input.flightId);
+  if (flightRef && isInternational(flightRef)) {
+    const gaps = apisMissing(pax);
+    if (gaps.length) throw new Error(`APIS eksik (${gaps.join(", ")}) — uluslararası uçuşta kabul yapılamaz.`);
+  }
   // Koltuk uygunluğu — backend otorite ilkesinin mock karşılığı: UI atlatılsa bile burada reddedilir.
   const seatInfo = seatFromId(input.seat);
   if (!seatInfo) throw new Error(`Geçersiz koltuk: ${input.seat}`);
@@ -267,6 +311,66 @@ export async function boardPassenger(flightId: string, passengerId: string): Pro
   pax.status = "boarded";
   manualBoarded[flightId] = (manualBoarded[flightId] ?? 0) + 1; // HUB board canlı senkron
   return pax;
+}
+
+/**
+ * Check-in geri alma (undo).
+ *
+ * Yanlış yolcuyu kabul etmek gişede olağan bir hatadır; DCS'te geri alınabilir
+ * olmalı. Koltuk boşalır, sıra numarası düşer, bilet kuponu A'ya (havalimanı
+ * kontrolü) geri çekilir — bunu çağıran ekran yapar.
+ */
+export async function undoCheckIn(flightId: string, passengerId: string): Promise<CheckinPassenger> {
+  await delay(400);
+  const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
+  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (pax.status === "boarded") throw new Error("Yolcu uçağa binmiş — check-in geri alınamaz.");
+  if (pax.status !== "checked_in") throw new Error("Bu yolcu zaten kabul edilmemiş.");
+  pax.status = "not_checked";
+  pax.seat = undefined;
+  pax.sequenceNumber = undefined;
+  const flight = FLIGHTS.find((f) => f.flightId === flightId);
+  if (flight && flight.checkedIn > 0) flight.checkedIn -= 1;
+  return pax;
+}
+
+/** Kabul edilmiş tüm yolcuları tek işlemde bindir (gate'te olağan toplu aksiyon). */
+export async function boardAll(flightId: string): Promise<CheckinPassenger[]> {
+  await delay(600);
+  const list = PASSENGERS[flightId] ?? [];
+  const target = list.filter((p) => p.status === "checked_in");
+  if (!target.length) throw new Error("Bindirilecek kabul edilmiş yolcu yok.");
+  for (const p of target) {
+    p.status = "boarded";
+    manualBoarded[flightId] = (manualBoarded[flightId] ?? 0) + 1;
+  }
+  return target;
+}
+
+/**
+ * Uçuş kapanışı (close-out).
+ *
+ * Kapı kapanır, uçuş kalkmış sayılır ve BİNEN yolcuların kuponları Flown'a
+ * geçer. Kupon zincirinin son halkası buydu: O→A→C→L'ye kadar geliyor ama
+ * hiçbir ekran F yazmıyordu.
+ */
+export interface CloseOutResult {
+  flight: DepartureFlight;
+  boarded: CheckinPassenger[];
+  noShow: CheckinPassenger[];
+}
+export async function closeOutFlight(flightId: string): Promise<CloseOutResult> {
+  await delay(700);
+  const flight = FLIGHTS.find((f) => f.flightId === flightId);
+  if (!flight) throw new Error("Uçuş bulunamadı");
+  if (flight.status === "departed" || flight.status === "closed")
+    throw new Error("Uçuş zaten kapatılmış.");
+  const list = PASSENGERS[flightId] ?? [];
+  const boarded = list.filter((p) => p.status === "boarded");
+  // Kabul edilmiş ama binmemiş yolcular no-show'dur.
+  const noShow = list.filter((p) => p.status === "checked_in");
+  flight.status = "departed";
+  return { flight, boarded, noShow };
 }
 
 export interface PaxHit { pax: CheckinPassenger; flight: DepartureFlight }

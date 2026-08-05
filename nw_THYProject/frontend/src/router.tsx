@@ -14,7 +14,18 @@ const indexRoute = createRoute({ getParentRoute: () => rootRoute, path: "/", com
 
 // QuickRes (rezervasyon)
 const resSearchRoute = createRoute({ getParentRoute: () => rootRoute, path: "/res", component: lazyRouteComponent(() => import("@/pages/quickres/PnrSearch"), "PnrSearch") });
-const resNewRoute = createRoute({ getParentRoute: () => rootRoute, path: "/res/new", component: lazyRouteComponent(() => import("@/pages/quickres/CreatePnr"), "CreatePnr") });
+// Uygunluk sorgusundan "Rezervasyona ekle" ile gelinen segment ön-doldurulur.
+const resNewRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/res/new",
+  component: lazyRouteComponent(() => import("@/pages/quickres/CreatePnr"), "CreatePnr"),
+  validateSearch: (s: Record<string, unknown>): {
+    o?: string; d?: string; cx?: string; fn?: string; rbd?: string; dep?: string; arr?: string;
+  } => {
+    const str = (v: unknown) => (typeof v === "string" && v ? v : undefined);
+    return { o: str(s.o), d: str(s.d), cx: str(s.cx), fn: str(s.fn), rbd: str(s.rbd), dep: str(s.dep), arr: str(s.arr) };
+  },
+});
 const resAvailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/res/availability", component: lazyRouteComponent(() => import("@/pages/quickres/Availability"), "Availability") });
 const resDetailRoute = createRoute({ getParentRoute: () => rootRoute, path: "/res/$pnr", component: lazyRouteComponent(() => import("@/pages/quickres/PnrDetail"), "PnrDetail") });
 
@@ -28,7 +39,15 @@ const searchRoute = createRoute({
     action: typeof s.action === "string" ? s.action : undefined,
   }),
 });
-const issueRoute = createRoute({ getParentRoute: () => rootRoute, path: "/issue", component: lazyRouteComponent(() => import("@/pages/IssueWizard"), "IssueWizard") });
+// `?pnr=` ile gelindiğinde kesim formu rezervasyondan dolar (QuickRes → Troya).
+const issueRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/issue",
+  component: lazyRouteComponent(() => import("@/pages/IssueWizard"), "IssueWizard"),
+  validateSearch: (s: Record<string, unknown>): { pnr?: string } => ({
+    pnr: typeof s.pnr === "string" ? s.pnr : undefined,
+  }),
+});
 const ticketDetailRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/tickets/$ticketNumber",

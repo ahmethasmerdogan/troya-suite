@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import { getAvailability, type FlightOption } from "@/domain/reservation";
 import { Button, Field, Input } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/surface";
@@ -11,6 +12,7 @@ import { formatDateTime, flightCode } from "@/lib/utils";
 // Uygunluk sorgusu — hangi uçuşta hangi sınıfta kaç koltuk var.
 export function Availability() {
   const t = useT();
+  const navigate = useNavigate();
   const [origin, setOrigin] = useState("IST");
   const [destination, setDestination] = useState("LHR");
   const [date, setDate] = useState("");
@@ -23,7 +25,7 @@ export function Availability() {
 
   return (
     <>
-      <PageTitle title={t("nav.res.availability")} hint="Güzergâh ve tarihe göre uçuş ve sınıf uygunluğu." />
+      <PageTitle title={t("nav.res.availability")} hint="Güzergâh ve tarihe göre uçuş ve sınıf uygunluğu. Bir sınıfa tıklayın — rezervasyon formu o seferle açılır." />
 
       <Panel className="mb-4">
         <PanelBody>
@@ -59,14 +61,28 @@ export function Availability() {
               />
               <PanelBody className="flex flex-wrap gap-2">
                 {f.classes.map((c) => (
-                  <span key={c.rbd} className="flex items-center gap-2 rounded-md border border-line px-3 py-2">
+                  <button
+                    key={c.rbd}
+                    type="button"
+                    disabled={c.available <= 0}
+                    title={c.available > 0 ? "Bu sınıfla rezervasyon oluştur" : "Bu sınıfta koltuk yok"}
+                    onClick={() => navigate({
+                      to: "/res/new",
+                      search: {
+                        o: f.origin, d: f.destination, cx: f.carrier,
+                        fn: f.flightNumber.replace(/^[A-Z]{2}/, ""), rbd: c.rbd,
+                        dep: f.departure, arr: f.arrival,
+                      },
+                    })}
+                    className="flex items-center gap-2 rounded-md border border-line px-3 py-2 text-left transition-colors hover:border-brand hover:bg-brand-wash disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:border-line disabled:hover:bg-transparent"
+                  >
                     <span className="num text-[14px] font-semibold text-ink">{c.rbd}</span>
                     <Pill tone={c.cabin === "Business" ? "violet" : "gray"}>{c.cabin}</Pill>
                     <span className="num text-[12px] text-ink-3">{c.available} koltuk</span>
                     <span className="num text-[12.5px] font-medium text-ink">
                       {c.fareFrom.amount.toLocaleString("tr-TR")} {c.fareFrom.currency}
                     </span>
-                  </span>
+                  </button>
                 ))}
               </PanelBody>
             </Panel>

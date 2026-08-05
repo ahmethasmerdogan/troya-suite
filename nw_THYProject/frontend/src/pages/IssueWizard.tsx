@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
-import { useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Calendar,
 } from "lucide-react";
 import { issueTicket, newIdempotencyKey } from "@/domain/api";
+import { getPnr, type ReservationSegment } from "@/domain/reservation";
 import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
@@ -34,8 +35,41 @@ import { cn } from "@/lib/utils";
 
 const STEPS = ["Yolcu", "Sefer", "Ücret", "Ödeme", "Onay"] as const;
 
-interface Leg { origin: string; destination: string; date: string; flight: FlightItem | null }
+interface Leg {
+  origin: string; destination: string; date: string; flight: FlightItem | null;
+  /** Rezervasyondan gelen sefer — koltuk zaten tutulmuş, listenin başında durur. */
+  booked?: FlightItem;
+}
 const emptyLeg = (): Leg => ({ origin: "", destination: "", date: "", flight: null });
+
+/**
+ * Rezervasyon segmentini sefer kartına çevirir.
+ *
+ * PNR'da koltuk BELLİ bir uçuşta tutulmuştur; kesim sırasında personelin
+ * o uçuşu listeden yeniden bulmasını istemek hem yavaş hem hataya açıktır.
+ * Bu yüzden rezervasyondaki sefer listenin başına sabitlenir ve seçili gelir.
+ */
+function legFromSegment(s: ReservationSegment): Leg {
+  const dep = new Date(s.departure), arr = new Date(s.arrival);
+  const flight: FlightItem = {
+    id: `pnr-${s.carrier}${s.flightNumber}-${s.departure}`,
+    flightNumber: s.flightNumber.startsWith(s.carrier) ? s.flightNumber : s.carrier + s.flightNumber,
+    carrier: s.carrier,
+    origin: s.origin,
+    destination: s.destination,
+    departure: s.departure,
+    arrival: s.arrival,
+    durationMin: Math.max(0, Math.round((arr.getTime() - dep.getTime()) / 60_000)),
+    aircraft: "—",
+    demandFactor: 1,
+    fromEconomy: null,
+    fromBusiness: null,
+    seatsLeft: 0,
+    dayKey: s.departure.slice(0, 10),
+    dayLabel: "",
+  };
+  return { origin: s.origin, destination: s.destination, date: s.departure.slice(0, 10), flight, booked: flight };
+}
 
 export function IssueWizard() {
   const navigate = useNavigate();
@@ -69,6 +103,22 @@ export function IssueWizard() {
   }, [legs]);
 
   useEffect(() => { setOffer(null); }, [offers.length, legs]);
+
+  // --- QuickRes'ten gelindiyse formu rezervasyondan doldur (?pnr=XQ7T2M)
+  const { pnr: srcRl } = useSearch({ from: "/issue" });
+  const { data: srcPnr } = useQuery({
+    queryKey: ["pnr", srcRl], queryFn: () => getPnr(srcRl!), enabled: !!srcRl,
+  });
+  const filled = useRef(false);
+  useEffect(() => {
+    if (!srcPnr || filled.current) return;
+    filled.current = true;
+    const first = srcPnr.passengers[0];
+    if (first) setPax((p) => ({ ...p, surname: first.surname, givenName: first.givenName, title: first.title ?? p.title }));
+    if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
+    setPnr(srcPnr.recordLocator);
+    if (srcPnr.segments.length) setLegs(srcPnr.segments.map(legFromSegment));
+  }, [srcPnr]);
 
   // Her adımın kendi zorunlulukları var; eksikse İLERLEMEZ ve neyin eksik
   // olduğu hem alanın altında hem üstteki uyarı kutusunda yazar.
@@ -173,6 +223,12 @@ export function IssueWizard() {
         <StepRail step={step} onGo={setStep} pax={pax} legs={legs} offer={offer} fop={fop} />
 
         <div className="min-w-0">
+          {srcPnr && (
+            <Alert tone="info" title={`${srcPnr.recordLocator} rezervasyonundan dolduruldu`} className="mb-4">
+              Yolcu, güzergâh ve seferler rezervasyondan geldi; kesim tamamlanınca doküman numarası PNR'a yazılır.
+              {srcPnr.passengers.length > 1 && ` PNR'da ${srcPnr.passengers.length} yolcu var — bu kesim ilk yolcu içindir.`}
+            </Alert>
+          )}
           {blocked && (
             <Alert tone="danger" title={blocked} className="mb-4">
               İşaretli alanları doldurun. Zorunlu alanlar etiketlerinde <b>*</b> ile gösterilir.
@@ -495,7 +551,8 @@ function PaxStep({
 /* --- 1 · sefer -------------------------------------------------------- */
 function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) => void; errors: Record<string, string> }) {
   const set = (i: number, patch: Partial<Leg>) =>
-    setLegs(legs.map((l, j) => (i === j ? { ...l, ...patch, ...(patch.flight === undefined && (patch.origin || patch.destination || patch.date) ? { flight: null } : {}) } : l)));
+    // Güzergâh/tarih değişirse seçim de rezervasyon seferi de düşer.
+    setLegs(legs.map((l, j) => (i === j ? { ...l, ...patch, ...(patch.flight === undefined && (patch.origin || patch.destination || patch.date) ? { flight: null, booked: undefined } : {}) } : l)));
 
   return (
     <div className="flex flex-col gap-5">
@@ -507,9 +564,11 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
       </div>
 
       {legs.map((leg, i) => {
-        const flights = leg.origin && leg.destination && leg.date
+        const found = leg.origin && leg.destination && leg.date
           ? searchFlights(leg.origin, leg.destination, leg.date, 1)
           : [];
+        // Rezervasyondaki sefer listede yoksa da seçilebilir kalmalı: başa sabitlenir.
+        const flights = leg.booked ? [leg.booked, ...found.filter((f) => f.id !== leg.booked!.id)] : found;
         return (
           <div key={i} className="flex flex-col gap-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -548,13 +607,19 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                         {new Date(f.arrival).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
                       </span>
                       <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin)}</span>
-                      <span className="text-[12px] text-ink-3">{f.aircraft}</span>
-                      <span className="num ml-auto text-[12px] text-ink-3">{f.seatsLeft} koltuk</span>
-                      {f.fromEconomy && (
-                        <span className="text-[12px] text-ink-2">
-                          <span className="text-ink-3">Eco'dan </span>
-                          <Money value={f.fromEconomy} size="sm" />
-                        </span>
+                      {f.id === leg.booked?.id ? (
+                        <OutlineBadge className="ml-auto">Rezervasyonda onaylı · HK</OutlineBadge>
+                      ) : (
+                        <>
+                          <span className="text-[12px] text-ink-3">{f.aircraft}</span>
+                          <span className="num ml-auto text-[12px] text-ink-3">{f.seatsLeft} koltuk</span>
+                          {f.fromEconomy && (
+                            <span className="text-[12px] text-ink-2">
+                              <span className="text-ink-3">Eco'dan </span>
+                              <Money value={f.fromEconomy} size="sm" />
+                            </span>
+                          )}
+                        </>
                       )}
                     </button>
                   );

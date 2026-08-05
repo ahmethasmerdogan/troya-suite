@@ -167,6 +167,23 @@ export async function getPnr(recordLocator: string): Promise<Pnr | undefined> {
   return MOCK_PNRS.find((p) => p.recordLocator === recordLocator);
 }
 
+/**
+ * PNR → bilet bağı (linkage).
+ *
+ * Bilet kesildiğinde rezervasyon "biletlendi" olur: doküman numarası PNR'a
+ * yazılır ve TTL (ADTK) düşer — süresi dolmuş sayılmaz. Bu, QuickRes ile
+ * Troya arasındaki tek gerçek bağdır; olmadığında kesim rezervasyonu
+ * güncellemez ve PNR süresiz "bilet bekliyor" görünür.
+ */
+export function attachTicketToPnr(recordLocator: string, ticketNumber: string): Pnr | undefined {
+  const p = MOCK_PNRS.find((x) => x.recordLocator === recordLocator.toUpperCase());
+  if (!p) return undefined;
+  if (!p.ticketNumbers.includes(ticketNumber)) p.ticketNumbers.push(ticketNumber);
+  if (p.status === "active") p.status = "ticketed";
+  p.ttl = undefined; // biletlendi → kesim süre limiti anlamsız
+  return p;
+}
+
 export interface CreatePnrInput {
   passengers: Passenger[];
   segments: ReservationSegment[];
