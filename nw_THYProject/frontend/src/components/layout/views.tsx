@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -19,12 +20,13 @@ export function FullView({ children, className }: { children: ReactNode; classNa
  * Dar ekranda liste gizlenir — kayıt seçiliyken detay tam genişlik olur.
  */
 export function SplitView({ list, detail }: { list: ReactNode; detail: ReactNode }) {
+  const t = useT();
   return (
     <div className="flex min-h-0 flex-1">
       <aside
         className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex"
         style={{ width: "var(--pane)" }}
-        aria-label="Kayıt listesi"
+        aria-label={t("shell.recordList")}
       >
         {list}
       </aside>

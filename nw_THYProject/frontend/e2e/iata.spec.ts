@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 // 15.1 iade tarifesi · 1.1.5.1 kontrol · 1.3.4 print exchange · 5.8 EMD makbuzu · 9.3 PTA iadesi.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("troya.onboarded", "1");
+    localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr");
     localStorage.setItem("troya.user", "a.erdogan");
   });
   await page.setViewportSize({ width: 1440, height: 900 });

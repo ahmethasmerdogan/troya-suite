@@ -26,6 +26,13 @@
 
 import type { Money } from "./types";
 
+/**
+ * Kural metinlerinin dili. Arayüz dilinden BAĞIMSIZ tanımlıdır: domain katmanı
+ * store'a bağlanmaz (döngüsel bağımlılık). Varsayılan her yerde "tr" — mevcut
+ * çağıranlar değişmeden Türkçe metin almaya devam eder.
+ */
+export type DocLang = "tr" | "en";
+
 export type PenaltyBase = "perTicket" | "perCoupon" | "perDirection" | "perFareComponent";
 
 /** Tek bir ceza hükmü. */
@@ -150,8 +157,10 @@ export function isFareChangeable(rule?: FareRule): boolean {
 export interface PenaltyResult {
   amount: number;
   currency: string;
-  /** Personele gösterilecek hesap gerekçesi. */
+  /** Personele gösterilecek hesap gerekçesi (TR). */
   explain: string;
+  /** Aynı gerekçenin İngilizcesi — tutar ve hesap aynıdır, yalnız metin çevrilir. */
+  explainEn: string;
   waived?: WaiverCode;
 }
 
@@ -167,30 +176,37 @@ export function computePenalty(rule: PenaltyRule | undefined, baseFare: number, 
 
   let value: number;
   let how: string;
+  // Gerekçenin İngilizcesi hesapla BİRLİKTE yürür; tutara hiç dokunmaz.
+  let howEn: string;
   if (fixed != null && pct != null) {
     const takeHigh = (rule.hiLo ?? "H") === "H";
     value = takeHigh ? Math.max(fixed, pct) : Math.min(fixed, pct);
     how = `${takeHigh ? "yüksek" : "düşük"} olan: sabit ${fixed.toLocaleString("tr-TR")} ile çıplak ücretin %${(rule.percent! * 100).toFixed(0)}'i (${Math.round(pct).toLocaleString("tr-TR")}) arasından`;
+    howEn = `${takeHigh ? "higher" : "lower"} of: fixed ${fixed.toLocaleString("en-GB")} and ${(rule.percent! * 100).toFixed(0)}% of the base fare (${Math.round(pct).toLocaleString("en-GB")})`;
   } else if (pct != null) {
     value = pct;
     how = `çıplak ücretin %${(rule.percent! * 100).toFixed(0)}'i`;
+    howEn = `${(rule.percent! * 100).toFixed(0)}% of the base fare`;
   } else {
     value = fixed ?? 0;
     how = "sabit tutar";
+    howEn = "fixed amount";
   }
 
   if (rule.minimum != null && value < rule.minimum) {
     value = rule.minimum;
     how += ` · minimum ${rule.minimum.toLocaleString("tr-TR")} uygulandı`;
+    howEn += ` · minimum ${rule.minimum.toLocaleString("en-GB")} applied`;
   }
 
   // Uygulama tabanı: kupon başına ise kupon sayısıyla çarpılır.
   if (rule.base === "perCoupon") {
     value *= couponCount;
     how += ` · kupon başına (${couponCount} kupon)`;
+    howEn += ` · per coupon (${couponCount} coupons)`;
   }
 
-  return { amount: Math.round(value), currency: rule.currency, explain: how };
+  return { amount: Math.round(value), currency: rule.currency, explain: how, explainEn: howEn };
 }
 
 /** Muafiyet cezayı kaldırır mı? */
@@ -199,37 +215,83 @@ export function waives(rule: FareRule | undefined, waiver?: WaiverCode): boolean
   return (rule.waivers ?? []).includes(waiver);
 }
 
+/** Özet metinlerinin dile göre kalıpları — hesap değil, yalnız ifade. */
+const SUMMARY_TEXT = {
+  tr: {
+    noRule: "Kural yok — iade ve değişiklik ücretsiz.",
+    both: "İade ve değişiklik yapılamaz.",
+    nonRefundable: "İade edilemez (yalnız iade edilebilir vergiler geri verilir).",
+    nonChangeable: "Değiştirilemez.",
+    none: "yok",
+    pct: (n: string) => `%${n}`,
+    or: " veya ",
+    hi: " (yüksek olan)",
+    lo: " (düşük olan)",
+    refundPenalty: (b: string, a: string) => `İade cezası: kalkıştan önce ${b}, sonra ${a}.`,
+    changeFee: (b: string, a: string) => `Değişiklik ücreti: kalkıştan önce ${b}, sonra ${a}.`,
+    noShow: (v: string) => `No-show ücreti: ${v}.`,
+    taxKept: "Vergiler de iade edilmez (kural gereği bilette kalır).",
+    reissueOnly: "Değişiklik reissue gerektirir; revalidation yetmez.",
+    waivers: (v: string) => `Muafiyet: ${v}.`,
+  },
+  en: {
+    noRule: "No rule filed — refund and change are free of charge.",
+    both: "Neither refundable nor changeable.",
+    nonRefundable: "Non-refundable (only refundable taxes are returned).",
+    nonChangeable: "Non-changeable.",
+    none: "none",
+    pct: (n: string) => `${n}%`,
+    or: " or ",
+    hi: " (whichever is higher)",
+    lo: " (whichever is lower)",
+    refundPenalty: (b: string, a: string) => `Refund penalty: ${b} before departure, ${a} after departure.`,
+    changeFee: (b: string, a: string) => `Change fee: ${b} before departure, ${a} after departure.`,
+    noShow: (v: string) => `No-show fee: ${v}.`,
+    taxKept: "Taxes are not refunded either (the rule keeps them on the ticket).",
+    reissueOnly: "The change requires a reissue; revalidation is not sufficient.",
+    waivers: (v: string) => `Waivers: ${v}.`,
+  },
+} as const;
+
 /** Ürünün kısa kural özeti — ücret seçiminde ve iade ekranında gösterilir. */
-export function ruleSummary(rule: FareRule | undefined, currency = TRY_): string[] {
-  if (!rule) return ["Kural yok — iade ve değişiklik ücretsiz."];
+export function ruleSummary(rule: FareRule | undefined, currency = TRY_, lang: DocLang = "tr"): string[] {
+  const T = SUMMARY_TEXT[lang];
+  const nf = lang === "en" ? "en-GB" : "tr-TR";
+  if (!rule) return [T.noRule];
   const out: string[] = [];
-  if (rule.restriction === "B") out.push("İade ve değişiklik yapılamaz.");
-  else if (rule.restriction === "X") out.push("İade edilemez (yalnız iade edilebilir vergiler geri verilir).");
-  else if (rule.restriction === "N") out.push("Değiştirilemez.");
+  if (rule.restriction === "B") out.push(T.both);
+  else if (rule.restriction === "X") out.push(T.nonRefundable);
+  else if (rule.restriction === "N") out.push(T.nonChangeable);
 
   const fmt = (p?: PenaltyRule) => {
     if (!p) return null;
     const parts: string[] = [];
-    if (p.amount != null) parts.push(`${p.amount.toLocaleString("tr-TR")} ${p.currency}`);
-    if (p.percent != null) parts.push(`%${(p.percent * 100).toFixed(0)}`);
-    return parts.join(p.hiLo === "L" ? " / " : " veya ") + (p.hiLo ? ` (${p.hiLo === "H" ? "yüksek" : "düşük"} olan)` : "");
+    if (p.amount != null) parts.push(`${p.amount.toLocaleString(nf)} ${p.currency}`);
+    if (p.percent != null) parts.push(T.pct((p.percent * 100).toFixed(0)));
+    return parts.join(p.hiLo === "L" ? " / " : T.or) + (p.hiLo ? (p.hiLo === "H" ? T.hi : T.lo) : "");
   };
   const rb = fmt(rule.refund?.beforeDeparture);
   const ra = fmt(rule.refund?.afterDeparture);
   const cb = fmt(rule.change?.beforeDeparture);
   const ca = fmt(rule.change?.afterDeparture);
   const ns = fmt(rule.refund?.noShow);
-  if (rb || ra) out.push(`İade cezası: kalkıştan önce ${rb ?? "yok"}, sonra ${ra ?? "yok"}.`);
-  if (cb || ca) out.push(`Değişiklik ücreti: kalkıştan önce ${cb ?? "yok"}, sonra ${ca ?? "yok"}.`);
-  if (ns) out.push(`No-show ücreti: ${ns}.`);
-  if (rule.refund?.taxIndicator === "X") out.push("Vergiler de iade edilmez (kural gereği bilette kalır).");
-  if (rule.change?.ticketType === "A") out.push("Değişiklik reissue gerektirir; revalidation yetmez.");
-  if (rule.waivers?.length) out.push(`Muafiyet: ${rule.waivers.map(waiverLabel).join(", ")}.`);
+  if (rb || ra) out.push(T.refundPenalty(rb ?? T.none, ra ?? T.none));
+  if (cb || ca) out.push(T.changeFee(cb ?? T.none, ca ?? T.none));
+  if (ns) out.push(T.noShow(ns));
+  if (rule.refund?.taxIndicator === "X") out.push(T.taxKept);
+  if (rule.change?.ticketType === "A") out.push(T.reissueOnly);
+  if (rule.waivers?.length) out.push(T.waivers(rule.waivers.map((w) => waiverLabel(w, lang)).join(", ")));
   void currency;
   return out;
 }
 
-export function waiverLabel(w: WaiverCode): string {
+export function waiverLabel(w: WaiverCode, lang: DocLang = "tr"): string {
+  if (lang === "en") {
+    return {
+      death: "death", illness: "illness", family_death: "death in the family",
+      family_illness: "illness in the family", schedule_change: "schedule change", upgrade: "upgrade",
+    }[w];
+  }
   return {
     death: "vefat", illness: "hastalık", family_death: "yakının vefatı",
     family_illness: "yakının hastalığı", schedule_change: "tarife değişikliği", upgrade: "upgrade",

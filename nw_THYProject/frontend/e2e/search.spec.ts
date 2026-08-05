@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // Onboarding modal'ını atla (pointer event'leri yakalıyor).
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.user", "a.erdogan"); });
+  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr"); localStorage.setItem("troya.user", "a.erdogan"); });
 });
 
 // Arama akışı — mock store'da bilinen bilet 2351234567890 (mockData.ts).

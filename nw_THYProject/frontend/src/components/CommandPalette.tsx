@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
@@ -11,6 +11,7 @@ import { searchPnrs } from "@/domain/reservation";
 import type { Emd, TicketSummary } from "@/domain/types";
 import type { PnrSummary } from "@/domain/reservation";
 import { useUI } from "@/store/ui";
+import { useT, translate } from "@/i18n";
 import { Kbd } from "@/components/ui/core";
 import { cn } from "@/lib/utils";
 
@@ -25,6 +26,7 @@ export function CommandPalette() {
   const open = useUI((s) => s.commandOpen);
   const setOpen = useUI((s) => s.setCommandOpen);
   const navigate = useNavigate();
+  const t = useT();
   const [q, setQ] = useState("");
 
   const [tickets, setTickets] = useState<TicketSummary[]>([]);
@@ -66,16 +68,18 @@ export function CommandPalette() {
     return () => { alive = false; clearTimeout(timer); };
   }, [q, open]);
 
-  const shape = useMemo(() => detect(q), [q]);
+  // Etiketleri sözlükten okur; her render'da yeniden çalışması dil değişince
+  // rozetin de dönmesini sağlar (hesap zaten bir regex kadar ucuz).
+  const shape = detect(q);
   const go = (fn: () => void) => { setOpen(false); fn(); };
 
   if (!open) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="Komut paleti">
+    <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label={t("search.cmd.label")}>
       <div className="anim-fade absolute inset-0 bg-[rgba(26,26,23,0.45)] backdrop-blur-[3px] dark:bg-black/60" onClick={() => setOpen(false)} />
       <Command
-        label="Komut paleti"
+        label={t("search.cmd.label")}
         shouldFilter={false}
         className="anim-pop absolute left-1/2 top-[14vh] w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-panel"
       >
@@ -85,7 +89,7 @@ export function CommandPalette() {
             value={q}
             onValueChange={setQ}
             autoFocus
-            placeholder="Bilet no · EMD · PNR · order · yolcu · uçuş"
+            placeholder={t("search.cmd.placeholder")}
             className="h-12 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
           />
           {shape && <span className="num shrink-0 rounded-sm bg-sunken px-1.5 py-0.5 text-[11px] text-ink-2">{shape.hint}</span>}
@@ -94,12 +98,12 @@ export function CommandPalette() {
 
         <Command.List className="max-h-[52vh] overflow-y-auto p-2">
           <Command.Empty className="px-3 py-8 text-center text-[13px] text-ink-3">
-            {q.trim().length < 2 ? "Aramak için en az iki karakter yazın." : "Eşleşen kayıt yok."}
+            {q.trim().length < 2 ? t("search.cmd.minChars") : t("search.cmd.noResult")}
           </Command.Empty>
 
           {/* Biçimden anlaşılan doğrudan hedef — en üstte, tek tuşla açılır. */}
           {shape?.direct && (
-            <Group heading="Doğrudan aç">
+            <Group heading={t("search.cmd.group.direct")}>
               <Row
                 icon={shape.direct.icon}
                 mono
@@ -111,7 +115,7 @@ export function CommandPalette() {
           )}
 
           {tickets.length > 0 && (
-            <Group heading="Biletler">
+            <Group heading={t("search.cmd.group.tickets")}>
               {tickets.map((t) => (
                 <Row
                   key={t.ticketNumber}
@@ -126,7 +130,7 @@ export function CommandPalette() {
           )}
 
           {emds.length > 0 && (
-            <Group heading="EMD">
+            <Group heading={t("search.cmd.group.emds")}>
               {emds.map((e) => (
                 <Row
                   key={e.emdNumber}
@@ -141,7 +145,7 @@ export function CommandPalette() {
           )}
 
           {pnrs.length > 0 && (
-            <Group heading="PNR">
+            <Group heading={t("search.cmd.group.pnrs")}>
               {pnrs.map((p) => (
                 <Row
                   key={p.recordLocator}
@@ -155,13 +159,13 @@ export function CommandPalette() {
             </Group>
           )}
 
-          <Group heading="Git">
-            <Row icon={<TicketPlus size={15} strokeWidth={1.75} />} label="Bilet Kes" onSelect={() => go(() => navigate({ to: "/issue" }))} />
-            <Row icon={<Search size={15} strokeWidth={1.75} />} label="Bilet Ara" onSelect={() => go(() => navigate({ to: "/search" }))} />
-            <Row icon={<Package size={15} strokeWidth={1.75} />} label="EMD Ara" onSelect={() => go(() => navigate({ to: "/emds" }))} />
-            <Row icon={<ClipboardList size={15} strokeWidth={1.75} />} label="Satış / İşlem Raporu" onSelect={() => go(() => navigate({ to: "/report" }))} />
-            <Row icon={<PlaneTakeoff size={15} strokeWidth={1.75} />} label="Check-in" onSelect={() => go(() => navigate({ to: "/checkin" }))} />
-            <Row icon={<LayoutDashboard size={15} strokeWidth={1.75} />} label="Panel" onSelect={() => go(() => navigate({ to: "/" }))} />
+          <Group heading={t("search.cmd.group.go")}>
+            <Row icon={<TicketPlus size={15} strokeWidth={1.75} />} label={t("nav.issue")} onSelect={() => go(() => navigate({ to: "/issue" }))} />
+            <Row icon={<Search size={15} strokeWidth={1.75} />} label={t("nav.search")} onSelect={() => go(() => navigate({ to: "/search" }))} />
+            <Row icon={<Package size={15} strokeWidth={1.75} />} label={t("nav.emd.search")} onSelect={() => go(() => navigate({ to: "/emds" }))} />
+            <Row icon={<ClipboardList size={15} strokeWidth={1.75} />} label={t("nav.report")} onSelect={() => go(() => navigate({ to: "/report" }))} />
+            <Row icon={<PlaneTakeoff size={15} strokeWidth={1.75} />} label={t("nav.section.checkin")} onSelect={() => go(() => navigate({ to: "/checkin" }))} />
+            <Row icon={<LayoutDashboard size={15} strokeWidth={1.75} />} label={t("module.panel")} onSelect={() => go(() => navigate({ to: "/" }))} />
           </Group>
         </Command.List>
       </Command>
@@ -177,35 +181,35 @@ function detect(raw: string): { hint: string; direct?: { icon: React.ReactNode; 
   if (!s) return null;
   if (/^\d{13}$/.test(s))
     return {
-      hint: "13 hane",
+      hint: translate("search.cmd.shape.digits13"),
       direct: {
         icon: <Ticket size={15} strokeWidth={1.75} />,
         label: s,
-        hint: "Bilet olarak aç",
+        hint: translate("search.cmd.open.ticket"),
         go: (n) => () => n({ to: "/tickets/$ticketNumber", params: { ticketNumber: s } }),
       },
     };
   if (/^ORD[-\w]*$/.test(s))
     return {
-      hint: "order",
+      hint: translate("search.cmd.shape.order"),
       direct: {
         icon: <FileText size={15} strokeWidth={1.75} />,
         label: s,
-        hint: "Order olarak aç",
+        hint: translate("search.cmd.open.order"),
         go: (n) => () => n({ to: "/orders/$orderId", params: { orderId: s } }),
       },
     };
   if (/^[A-Z0-9]{6}$/.test(s))
     return {
-      hint: "PNR",
+      hint: translate("search.cmd.shape.pnr"),
       direct: {
         icon: <BookMarked size={15} strokeWidth={1.75} />,
         label: s,
-        hint: "PNR olarak aç",
+        hint: translate("search.cmd.open.pnr"),
         go: (n) => () => n({ to: "/res/$pnr", params: { pnr: s } }),
       },
     };
-  return { hint: "metin" };
+  return { hint: translate("search.shape.text") };
 }
 
 function Group({ heading, children }: { heading: string; children: React.ReactNode }) {

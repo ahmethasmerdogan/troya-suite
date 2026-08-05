@@ -8,6 +8,7 @@ import { SearchInput, Select } from "@/components/ui/core";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListHead, ListBody, ListFoot, ListRow } from "@/components/layout/views";
+import { useT } from "@/i18n";
 
 /** Order liste paneli — ONE Order yönündeki kayıt gezme yüzeyi. */
 const TONE: Record<Order["status"], Tone> = {
@@ -18,6 +19,7 @@ const pane = { q: "", status: "all" as Order["status"] | "all" };
 
 export function OrderListPane({ selected }: { selected?: string }) {
   const navigate = useNavigate();
+  const t = useT();
   const [q, setQState] = useState(pane.q);
   const [status, setStatusState] = useState<Order["status"] | "all">(pane.status);
   const setQ = (v: string) => { pane.q = v; setQState(v); };
@@ -39,9 +41,9 @@ export function OrderListPane({ selected }: { selected?: string }) {
   return (
     <>
       <ListHead>
-        <SearchInput value={q} onChange={setQ} placeholder="Order ID · yolcu · bağlı ET/EMD no · hizmet" />
+        <SearchInput value={q} onChange={setQ} placeholder={t("search.orders.placeholder")} />
         <Select value={status} onChange={(e) => setStatus(e.target.value as Order["status"] | "all")}>
-          {STATUSES.map((s) => <option key={s} value={s}>{s === "all" ? "Tümü" : s}</option>)}
+          {STATUSES.map((s) => <option key={s} value={s}>{s === "all" ? t("search.filter.all") : s}</option>)}
         </Select>
       </ListHead>
 
@@ -49,7 +51,7 @@ export function OrderListPane({ selected }: { selected?: string }) {
         {isLoading ? (
           <div className="flex flex-col gap-3 p-3">{Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
         ) : rows.length === 0 ? (
-          <div className="px-6 py-14 text-center text-[14px] font-semibold text-ink">Order bulunamadı</div>
+          <div className="px-6 py-14 text-center text-[14px] font-semibold text-ink">{t("search.orders.empty")}</div>
         ) : (
           rows.map((o) => (
             <ListRow
@@ -65,7 +67,7 @@ export function OrderListPane({ selected }: { selected?: string }) {
               <div className="truncate text-[13px] text-ink-2">{o.passenger.surname}/{o.passenger.givenName}</div>
               <div className="flex items-center gap-2 text-[11.5px] text-ink-3">
                 <span className="num">{o.owningCarrier}</span>
-                <span>{o.items.length} kalem</span>
+                <span>{t("search.orders.items", { n: o.items.length })}</span>
                 <span className="ml-auto"><Money value={o.total} size="sm" /></span>
               </div>
             </ListRow>
@@ -73,7 +75,7 @@ export function OrderListPane({ selected }: { selected?: string }) {
         )}
       </ListBody>
 
-      <ListFoot><span className="num">{rows.length} order</span></ListFoot>
+      <ListFoot><span className="num">{t("search.orders.count", { n: rows.length })}</span></ListFoot>
     </>
   );
 }

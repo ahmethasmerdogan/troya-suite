@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { checkInPassenger, getFlight, getSeatMap, listPassengers, type Seat } from "@/domain/checkin";
 import { advanceCouponStatus, newIdempotencyKey, recordBaggage } from "@/domain/api";
-import { paxSeatNotes, seatDenial } from "@/domain/seatRules";
+import { denialReason, paxSeatNotes, seatDenial } from "@/domain/seatRules";
 import { layoutFor } from "@/domain/aircraftLayout";
 import { CabinMap, CabinLegend, blockedSummary } from "@/components/checkin/CabinMap";
 import { Button, Field, Input } from "@/components/ui/core";
@@ -12,6 +12,8 @@ import { Banner } from "@/components/ui/banner";
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
+import { useT, translate } from "@/i18n";
+import { useUI } from "@/store/ui";
 
 /**
  * Koltuk seçimi — her koltuk her yolcuya verilmez.
@@ -22,6 +24,9 @@ import { toast } from "@/components/ui/toast";
  */
 export function SeatSelection() {
   const { flightId, passengerId } = useParams({ from: "/checkin/$flightId/seat/$passengerId" });
+  const t = useT();
+  // Kural gerekçeleri (koltuk reddi, kısıt notları) domainden iki dilli gelir.
+  const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [seat, setSeat] = useState<string | null>(null);
@@ -62,8 +67,11 @@ export function SeatSelection() {
       return { pax: p, couponWarning };
     },
     onSuccess: ({ pax: p, couponWarning }) => {
-      toast.success("Yolcu kabul edildi", `${p.surname}/${p.givenName} · koltuk ${p.seat}`);
-      if (couponWarning) toast.warning("Kupon ilerletilemedi", couponWarning);
+      toast.success(
+        t("checkin.toast.accepted.title"),
+        t("checkin.toast.seatLine", { name: `${p.surname}/${p.givenName}`, seat: p.seat ?? "—" }),
+      );
+      if (couponWarning) toast.warning(t("checkin.toast.couponFailed"), couponWarning);
       qc.invalidateQueries({ queryKey: ["pax", flightId] });
       qc.invalidateQueries({ queryKey: ["seatmap", flightId] });
       qc.invalidateQueries({ queryKey: ["flight", flightId] });
@@ -73,36 +81,36 @@ export function SeatSelection() {
       qc.invalidateQueries({ queryKey: ["tickets"] });
       navigate({ to: "/checkin/$flightId", params: { flightId } });
     },
-    onError: (e: Error) => toast.danger("Kabul edilemedi", e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.acceptFailed"), e.message),
   });
 
   if (isLoading || !person || !flight) return <Skeleton className="h-96 w-full" />;
 
   const layout = layoutFor(flight.aircraft.type);
-  const notes = paxSeatNotes(person);
-  const blocked = blockedSummary(seats ?? [], person);
+  const notes = paxSeatNotes(person, lang);
+  const blocked = blockedSummary(seats ?? [], person, lang);
   const free = (seats ?? []).filter((s) => !s.occupied && !seatDenial(person, s));
   const trySelect = (s: Seat) => {
     const denial = seatDenial(person, s);
-    if (denial) { toast.warning("Bu koltuk verilemez", denial.reason); return; }
+    if (denial) { toast.warning(t("checkin.toast.seatDenied"), denialReason(denial, lang)); return; }
     setSeat(s.id);
   };
 
   return (
     <>
       <PageTitle
-        title="Koltuk Seçimi"
+        title={t("checkin.seat.title")}
         hint={`${person.surname}/${person.givenName} · ${flight.carrier}${flight.flightNumber} · ${flight.origin} → ${flight.destination}`}
       />
 
       <div className="grid grid-cols-1 gap-4 pb-24 lg:grid-cols-[1fr_340px]">
         <Panel>
           <PanelHead
-            title="Kabin"
-            hint={`${flight.aircraft.type} · ${flight.aircraft.config} · ${flight.capacity} koltuk`}
+            title={t("checkin.seat.cabin")}
+            hint={t("checkin.seat.cabinHint", { type: flight.aircraft.type, config: flight.aircraft.config, n: flight.capacity })}
             action={
               <span className="num text-[12px] text-ink-3">
-                {free.length} uygun koltuk
+                {t("checkin.seat.free", { n: free.length })}
               </span>
             }
           />
@@ -125,23 +133,23 @@ export function SeatSelection() {
 
         <div className="flex flex-col gap-4">
           <Panel>
-            <PanelHead title="Yolcu" />
+            <PanelHead title={t("checkin.seat.pax")} />
             <PanelBody className="flex flex-col gap-3">
               <MetaGrid className="grid-cols-2 sm:grid-cols-2">
-                <Meta label="Ad" value={`${person.surname}/${person.givenName}`} />
+                <Meta label={t("checkin.seat.meta.name")} value={`${person.surname}/${person.givenName}`} />
                 <Meta label="PNR" value={person.pnr} mono />
-                <Meta label="Kabin" value={person.cabin} />
-                <Meta label="Bilet" value={person.ticketNumber ?? "—"} mono />
+                <Meta label={t("checkin.seat.cabin")} value={person.cabin} />
+                <Meta label={t("checkin.seat.meta.ticket")} value={person.ticketNumber ?? "—"} mono />
               </MetaGrid>
               {(person.ssr?.length || person.infant || person.child) && (
                 <div className="flex flex-wrap gap-1.5">
                   {person.ssr?.map((c) => <Pill key={c} tone="blue">{c}</Pill>)}
-                  {person.infant && <Pill tone="violet">Bebek</Pill>}
-                  {person.child && <Pill tone="violet">Çocuk</Pill>}
+                  {person.infant && <Pill tone="violet">{t("checkin.seat.infant")}</Pill>}
+                  {person.child && <Pill tone="violet">{t("checkin.seat.child")}</Pill>}
                 </div>
               )}
               {notes.length > 0 && (
-                <Banner kind="warning" title="Koltuk kısıtları">
+                <Banner kind="warning" title={t("checkin.seat.restrictions")}>
                   <ul className="mt-0.5 list-disc pl-4">{notes.map((n) => <li key={n}>{n}</li>)}</ul>
                 </Banner>
               )}
@@ -151,13 +159,13 @@ export function SeatSelection() {
           {/* Kapalı koltukların NEDENİ kalıcı yüzeyde — hover'a bakmak gerekmesin. */}
           {blocked.length > 0 && (
             <Panel>
-              <PanelHead title="Kapalı koltuklar" hint="Bu yolcuya verilemeyecek koltuklar ve gerekçesi." />
+              <PanelHead title={t("checkin.seat.blocked.title")} hint={t("checkin.seat.blocked.hint")} />
               <PanelBody className="flex flex-col gap-2.5 pt-1">
                 {blocked.map((b) => (
                   <div key={b.reason} className="rounded-md border border-line bg-inset px-3 py-2">
                     <div className="text-[12.5px] text-ink">{b.reason}</div>
                     <div className="num mt-1 text-[11px] text-ink-3">
-                      {b.seats.length} koltuk · {b.seats.slice(0, 8).join(", ")}{b.seats.length > 8 ? " …" : ""}
+                      {t("checkin.seat.blocked.count", { n: b.seats.length })} · {b.seats.slice(0, 8).join(", ")}{b.seats.length > 8 ? " …" : ""}
                     </div>
                   </div>
                 ))}
@@ -166,9 +174,9 @@ export function SeatSelection() {
           )}
 
           <Panel>
-            <PanelHead title="Kabul bilgileri" />
+            <PanelHead title={t("checkin.seat.acceptInfo")} />
             <PanelBody className="flex flex-col gap-3">
-              <Field label="Bagaj (adet)" hint="Teslim alınan parça sayısı kupona yazılır (14.4).">
+              <Field label={t("checkin.seat.bags")} hint={t("checkin.seat.bags.hint")}>
                 <Input type="number" min={0} max={5} value={bags} onChange={(e) => setBags(Number(e.target.value))} className="num" />
               </Field>
             </PanelBody>
@@ -180,17 +188,17 @@ export function SeatSelection() {
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-content flex-wrap items-center gap-3 px-5 py-3 sm:px-6 lg:px-8">
           <span className="flex items-baseline gap-2">
-            <span className="microlabel">Seçili koltuk</span>
+            <span className="microlabel">{t("checkin.seat.selected")}</span>
             <span className="num text-[17px] font-semibold text-ink">{seat ?? "—"}</span>
           </span>
           {seat && seatInfo(seats, seat) && (
             <span className="text-[12px] text-ink-3">{seatDescription(seatInfo(seats, seat)!)}</span>
           )}
-          <span className="num text-[12px] text-ink-3">Bagaj {bags}</span>
+          <span className="num text-[12px] text-ink-3">{t("checkin.seat.bagsCount", { n: bags })}</span>
           <span className="ml-auto flex items-center gap-2">
-            <Button variant="ghost" onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId } })}>Vazgeç</Button>
+            <Button variant="ghost" onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId } })}>{t("checkin.seat.cancel")}</Button>
             <Button variant="success" disabled={!seat || accept.isPending} onClick={() => accept.mutate()}>
-              {accept.isPending ? "Kabul ediliyor…" : "Kabul et"}
+              {accept.isPending ? t("checkin.seat.accepting") : t("checkin.action.accept")}
             </Button>
           </span>
         </div>
@@ -205,10 +213,12 @@ const seatInfo = (seats: Seat[] | undefined, id: string) => (seats ?? []).find((
 function seatDescription(s: Seat): string {
   return [
     s.cabin,
-    s.position === "window" ? "pencere kenarı" : s.position === "aisle" ? "koridor" : "orta koltuk",
-    s.exit ? "çıkış sırası" : null,
-    s.bulkhead ? "bölme başı (ekstra diz mesafesi)" : null,
-    s.overWing ? "kanat hizası" : null,
-    s.nearLavatory ? "lavabo yakını" : null,
+    s.position === "window"
+      ? translate("checkin.seat.pos.window")
+      : s.position === "aisle" ? translate("checkin.seat.pos.aisle") : translate("checkin.seat.pos.middle"),
+    s.exit ? translate("checkin.seat.exit") : null,
+    s.bulkhead ? translate("checkin.seat.bulkheadLong") : null,
+    s.overWing ? translate("checkin.seat.overWing") : null,
+    s.nearLavatory ? translate("checkin.seat.lavatory") : null,
   ].filter(Boolean).join(" · ");
 }

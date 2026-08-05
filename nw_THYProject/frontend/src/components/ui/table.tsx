@@ -12,6 +12,7 @@ import { Empty } from "./surface";
 import { Skeleton } from "./skeleton";
 import { useOutside } from "./overlay";
 import { toCsv, downloadCsv, csvFileName } from "@/lib/csv";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -97,6 +98,7 @@ export function DataTable<T>({
   maxHeight?: string;
   className?: string;
 }) {
+  const t = useT();
   const [sorting, setSorting] = useState<SortingState>([]);
   // exportOnly kolonları hiç render edilmez; yalnız CSV'de yer alır.
   const [visibility, setVisibility] = useState<VisibilityState>(() => {
@@ -164,7 +166,7 @@ export function DataTable<T>({
       body.push(cols.map((c, i) => {
         const s = metaOf(c)?.summary;
         if (typeof s === "string" || typeof s === "number") return s;
-        return i === 0 ? "TOPLAM" : "";
+        return i === 0 ? t("shell.table.totalRow") : "";
       }));
     }
     downloadCsv(toCsv(head, body), csvFileName(exportName ?? "export", new Date()));
@@ -187,12 +189,12 @@ export function DataTable<T>({
             {hideable.length > 0 && (
               <div ref={colRef} className="relative">
                 <Button variant="secondary" size="sm" onClick={() => setColMenu((o) => !o)}>
-                  <Columns3 size={15} strokeWidth={1.75} /> Kolonlar
+                  <Columns3 size={15} strokeWidth={1.75} /> {t("shell.table.columns")}
                   <ChevronDown size={13} strokeWidth={2} />
                 </Button>
                 {colMenu && (
                   <div className="anim-pop absolute right-0 top-[calc(100%+6px)] z-40 w-56 rounded-lg border border-line bg-panel p-1">
-                    <div className="microlabel px-2.5 pb-1 pt-1.5">Görünür kolonlar</div>
+                    <div className="microlabel px-2.5 pb-1 pt-1.5">{t("shell.table.visibleColumns")}</div>
                     {hideable.map((c) => (
                       <button
                         key={c.id}
@@ -210,7 +212,7 @@ export function DataTable<T>({
                 )}
               </div>
             )}
-            <IconButton label={dense ? "Rahat satır" : "Sık satır"} variant="secondary" size="sm" onClick={toggleDense}>
+            <IconButton label={t(dense ? "shell.table.comfortable" : "shell.table.dense")} variant="secondary" size="sm" onClick={toggleDense}>
               {dense ? <Rows3 size={15} strokeWidth={1.75} /> : <Rows2 size={15} strokeWidth={1.75} />}
             </IconButton>
           </div>
@@ -254,7 +256,7 @@ export function DataTable<T>({
                       </th>
                     );
                   })}
-                  {rowActions && <th className="w-px border-b border-line px-2 text-right" scope="col"><span className="microlabel">İşlem</span></th>}
+                  {rowActions && <th className="w-px border-b border-line px-2 text-right" scope="col"><span className="microlabel">{t("shell.table.action")}</span></th>}
                 </tr>
               ))}
             </thead>
@@ -275,7 +277,7 @@ export function DataTable<T>({
               ) : rows.length === 0 ? (
                 <tr>
                   <td colSpan={leafs.length + (rowTone ? 1 : 0) + (rowActions ? 1 : 0)}>
-                    <Empty title={empty?.title ?? "Kayıt bulunamadı"} hint={empty?.hint} icon={empty?.icon} />
+                    <Empty title={empty?.title ?? t("shell.table.empty")} hint={empty?.hint} icon={empty?.icon} />
                   </td>
                 </tr>
               ) : (
@@ -340,7 +342,7 @@ export function DataTable<T>({
                           meta?.align === "center" && "text-center",
                         )}
                       >
-                        {meta?.summary ?? (i === 0 ? <span className="microlabel">Toplam</span> : null)}
+                        {meta?.summary ?? (i === 0 ? <span className="microlabel">{t("common.total")}</span> : null)}
                       </td>
                     );
                   })}
@@ -353,13 +355,13 @@ export function DataTable<T>({
 
         {!loading && rows.length > 0 && (
           <div className="flex flex-wrap items-center gap-3 border-t border-line bg-elev px-3 py-2 text-[12px] text-ink-3">
-            <span className="num">{total} kayıt</span>
+            <span className="num">{t("shell.table.records", { n: total })}</span>
             {summary && <span className="text-ink-2">{summary}</span>}
 
             <span className="ml-auto flex items-center gap-2">
               {initialPageSize != null && (
                 <label className="flex items-center gap-1.5">
-                  Sayfa
+                  {t("shell.table.page")}
                   <select
                     value={pageSize || total}
                     onChange={(e) => setPageSize(Number(e.target.value))}
@@ -375,10 +377,10 @@ export function DataTable<T>({
                     {table.getState().pagination.pageIndex * pageSize + 1}–
                     {Math.min((table.getState().pagination.pageIndex + 1) * pageSize, total)} / {total}
                   </span>
-                  <IconButton label="Önceki" variant="secondary" size="sm" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
+                  <IconButton label={t("shell.table.prev")} variant="secondary" size="sm" disabled={!table.getCanPreviousPage()} onClick={() => table.previousPage()}>
                     <ChevronLeft size={15} strokeWidth={1.75} />
                   </IconButton>
-                  <IconButton label="Sonraki" variant="secondary" size="sm" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
+                  <IconButton label={t("shell.table.next")} variant="secondary" size="sm" disabled={!table.getCanNextPage()} onClick={() => table.nextPage()}>
                     <ChevronRight size={15} strokeWidth={1.75} />
                   </IconButton>
                 </>

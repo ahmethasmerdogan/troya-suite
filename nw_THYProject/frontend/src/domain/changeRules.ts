@@ -17,6 +17,7 @@
 
 import type { Segment, Ticket } from "./types";
 import { couponUsed } from "./refundRules";
+import type { DocLang } from "./fareRules";
 
 export type ChangeType = "exchange" | "rebooking" | "reissue" | "rerouting" | "upgrading";
 
@@ -27,6 +28,20 @@ export const CHANGE_TYPE_LABEL: Record<ChangeType, string> = {
   rerouting: "Rerouting (güzergâh değişikliği)",
   upgrading: "Upgrading (daha yüksek ücrete geçiş)",
 };
+
+/** Aynı etiketlerin İngilizcesi — sınıflandırma değişmez, yalnız gösterim. */
+export const CHANGE_TYPE_LABEL_EN: Record<ChangeType, string> = {
+  exchange: "Exchange (unused ticket → new ticket)",
+  rebooking: "Rebooking (reservation change only)",
+  reissue: "Reissue (partially used ticket is repriced)",
+  rerouting: "Rerouting (routing change)",
+  upgrading: "Upgrading (move to a higher fare)",
+};
+
+/** Dile göre etiket — sunum katmanının tek çağrı noktası. */
+export function changeTypeLabel(type: ChangeType, lang: DocLang = "tr"): string {
+  return lang === "en" ? CHANGE_TYPE_LABEL_EN[type] : CHANGE_TYPE_LABEL[type];
+}
 
 /** Değişikliğin bilet yeniden düzenlemeyi gerektirip gerektirmediği. */
 export const NEEDS_REISSUE: Record<ChangeType, boolean> = {
@@ -45,8 +60,10 @@ export interface ChangeAnalysis {
   cabinRaised: boolean;
   /** Yalnız tarih/saat değişti mi (rota, taşıyıcı, sınıf aynı). */
   onlyScheduleChanged: boolean;
-  /** Personele gösterilecek gerekçe. */
+  /** Personele gösterilecek gerekçe (TR). */
   rationale: string;
+  /** Aynı gerekçenin İngilizcesi — sınıflandırma aynıdır, yalnız metin çevrilir. */
+  rationaleEn: string;
   /** Doğru akış: revalidation yeter mi, reissue şart mı? */
   recommendedFlow: "revalidate" | "exchange";
 }
@@ -85,27 +102,35 @@ export function classifyChange(ticket: Ticket, newSegments: Segment[]): ChangeAn
 
   let type: ChangeType;
   let rationale: string;
+  // Gerekçenin İngilizcesi sınıflandırmayla BİRLİKTE yürür; karar akışına dokunmaz.
+  let rationaleEn: string;
 
   if (onlyScheduleChanged) {
     type = "rebooking";
     rationale = "Rota, taşıyıcı ve sınıf aynı; yalnız rezervasyon değişti — bilet yeniden düzenlenmez (12.1.1 REBOOKING).";
+    rationaleEn = "Routing, carrier and cabin are unchanged; only the reservation changed — the ticket is not reissued (12.1.1 REBOOKING).";
   } else if (cabinRaised) {
     type = "upgrading";
     rationale = "Ödenen ücretten daha yüksek bir kabine geçiliyor (12.1.1 UPGRADING).";
+    rationaleEn = "The passenger moves to a cabin higher than the fare paid (12.1.1 UPGRADING).";
   } else if (routeChanged || carrierChanged) {
     type = "rerouting";
     rationale = "Güzergâh/taşıyıcı değişiyor — bilet reissue/exchange gerektirir (12.1.1 REROUTING).";
+    rationaleEn = "Routing/carrier changes — the ticket must be reissued or exchanged (12.1.1 REROUTING).";
   } else if (partiallyUsed) {
     type = "reissue";
     rationale = "Bilet kısmen kullanılmış — ücret ORİJİNAL KESİM TARİHİ kural ve tarifeleriyle yeniden hesaplanır (12.1.1 REISSUE).";
+    rationaleEn = "The ticket is partially used — the fare is recalculated with the rules and tariffs in effect on the ORIGINAL DATE OF ISSUE (12.1.1 REISSUE).";
   } else {
     type = "exchange";
     rationale = "Bilet hiç kullanılmamış — değeri GÜNCEL tarifelerle yeni bilete aktarılır (12.1.1 EXCHANGE).";
+    rationaleEn = "The ticket is completely unused — its value is applied to a new ticket at CURRENT tariffs (12.1.1 EXCHANGE).";
   }
 
   // Kısmen kullanılmış bilette rota değişse de fiyatlama reissue kuralına tabidir.
   if (partiallyUsed && (type === "rerouting" || type === "upgrading")) {
     rationale += " Bilet kısmen kullanıldığı için fiyatlama REISSUE kuralıyla (orijinal kesim tarihi) yapılır.";
+    rationaleEn += " Because the ticket is partially used, pricing follows the REISSUE rule (original date of issue).";
   }
 
   return {
@@ -115,6 +140,7 @@ export function classifyChange(ticket: Ticket, newSegments: Segment[]): ChangeAn
     cabinRaised,
     onlyScheduleChanged,
     rationale,
+    rationaleEn,
     recommendedFlow: NEEDS_REISSUE[type] ? "exchange" : "revalidate",
   };
 }

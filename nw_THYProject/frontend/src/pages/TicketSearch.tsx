@@ -16,8 +16,8 @@ import { PageTitle } from "@/components/ui/surface";
 import { SearchField, Card, InsetPanel } from "@/ui";
 import { Button, IconButton } from "@/components/ui/core";
 import { Field, Input } from "@/components/ui/core";
-import { useT } from "@/i18n";
-import { formatDate, cn } from "@/lib/utils";
+import { useT, type Key } from "@/i18n";
+import { formatDate, locale, cn } from "@/lib/utils";
 import { csvNumber } from "@/lib/csv";
 
 /**
@@ -32,54 +32,26 @@ interface Adv {
 }
 const EMPTY: Adv = { surname: "", pnr: "", origin: "", destination: "", carrier: "", flightNumber: "", foid: "", cardLast4: "", issuedFrom: "", issuedTo: "", travelFrom: "", travelTo: "" };
 
-const FILTERS: { id: string; label: string; hit: (t: TicketSummary) => boolean }[] = [
-  { id: "all", label: "Tümü", hit: () => true },
-  { id: "open", label: "Açık", hit: (t) => t.statuses.includes("O") },
-  { id: "checkedin", label: "Check-in", hit: (t) => t.statuses.some((s) => s === "C" || s === "L") },
-  { id: "flown", label: "Uçulmuş", hit: (t) => t.statuses.includes("F") },
-  { id: "airport", label: "Havalimanı Kontrol", hit: (t) => t.statuses.includes("A") },
-  { id: "void", label: "İptal (Void)", hit: (t) => t.statuses.includes("V") },
-  { id: "refunded", label: "İade", hit: (t) => t.statuses.some((s) => s === "R" || s === "Y") },
-  { id: "exchanged", label: "Değişen", hit: (t) => t.statuses.some((s) => s === "E" || s === "G") },
-  { id: "suspended", label: "Askıda", hit: (t) => t.statuses.includes("S") },
-  { id: "printed", label: "Kağıda Basılı", hit: (t) => t.statuses.includes("P") },
-  { id: "irrop", label: "Düzensiz", hit: (t) => t.statuses.includes("I") },
+const FILTERS: { id: string; labelKey: Key; hit: (t: TicketSummary) => boolean }[] = [
+  { id: "all", labelKey: "search.filter.all", hit: () => true },
+  { id: "open", labelKey: "search.filter.open", hit: (t) => t.statuses.includes("O") },
+  { id: "checkedin", labelKey: "search.filter.checkedin", hit: (t) => t.statuses.some((s) => s === "C" || s === "L") },
+  { id: "flown", labelKey: "search.filter.flown", hit: (t) => t.statuses.includes("F") },
+  { id: "airport", labelKey: "search.filter.airport", hit: (t) => t.statuses.includes("A") },
+  { id: "void", labelKey: "search.filter.void", hit: (t) => t.statuses.includes("V") },
+  { id: "refunded", labelKey: "search.filter.refunded", hit: (t) => t.statuses.some((s) => s === "R" || s === "Y") },
+  { id: "exchanged", labelKey: "search.filter.exchanged", hit: (t) => t.statuses.some((s) => s === "E" || s === "G") },
+  { id: "suspended", labelKey: "search.filter.suspended", hit: (t) => t.statuses.includes("S") },
+  { id: "printed", labelKey: "search.filter.printed", hit: (t) => t.statuses.includes("P") },
+  { id: "irrop", labelKey: "search.filter.irrop", hit: (t) => t.statuses.includes("I") },
 ];
 
-const ACTION: Record<string, string> = {
-  exchange: "Exchange / Reissue", refund: "Refund", void: "Void",
-  irrop: "IRROP / Yönlendirme", endorse: "Endorsement",
+const ACTION: Record<string, Key> = {
+  exchange: "nav.exchange", refund: "nav.refund", void: "nav.void",
+  irrop: "nav.irrop", endorse: "search.action.endorse",
 };
 
 const col = createColumnHelper<TicketSummary>();
-const columns = [
-  col.accessor("ticketNumber", { header: "Bilet No", cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
-  col.accessor("passengerName", { header: "Yolcu", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
-  col.accessor("route", { header: "Güzergah", enableSorting: false, cell: (c) => <RouteCell route={c.getValue()} /> }),
-  col.accessor("validatingCarrier", { header: "Carrier", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
-  col.accessor("issuedAt", {
-    header: "Kesim",
-    // Dosyada da ekrandaki gün görünsün; ISO damgası muhasebede okunmuyor.
-    meta: { exportValue: (t: TicketSummary) => formatDate(t.issuedAt) },
-    cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
-  }),
-  col.accessor("overallStatus", {
-    header: "Durum", enableSorting: false,
-    // Ham kod yerine pill'in söylediği etiket.
-    meta: { exportValue: (t: TicketSummary) => STATUS_META[t.overallStatus].label },
-    cell: (c) => <StatusPill status={c.getValue()} />,
-  }),
-  col.accessor((t) => t.total.amount, {
-    id: "total", header: "Toplam",
-    // Tutar SAYI kalsın diye para birimi ayrı kolona çıkar (Excel'de toplanabilsin).
-    meta: { align: "right", exportValue: (t: TicketSummary) => csvNumber(t.total.amount) },
-    cell: (c) => <Money value={c.row.original.total} size="sm" />,
-  }),
-  // Ekranda tutarın yanında zaten yazıyor; dosyada tutarın SAYI kalması için ayrı sütun.
-  col.accessor((t) => t.total.currency, {
-    id: "currency", header: "Para Birimi", meta: { exportOnly: true },
-  }),
-] as ColumnDef<TicketSummary, unknown>[];
 
 /** Görünen satırların para birimi bazında toplamı — alt şeritte gösterilir. */
 function totalsBy(rows: TicketSummary[]): string {
@@ -87,7 +59,7 @@ function totalsBy(rows: TicketSummary[]): string {
   for (const r of rows) m.set(r.total.currency, (m.get(r.total.currency) ?? 0) + r.total.amount);
   return [...m.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([cur, amt]) => `${amt.toLocaleString("tr-TR")} ${cur}`)
+    .map(([cur, amt]) => `${amt.toLocaleString(locale())} ${cur}`)
     .join(" · ");
 }
 
@@ -131,6 +103,36 @@ export function TicketSearch() {
   const shown = useMemo(() => rows.filter((x) => active.hit(x)), [rows, active]);
   const numeric = /^\d{6,}$/.test(query.trim());
 
+  // Başlıklar sözlükten gelir: kolonlar dille birlikte döner.
+  const columns = [
+    col.accessor("ticketNumber", { header: t("search.col.ticketNo"), cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
+    col.accessor("passengerName", { header: t("common.passenger"), cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
+    col.accessor("route", { header: t("common.route"), enableSorting: false, cell: (c) => <RouteCell route={c.getValue()} /> }),
+    col.accessor("validatingCarrier", { header: "Carrier", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
+    col.accessor("issuedAt", {
+      header: t("search.col.issued"),
+      // Dosyada da ekrandaki gün görünsün; ISO damgası muhasebede okunmuyor.
+      meta: { exportValue: (t: TicketSummary) => formatDate(t.issuedAt) },
+      cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
+    }),
+    col.accessor("overallStatus", {
+      header: t("common.status"), enableSorting: false,
+      // Ham kod yerine pill'in söylediği etiket.
+      meta: { exportValue: (t: TicketSummary) => STATUS_META[t.overallStatus].label },
+      cell: (c) => <StatusPill status={c.getValue()} />,
+    }),
+    col.accessor((t) => t.total.amount, {
+      id: "total", header: t("common.total"),
+      // Tutar SAYI kalsın diye para birimi ayrı kolona çıkar (Excel'de toplanabilsin).
+      meta: { align: "right", exportValue: (t: TicketSummary) => csvNumber(t.total.amount) },
+      cell: (c) => <Money value={c.row.original.total} size="sm" />,
+    }),
+    // Ekranda tutarın yanında zaten yazıyor; dosyada tutarın SAYI kalması için ayrı sütun.
+    col.accessor((t) => t.total.currency, {
+      id: "currency", header: t("search.col.currency"), meta: { exportOnly: true },
+    }),
+  ] as ColumnDef<TicketSummary, unknown>[];
+
   return (
     <>
       <PageTitle
@@ -141,10 +143,10 @@ export function TicketSearch() {
 
       {action && ACTION[action] && (
         <div className="mb-4 flex items-center gap-2 rounded-[14px] bg-brand-wash px-4 py-2.5 text-[13px]">
-          <span className="font-semibold text-brand">{ACTION[action]}</span>
-          <span className="text-ink-2">— işlem için bir bilet seçin.</span>
+          <span className="font-semibold text-brand">{t(ACTION[action])}</span>
+          <span className="text-ink-2">— {t("search.action.hint")}</span>
           <button onClick={() => navigate({ to: "/search", search: {} })} className="ml-auto inline-flex items-center gap-1 text-ink-2 hover:text-ink">
-            <X size={14} strokeWidth={1.75} /> Vazgeç
+            <X size={14} strokeWidth={1.75} /> {t("search.action.dismiss")}
           </button>
         </div>
       )}
@@ -154,39 +156,41 @@ export function TicketSearch() {
           <SearchField
             value={query}
             onValueChange={setQuery}
-            placeholder="TKT no · ERDOGAN · PNR · IST · TK198 · kart son4"
+            placeholder={t("search.placeholder")}
             className="min-w-64 flex-1"
           />
           {query && (
             <span className="num rounded-full bg-inset px-2.5 py-1 text-[11px] text-ink-2">
-              {numeric ? (isValidTicketNumber(query.trim()) ? "TKT no ✓" : "TKT no") : "metin"}
+              {numeric
+                ? (isValidTicketNumber(query.trim()) ? t("search.shape.tktValid") : t("search.shape.tkt"))
+                : t("search.shape.text")}
             </span>
           )}
           <Button variant={advActive ? "primary" : "secondary"} onClick={() => setAdvOpen((a) => !a)}>
             <SlidersHorizontal size={15} strokeWidth={1.75} />
-            Gelişmiş{advActive ? ` (${Object.values(adv).filter((v) => v.trim()).length})` : ""}
+            {t("common.advanced")}{advActive ? ` (${Object.values(adv).filter((v) => v.trim()).length})` : ""}
           </Button>
         </div>
 
         {advOpen && (
           <InsetPanel className="mt-3 p-4">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <Field label="Yolcu soyadı"><Input value={adv.surname} onChange={(e) => set("surname", e.target.value)} placeholder="ERDOGAN" className="uppercase" /></Field>
-              <Field label="Konfirmasyon / PNR"><Input value={adv.pnr} onChange={(e) => set("pnr", e.target.value)} placeholder="XQ7T2M" className="uppercase" /></Field>
-              <Field label="Validating carrier"><Input value={adv.carrier} onChange={(e) => set("carrier", e.target.value)} placeholder="TK" className="uppercase" /></Field>
-              <Field label="Uçuş no"><Input value={adv.flightNumber} onChange={(e) => set("flightNumber", e.target.value)} placeholder="TK198" className="uppercase" /></Field>
-              <Field label="Nereden (O)"><Input value={adv.origin} onChange={(e) => set("origin", e.target.value)} placeholder="IST" maxLength={3} className="uppercase" /></Field>
-              <Field label="Nereye (D)"><Input value={adv.destination} onChange={(e) => set("destination", e.target.value)} placeholder="NRT" maxLength={3} className="uppercase" /></Field>
-              <Field label="Kimlik (FOID)"><Input value={adv.foid} onChange={(e) => set("foid", e.target.value)} placeholder="PP/U12345678" className="uppercase" /></Field>
-              <Field label="Kart son 4 hane"><Input value={adv.cardLast4} onChange={(e) => set("cardLast4", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4242" inputMode="numeric" maxLength={4} className="num" /></Field>
-              <Field label="Kesim tarihi (baş.)"><Input type="date" value={adv.issuedFrom} onChange={(e) => set("issuedFrom", e.target.value)} /></Field>
-              <Field label="Kesim tarihi (bit.)"><Input type="date" value={adv.issuedTo} onChange={(e) => set("issuedTo", e.target.value)} /></Field>
-              <Field label="Seyahat tarihi (baş.)"><Input type="date" value={adv.travelFrom} onChange={(e) => set("travelFrom", e.target.value)} /></Field>
-              <Field label="Seyahat tarihi (bit.)"><Input type="date" value={adv.travelTo} onChange={(e) => set("travelTo", e.target.value)} /></Field>
+              <Field label={t("search.adv.surname")}><Input value={adv.surname} onChange={(e) => set("surname", e.target.value)} placeholder="ERDOGAN" className="uppercase" /></Field>
+              <Field label={t("search.adv.pnr")}><Input value={adv.pnr} onChange={(e) => set("pnr", e.target.value)} placeholder="XQ7T2M" className="uppercase" /></Field>
+              <Field label={t("search.adv.carrier")}><Input value={adv.carrier} onChange={(e) => set("carrier", e.target.value)} placeholder="TK" className="uppercase" /></Field>
+              <Field label={t("search.adv.flight")}><Input value={adv.flightNumber} onChange={(e) => set("flightNumber", e.target.value)} placeholder="TK198" className="uppercase" /></Field>
+              <Field label={t("search.adv.origin")}><Input value={adv.origin} onChange={(e) => set("origin", e.target.value)} placeholder="IST" maxLength={3} className="uppercase" /></Field>
+              <Field label={t("search.adv.destination")}><Input value={adv.destination} onChange={(e) => set("destination", e.target.value)} placeholder="NRT" maxLength={3} className="uppercase" /></Field>
+              <Field label={t("search.adv.foid")}><Input value={adv.foid} onChange={(e) => set("foid", e.target.value)} placeholder="PP/U12345678" className="uppercase" /></Field>
+              <Field label={t("search.adv.cardLast4")}><Input value={adv.cardLast4} onChange={(e) => set("cardLast4", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="4242" inputMode="numeric" maxLength={4} className="num" /></Field>
+              <Field label={t("search.adv.issuedFrom")}><Input type="date" value={adv.issuedFrom} onChange={(e) => set("issuedFrom", e.target.value)} /></Field>
+              <Field label={t("search.adv.issuedTo")}><Input type="date" value={adv.issuedTo} onChange={(e) => set("issuedTo", e.target.value)} /></Field>
+              <Field label={t("search.adv.travelFrom")}><Input type="date" value={adv.travelFrom} onChange={(e) => set("travelFrom", e.target.value)} /></Field>
+              <Field label={t("search.adv.travelTo")}><Input type="date" value={adv.travelTo} onChange={(e) => set("travelTo", e.target.value)} /></Field>
             </div>
             {advActive && (
               <button onClick={() => setAdv(EMPTY)} className="mt-3 inline-flex items-center gap-1 text-[13px] text-ink-2 hover:text-ink">
-                <X size={14} strokeWidth={1.75} /> Filtreleri temizle
+                <X size={14} strokeWidth={1.75} /> {t("common.clearFilters")}
               </button>
             )}
           </InsetPanel>
@@ -200,7 +204,7 @@ export function TicketSearch() {
               className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[12.5px] font-medium transition-colors",
                 status === f.id ? "bg-brand text-white" : "bg-inset text-ink-2 hover:text-ink")}
             >
-              {f.label}
+              {t(f.labelKey)}
               <span className={cn("num text-[11px]", status === f.id ? "text-white/75" : "text-ink-3")}>{counts[f.id] ?? 0}</span>
             </button>
           ))}
@@ -224,14 +228,14 @@ export function TicketSearch() {
         rowActions={(r) => (
           <>
             <IconButton
-              label={`${r.ticketNumber} biletini aç`} title="Bilet kaydını aç"
+              label={t("search.row.open", { n: r.ticketNumber })} title={t("search.row.openTitle")}
               variant="secondary" size="sm"
               onClick={(e) => { e.stopPropagation(); navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}
             >
               <ArrowUpRight size={15} strokeWidth={1.75} />
             </IconButton>
             <IconButton
-              label={`${r.ticketNumber} yol belgesi`} title="Yolcu güzergâh belgesi"
+              label={t("search.row.itinerary", { n: r.ticketNumber })} title={t("search.row.itineraryTitle")}
               variant="secondary" size="sm"
               onClick={(e) => { e.stopPropagation(); navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: r.ticketNumber } }); }}
             >
@@ -241,8 +245,8 @@ export function TicketSearch() {
         )}
         pageSize={12}
         exportName="biletler"
-        summary={shown.length ? `Toplam ${totalsBy(shown)}` : undefined}
-        empty={{ title: "Eşleşen bilet bulunamadı", hint: "Farklı bir TKT no, PNR ya da yolcu adı deneyin." }}
+        summary={shown.length ? t("search.summary", { v: totalsBy(shown) }) : undefined}
+        empty={{ title: t("search.empty.title"), hint: t("search.empty.hint") }}
       />
     </>
   );

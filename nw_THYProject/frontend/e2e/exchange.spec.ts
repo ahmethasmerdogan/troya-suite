@@ -4,7 +4,7 @@ import { test, expect } from "@playwright/test";
 // drawer kapanmalı ve başarı toast'ı gelmeli (önceki bug: datetime boş/yarım değer onChange'i patlatıyordu).
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("troya.onboarded", "1");
+    localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr");
     localStorage.setItem("troya.user", "a.erdogan");
   });
 });

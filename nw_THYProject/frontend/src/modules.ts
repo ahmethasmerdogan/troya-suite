@@ -6,13 +6,14 @@ import {
   CalendarSearch, Banknote, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/domain/auth";
+import type { Key } from "@/i18n/dict";
 
 // THY eşlemesi: QuickRes = rezervasyon click-UI · Troya = biletleme · QuickCheck-in = DCS.
 // Hepsi aynı motora (Engine) oturan tıklama yüzeyleri ("tek komut, iki yüzey").
 export type ModuleId = "panel" | "quickres" | "troya" | "checkin";
 
 export interface NavItem {
-  labelKey: string;
+  labelKey: Key;
   to: string;
   icon: LucideIcon;
   /** Sidebar'da görünür ama işlev bilet bağlamından gelir → /search'e götürür. */
@@ -23,13 +24,13 @@ export interface NavItem {
   perm?: Permission;
 }
 export interface NavSection {
-  titleKey: string;
+  titleKey: Key;
   items: NavItem[];
 }
 export interface ModuleDef {
   id: ModuleId;
-  labelKey: string;
-  subKey: string;
+  labelKey: Key;
+  subKey: Key;
   icon: LucideIcon;
   /** Modüle tıklayınca gidilecek varsayılan rota. */
   home: string;

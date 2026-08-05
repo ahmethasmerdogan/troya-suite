@@ -7,7 +7,7 @@ import { STATUS_TONE } from "@/components/domain/statusTone";
 import { listFlights } from "@/domain/checkin";
 import { listPnrs } from "@/domain/reservation";
 import { useUI } from "@/store/ui";
-import { useT } from "@/i18n";
+import { useT, type Key } from "@/i18n";
 import { MODULES } from "@/modules";
 import { Button } from "@/components/ui/core";
 import { Panel as Card, PanelHead, PanelBody, Stat, PageTitle } from "@/components/ui/surface";
@@ -15,7 +15,13 @@ import { Donut, Sparkline, type Seg } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dot } from "@/components/ui/pill";
 import { NoticeRow, useNotices } from "@/components/layout/Notices";
-import { formatDateTime } from "@/lib/utils";
+import { formatDateTime, locale } from "@/lib/utils";
+
+/** Sparkline altındaki gün kısaltmaları — pazartesiden pazara. */
+const DOW: Key[] = [
+  "search.panel.dow.mon", "search.panel.dow.tue", "search.panel.dow.wed", "search.panel.dow.thu",
+  "search.panel.dow.fri", "search.panel.dow.sat", "search.panel.dow.sun",
+];
 
 /**
  * Panel — günün başladığı yer.
@@ -36,7 +42,12 @@ export function Panel() {
   const pnrs = useQuery({ queryKey: ["pnrsAll"], queryFn: listPnrs });
 
   const hour = new Date().getHours();
-  const greeting = hour < 6 ? "İyi geceler" : hour < 12 ? "Günaydın" : hour < 18 ? "İyi günler" : "İyi çalışmalar";
+  const greeting = t(
+    hour < 6 ? "search.panel.greeting.night"
+      : hour < 12 ? "search.panel.greeting.morning"
+        : hour < 18 ? "search.panel.greeting.day"
+          : "panel.greeting",
+  );
   const counts: Record<string, number> = {
     quickres: pnrs.data?.length ?? 0,
     troya: tickets.data?.length ?? 0,
@@ -47,7 +58,7 @@ export function Panel() {
     <div className="flex flex-col gap-5">
       <PageTitle
         title={`${greeting}, ${user?.name?.split(" ")[0] ?? ""}`}
-        hint={new Date().toLocaleDateString("tr-TR", { day: "2-digit", month: "long", weekday: "long" }) + " · IST-CTR · TK"}
+        hint={new Date().toLocaleDateString(locale(), { day: "2-digit", month: "long", weekday: "long" }) + " · IST-CTR · TK"}
         action={
           <>
             <Button variant="secondary" onClick={() => setCommandOpen(true)}><Search size={15} strokeWidth={1.75} /> {t("common.search")}</Button>
@@ -57,17 +68,17 @@ export function Panel() {
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Bugünkü uçuş" value={flights.data?.length ?? "—"} />
-        <Stat label="Check-in yapılan" value={flights.data?.reduce((a, f) => a + f.checkedIn, 0) ?? "—"} />
-        <Stat label="Aktif PNR" value={pnrs.data?.filter((p) => p.status === "active").length ?? "—"} />
-        <Stat label="Bilet" value={tickets.data?.length ?? "—"} />
+        <Stat label={t("panel.kpi.flights")} value={flights.data?.length ?? "—"} />
+        <Stat label={t("panel.kpi.checkedin")} value={flights.data?.reduce((a, f) => a + f.checkedIn, 0) ?? "—"} />
+        <Stat label={t("panel.kpi.pnrs")} value={pnrs.data?.filter((p) => p.status === "active").length ?? "—"} />
+        <Stat label={t("panel.kpi.tickets")} value={tickets.data?.length ?? "—"} />
       </div>
 
       <StationNotices />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
-          <PanelHead title="Kupon durum dağılımı" hint="17 statü, sekiz aile" />
+          <PanelHead title={t("search.panel.dist.title")} hint={t("search.panel.dist.hint")} />
           <PanelBody>
             {stats.isLoading || !stats.data ? <Skeleton className="h-32 w-full" /> : (() => {
               const total = stats.data.statusDist.reduce((a, s) => a + s.count, 0);
@@ -82,7 +93,7 @@ export function Panel() {
         </Card>
 
         <Card>
-          <PanelHead title="Haftalık bilet" hint="son 7 gün" />
+          <PanelHead title={t("search.panel.weekly.title")} hint={t("search.panel.weekly.hint")} />
           <PanelBody>
             {stats.isLoading || !stats.data ? <Skeleton className="h-32 w-full" /> : (
               <>
@@ -91,7 +102,7 @@ export function Panel() {
                 </div>
                 <Sparkline points={stats.data.weekly} className="mt-3 w-full" />
                 <div className="mt-2 flex justify-between text-[11px] text-ink-3">
-                  {["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"].map((d) => <span key={d}>{d}</span>)}
+                  {DOW.map((d) => <span key={d}>{t(d)}</span>)}
                 </div>
               </>
             )}
@@ -99,7 +110,7 @@ export function Panel() {
         </Card>
 
         <Card>
-          <PanelHead title="Son aktivite" hint="event store'dan" />
+          <PanelHead title={t("search.panel.activity.title")} hint={t("search.panel.activity.hint")} />
           <PanelBody className="pt-1">
             {stats.isLoading || !stats.data ? <Skeleton className="h-32 w-full" /> : (
               <ul className="flex flex-col">
@@ -168,17 +179,18 @@ export function Panel() {
  * burada günün açık maddeleri sıralı durur.
  */
 function StationNotices() {
+  const t = useT();
   const notices = useNotices();
   const urgent = notices.filter((n) => n.severity !== "info").length;
   if (notices.length === 0) return null;
   return (
     <Card>
       <PanelHead
-        title="İstasyon duyuruları"
-        hint={`${urgent} acil · ${notices.length} açık madde`}
+        title={t("search.panel.notices.title")}
+        hint={t("search.panel.notices.hint", { n: urgent, m: notices.length })}
         action={
           <Link to="/ops" className="inline-flex items-center gap-1 text-[13px] font-medium text-brand">
-            Operasyon <ArrowRight size={14} strokeWidth={2} />
+            {t("nav.section.ops")} <ArrowRight size={14} strokeWidth={2} />
           </Link>
         }
       />

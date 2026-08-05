@@ -4,12 +4,13 @@ import { useUsers } from "@/store/users";
 import { useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
 import { managerOf, reportsOf } from "@/domain/users";
-import { dmThreadId, PRESENCE_META } from "@/domain/chat";
+import { dmThreadId, presenceLabel, PRESENCE_META } from "@/domain/chat";
 import { presenceOf } from "@/store/chat";
-import { ROLE_LABEL } from "@/domain/auth";
+import { roleLabel } from "@/domain/auth";
+import { useT } from "@/i18n";
 import { Pill } from "@/components/ui/pill";
 import { Avatar } from "@/ui";
-import { cn } from "@/lib/utils";
+import { cn, locale } from "@/lib/utils";
 
 /* ====================================================================
    Kişi kartı — Teams'teki gibi.
@@ -34,7 +35,9 @@ export function PersonCard({
   const users = useUsers((s) => s.users);
   const presence = useChat((s) => s.presence);
   const me = useUI((s) => s.user);
+  const lang = useUI((s) => s.lang);
   const openThread = useChat((s) => s.openThread);
+  const t = useT();
 
   const u = users.find((x) => x.id === userId);
   if (!u) return null;
@@ -59,8 +62,8 @@ export function PersonCard({
           <div className="truncate text-[15px] font-semibold text-ink">{u.name}</div>
           <div className="truncate text-[12.5px] text-ink-2">{u.title}</div>
           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-            <Pill tone="gray">{ROLE_LABEL[u.role]}</Pill>
-            {u.status === "suspended" && <Pill tone="red">Devre dışı</Pill>}
+            <Pill tone="gray">{roleLabel(u.role, lang)}</Pill>
+            {u.status === "suspended" && <Pill tone="red">{t("admin.suspended")}</Pill>}
           </div>
         </div>
       </div>
@@ -72,25 +75,32 @@ export function PersonCard({
           style={{ background: p.online ? `var(--t-${meta.tone}-d)` : "var(--line-strong)" }}
         />
         <span className={p.online ? "text-ink" : "text-ink-3"}>
-          {p.online ? meta.label : p.lastSeen ? `Çevrimdışı · son görülme ${clock(p.lastSeen)}` : "Çevrimdışı"}
+          {p.online
+            ? presenceLabel(p.status, lang)
+            : p.lastSeen
+              ? t("admin.person.lastSeen", { time: clock(p.lastSeen) })
+              : t("admin.person.offline")}
         </span>
       </div>
 
       <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[12.5px]">
-        <Row icon={<Building2 size={13} strokeWidth={1.75} />} label="Birim" value={u.unit} />
-        <Row icon={<MapPin size={13} strokeWidth={1.75} />} label="İstasyon" value={u.location} mono />
-        <Row icon={<AtSign size={13} strokeWidth={1.75} />} label="E-posta" value={u.email} mono />
-        {u.phone && <Row icon={<Phone size={13} strokeWidth={1.75} />} label="Dahili" value={u.phone} mono />}
+        <Row icon={<Building2 size={13} strokeWidth={1.75} />} label={t("admin.person.unit")} value={u.unit} />
+        <Row icon={<MapPin size={13} strokeWidth={1.75} />} label={t("admin.person.station")} value={u.location} mono />
+        <Row icon={<AtSign size={13} strokeWidth={1.75} />} label={t("admin.person.email")} value={u.email} mono />
+        {u.phone && <Row icon={<Phone size={13} strokeWidth={1.75} />} label={t("admin.person.phone")} value={u.phone} mono />}
         <Row
           icon={<UserRound size={13} strokeWidth={1.75} />}
-          label="Bağlı olduğu"
+          label={t("admin.person.manager")}
           value={mgr ? `${mgr.name} · ${mgr.title}` : "—"}
         />
         {team.length > 0 && (
           <Row
             icon={<UserRound size={13} strokeWidth={1.75} />}
-            label="Ekibi"
-            value={`${team.length} kişi · ${team.map((t) => t.name.split(" ")[0]).join(", ")}`}
+            label={t("admin.person.team")}
+            value={t("admin.person.teamValue", {
+              n: team.length,
+              names: team.map((member) => member.name.split(" ")[0]).join(", "),
+            })}
           />
         )}
       </dl>
@@ -101,7 +111,7 @@ export function PersonCard({
             onClick={openChat}
             className="inline-flex h-8 flex-1 items-center justify-center gap-1.5 rounded-[10px] bg-brand px-3 text-[12.5px] font-medium text-white transition-opacity hover:opacity-90"
           >
-            <MessageSquare size={14} strokeWidth={1.75} /> Mesaj gönder
+            <MessageSquare size={14} strokeWidth={1.75} /> {t("admin.person.message")}
           </button>
         </div>
       )}
@@ -120,4 +130,4 @@ function Row({ icon, label, value, mono }: { icon: React.ReactNode; label: strin
 }
 
 const clock = (ms: number) =>
-  new Date(ms).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });

@@ -8,10 +8,13 @@ import {
   suspendCoupons, voidTicket,
   SESSION_CARRIER,
 } from "@/domain/api";
-import { INVOLUNTARY_REASON_LABEL, ruleOfTicket, type InvoluntaryReason, type RefundType } from "@/domain/refundRules";
+import {
+  INVOLUNTARY_REASON_LABEL, INVOLUNTARY_REASON_LABEL_EN, ruleOfTicket,
+  type InvoluntaryReason, type RefundType,
+} from "@/domain/refundRules";
 import { ruleSummary } from "@/domain/fareRules";
-import { taxByCode } from "@/domain/taxCodes";
-import { classifyChange, CHANGE_TYPE_LABEL } from "@/domain/changeRules";
+import { taxName } from "@/domain/taxCodes";
+import { classifyChange, changeTypeLabel } from "@/domain/changeRules";
 import { quoteReissue } from "@/domain/reissueRules";
 import { RFISC_CATALOG } from "@/domain/mockData";
 import type { Coupon, Segment, Ticket } from "@/domain/types";
@@ -22,7 +25,9 @@ import { Drawer } from "@/components/ui/overlay";
 import { Banner } from "@/components/ui/banner";
 import { Inset, Line, Rule } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
-import { cn, formatDateTime, flightCode } from "@/lib/utils";
+import { useT, type Key } from "@/i18n";
+import { useUI } from "@/store/ui";
+import { cn, formatDateTime, flightCode, locale } from "@/lib/utils";
 
 /* ====================================================================
    İşlem katmanları — kayıt üzerinde çalışan akışlar.
@@ -64,12 +69,13 @@ export function TicketFlows({ ticket, flow, onClose }: Props) {
   );
 }
 
-const DISPOSITION_LABEL: Record<string, string> = {
-  pd_carry_forward: "Değişmedi — PD ile taşındı, yeniden tahsil edilmedi (12.5(c)(i)).",
-  pd_new_amount: "Azaldı ve iade edilebilir — fark iade edildi (12.5(c)(ii)).",
-  forfeit_difference: "Azaldı ama iade edilemez — orijinal tutar aynen taşındı (12.5(c)(ii)).",
-  collect_additional: "Arttı — yalnız FARK tahsil edildi (12.5(c)(iii)).",
-  blank_no_longer_applicable: "Artık uygulanmıyor — kutu boş, tutar iade edildi (12.5(c)(iv)).",
+// Sözlük anahtarı tutulur, metin değil: dil değişince satır da döner.
+const DISPOSITION_KEY: Record<string, Key> = {
+  pd_carry_forward: "flows.disp.pdCarryForward",
+  pd_new_amount: "flows.disp.pdNewAmount",
+  forfeit_difference: "flows.disp.forfeitDifference",
+  collect_additional: "flows.disp.collectAdditional",
+  blank_no_longer_applicable: "flows.disp.blankNoLongerApplicable",
 };
 
 /* --- ortak parçalar --------------------------------------------------- */
@@ -128,6 +134,8 @@ function useRefresh() {
 /* --- exchange --------------------------------------------------------- */
 
 function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang); // değişiklik türü ve gerekçesi domainden gelir, dili burada seçilir
   const navigate = useNavigate();
   const refresh = useRefresh();
   const [step, setStep] = useState<1 | 2>(1);
@@ -153,13 +161,13 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
       idempotencyKey: newIdempotencyKey(),
     }),
     onSuccess: ({ newTicket }) => {
-      toast.success("Exchange tamamlandı", `Yeni bilet ${newTicket.ticketNumber}`);
+      toast.success(t("flows.exchange.toastOk"), t("flows.exchange.toastOkBody", { n: newTicket.ticketNumber }));
       refresh(ticket.ticketNumber);
       onClose();
       setStep(1);
       navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: newTicket.ticketNumber } });
     },
-    onError: (e: Error) => toast.danger("Exchange yapılamadı", e.message),
+    onError: (e: Error) => toast.danger(t("flows.exchange.toastFail"), e.message),
   });
 
   const setSeg = (i: number, patch: Partial<Segment>) => setSegs((a) => a.map((s, j) => (i === j ? { ...s, ...patch } : s)));
@@ -169,41 +177,41 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
       open={open}
       onClose={onClose}
       title="Exchange / Reissue"
-      hint={`Eski bilet ${ticket.ticketNumber} kapanır, yerine yeni bilet kesilir.`}
+      hint={t("flows.exchange.hint", { n: ticket.ticketNumber })}
       width="lg"
       footer={
         step === 1
-          ? <Button onClick={() => setStep(2)}>Devam</Button>
+          ? <Button onClick={() => setStep(2)}>{t("flows.common.continue")}</Button>
           : <>
-              <Button variant="ghost" onClick={() => setStep(1)}>Geri</Button>
+              <Button variant="ghost" onClick={() => setStep(1)}>{t("flows.common.back")}</Button>
               <Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>
-                {run.isPending ? "Kesiliyor…" : "Onayla ve Kes"}
+                {run.isPending ? t("flows.common.issuing") : t("flows.exchange.confirm")}
               </Button>
             </>
       }
     >
       {step === 1 ? (
         <div className="flex flex-col gap-4">
-          <Banner kind="info" title="Nasıl çalışır">
-            Açık kuponlar kapanır (E) ve yeni güzergâhla yeni bir bilet doğar. Fark varsa ek tahsilat (ADC) alınır.
+          <Banner kind="info" title={t("flows.exchange.howTitle")}>
+            {t("flows.exchange.howBody")}
           </Banner>
           {/* 12.1.1 — sistem değişikliğin türünü çıkarır; yalnız rezervasyon
               değişikliğinde reissue şart değildir, revalidation yeter. */}
           <Banner
             kind={analysis.recommendedFlow === "revalidate" ? "warning" : "info"}
-            title={`Değişiklik türü: ${CHANGE_TYPE_LABEL[analysis.type]}`}
+            title={t("flows.exchange.changeType", { n: changeTypeLabel(analysis.type, lang) })}
           >
-            {analysis.rationale}
-            {analysis.recommendedFlow === "revalidate" && " Ücret değişmiyorsa Revalidate akışı yeterlidir."}
+            {lang === "en" ? analysis.rationaleEn : analysis.rationale}
+            {analysis.recommendedFlow === "revalidate" && t("flows.exchange.revalidateHint")}
           </Banner>
           {segs.map((s, i) => (
             <div key={i} className="rounded-md border border-line p-3">
-              <div className="microlabel mb-2">Bacak {i + 1}</div>
+              <div className="microlabel mb-2">{t("flows.common.leg", { n: i + 1 })}</div>
               <div className="grid grid-cols-2 gap-3">
-                <Field label="Nereden"><Input value={s.origin} onChange={(e) => setSeg(i, { origin: e.target.value.toUpperCase() })} maxLength={3} className="uppercase" /></Field>
-                <Field label="Nereye"><Input value={s.destination} onChange={(e) => setSeg(i, { destination: e.target.value.toUpperCase() })} maxLength={3} className="uppercase" /></Field>
-                <Field label="Uçuş No"><Input value={s.flightNumber} onChange={(e) => setSeg(i, { flightNumber: e.target.value })} /></Field>
-                <Field label="Yeni kalkış">
+                <Field label={t("flows.exchange.from")}><Input value={s.origin} onChange={(e) => setSeg(i, { origin: e.target.value.toUpperCase() })} maxLength={3} className="uppercase" /></Field>
+                <Field label={t("flows.exchange.to")}><Input value={s.destination} onChange={(e) => setSeg(i, { destination: e.target.value.toUpperCase() })} maxLength={3} className="uppercase" /></Field>
+                <Field label={t("flows.exchange.flightNo")}><Input value={s.flightNumber} onChange={(e) => setSeg(i, { flightNumber: e.target.value })} /></Field>
+                <Field label={t("flows.common.newDeparture")}>
                   <Input
                     type="datetime-local"
                     value={s.departure ? s.departure.slice(0, 16) : ""}
@@ -224,37 +232,41 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
       ) : (
         <div className="flex flex-col gap-4">
           <Inset>
-            <Line label="Eski bilet" value={<span className="num">{ticket.ticketNumber}</span>} />
-            <Line label="Eski toplam" value={<Money value={ticket.fare.total} size="sm" />} />
+            <Line label={t("flows.exchange.oldTicket")} value={<span className="num">{ticket.ticketNumber}</span>} />
+            <Line label={t("flows.exchange.oldTotal")} value={<Money value={ticket.fare.total} size="sm" />} />
             <Rule className="my-1" />
             {segs.map((s, i) => (
-              <Line key={i} label={`Bacak ${i + 1}`} value={<span className="num">{s.origin} → {s.destination} · {s.flightNumber}</span>} />
+              <Line key={i} label={t("flows.common.leg", { n: i + 1 })} value={<span className="num">{s.origin} → {s.destination} · {s.flightNumber}</span>} />
             ))}
           </Inset>
           {/* Sistem hesabı — ADC elle yazılmaz (12.5/12.11 + Cat 31). */}
-          <Field label="Yeni yolculuğun çıplak ücreti" hint="Tarife motorundan gelir; hesap bunun üzerinden yapılır.">
+          <Field label={t("flows.exchange.newBaseFare")} hint={t("flows.exchange.newBaseFareHint")}>
             <Input value={newFare} onChange={(e) => setNewFare(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />
           </Field>
 
           <Inset>
-            <div className="microlabel mb-1.5">Para hesabı</div>
-            <Line label="Eski ücret" value={<span className="num">{rq.oldFare.toLocaleString("tr-TR")}</span>} />
-            <Line label="Yeni ücret" value={<span className="num">{rq.newFare.toLocaleString("tr-TR")}</span>} />
-            <Line label="Ücret farkı" value={<span className="num">{rq.fareDiff.toLocaleString("tr-TR")}</span>} />
-            {rq.tfcAdditional > 0 && <Line label="Artan vergi (tahsil)" value={<span className="num">+{rq.tfcAdditional.toLocaleString("tr-TR")}</span>} />}
-            {rq.tfcRefunded > 0 && <Line label="Azalan vergi (iade)" value={<span className="num">−{rq.tfcRefunded.toLocaleString("tr-TR")}</span>} />}
-            {rq.tfcForfeited > 0 && <Line label="İade edilemeyen vergi farkı" value={<span className="num text-ink-3">{rq.tfcForfeited.toLocaleString("tr-TR")}</span>} />}
-            {rq.penalty > 0 && <Line label="Değişiklik ücreti (Cat 31)" value={<span className="num text-[var(--t-red-i)]">+{rq.penalty.toLocaleString("tr-TR")}</span>} />}
+            <div className="microlabel mb-1.5">{t("flows.exchange.money")}</div>
+            <Line label={t("flows.exchange.oldFare")} value={<span className="num">{rq.oldFare.toLocaleString(locale())}</span>} />
+            <Line label={t("flows.exchange.newFare")} value={<span className="num">{rq.newFare.toLocaleString(locale())}</span>} />
+            <Line label={t("flows.exchange.fareDiff")} value={<span className="num">{rq.fareDiff.toLocaleString(locale())}</span>} />
+            {rq.tfcAdditional > 0 && <Line label={t("flows.exchange.tfcAdditional")} value={<span className="num">+{rq.tfcAdditional.toLocaleString(locale())}</span>} />}
+            {rq.tfcRefunded > 0 && <Line label={t("flows.exchange.tfcRefunded")} value={<span className="num">−{rq.tfcRefunded.toLocaleString(locale())}</span>} />}
+            {rq.tfcForfeited > 0 && <Line label={t("flows.exchange.tfcForfeited")} value={<span className="num text-ink-3">{rq.tfcForfeited.toLocaleString(locale())}</span>} />}
+            {rq.penalty > 0 && <Line label={t("flows.exchange.penalty")} value={<span className="num text-[var(--t-red-i)]">+{rq.penalty.toLocaleString(locale())}</span>} />}
             <Rule className="my-1" />
-            <Line label="Total kutusu" strong value={<span className="num">{rq.totalBoxText}</span>} />
+            <Line label={t("flows.exchange.totalBox")} strong value={<span className="num">{rq.totalBoxText}</span>} />
             {rq.residual && (
               <div className="mt-2 rounded-md border border-line px-2.5 py-2">
                 <div className="text-[12.5px] font-medium text-ink">
-                  Bakiye {rq.residual.amount.toLocaleString("tr-TR")} {rq.residual.currency} · {rq.residual.document === "mco" ? "MCO" : "EMD-S"}
+                  {t("flows.exchange.residualLine", {
+                    a: rq.residual.amount.toLocaleString(locale()),
+                    c: rq.residual.currency,
+                    d: rq.residual.document === "mco" ? "MCO" : "EMD-S",
+                  })}
                 </div>
-                <div className="mt-0.5 text-[11.5px] leading-snug text-ink-3">{rq.residual.note}</div>
+                <div className="mt-0.5 text-[11.5px] leading-snug text-ink-3">{lang === "en" ? rq.residual.noteEn : rq.residual.note}</div>
                 {rq.residual.penaltyDeducted > 0 && (
-                  <div className="text-[11.5px] text-ink-3">Değişiklik ücreti bakiyeden düşüldü: {rq.residual.penaltyDeducted.toLocaleString("tr-TR")}</div>
+                  <div className="text-[11.5px] text-ink-3">{t("flows.exchange.penaltyDeducted", { n: rq.residual.penaltyDeducted.toLocaleString(locale()) })}</div>
                 )}
               </div>
             )}
@@ -262,14 +274,14 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
             {/* 12.5(c) PD matrisi — hangi vergi taşındı, hangisi tahsil/iade edildi. */}
             {rq.tfcLines.length > 0 && (
               <div className="mt-3">
-                <div className="microlabel mb-1.5">Vergi kalemleri (PD matrisi)</div>
+                <div className="microlabel mb-1.5">{t("flows.exchange.pdMatrix")}</div>
                 <div className="flex flex-col gap-1">
                   {rq.tfcLines.map((l) => (
                     <div key={l.code} className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-line px-2.5 py-1.5 text-[12px]">
                       <span className="num font-medium text-ink">{l.code}</span>
-                      <span className="num text-ink-3">{l.oldAmount.toLocaleString("tr-TR")} → {l.newAmount.toLocaleString("tr-TR")}</span>
-                      <span className="ml-auto num text-ink-2">{l.ticketText || "(boş)"}</span>
-                      <span className="w-full text-[11px] text-ink-3">{DISPOSITION_LABEL[l.disposition]}</span>
+                      <span className="num text-ink-3">{l.oldAmount.toLocaleString(locale())} → {l.newAmount.toLocaleString(locale())}</span>
+                      <span className="ml-auto num text-ink-2">{l.ticketText || t("flows.exchange.blank")}</span>
+                      <span className="w-full text-[11px] text-ink-3">{DISPOSITION_KEY[l.disposition] && t(DISPOSITION_KEY[l.disposition])}</span>
                     </div>
                   ))}
                 </div>
@@ -277,12 +289,12 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
             )}
 
             <ul className="mt-2 flex flex-col gap-1">
-              {rq.notes.map((n) => <li key={n} className="text-[11px] leading-snug text-ink-3">· {n}</li>)}
+              {(lang === "en" ? rq.notesEn : rq.notes).map((n) => <li key={n} className="text-[11px] leading-snug text-ink-3">· {n}</li>)}
             </ul>
           </Inset>
 
-          <Banner kind="warning" title="Geri alınamaz">
-            Onayladığınızda eski biletin açık kuponları kapanır ve yeni bilet kesilir.
+          <Banner kind="warning" title={t("flows.common.irreversible")}>
+            {t("flows.exchange.warnBody")}
           </Banner>
         </div>
       )}
@@ -301,6 +313,8 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
  * sapma yapacaksa gerekçesini görerek yapar.
  */
 function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang); // vergi adı/gerekçesi domainden gelir, dili burada seçilir
   const refresh = useRefresh();
   const [sel, toggle] = useToggle(ticket.coupons.filter((c) => c.status === "O").map((c) => c.seq));
   const [refundType, setRefundType] = useState<RefundType>("voluntary");
@@ -344,37 +358,37 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
       restrictionOverride: override || undefined,
       idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: () => { toast.success("İade tamamlandı"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("İade yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.refund.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.refund.toastFail"), e.message),
   });
 
   return (
     <Drawer
       open={open} onClose={onClose} title="Refund"
-      hint="İade türü seçilir, tutarı sistem hesaplar (Handbook 15.1)."
+      hint={t("flows.refund.hint")}
       width="lg"
-      footer={<Button variant="success" disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "İşleniyor…" : "İadeyi tamamla"}</Button>}
+      footer={<Button variant="success" disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.processing") : t("flows.refund.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         {restricted && (
-          <Banner kind="danger" title="Ciro iadeyi kısıtlıyor">
-            {ticket.endorsement} — iade için yetkili override gerekir (15.1.3.2).
+          <Banner kind="danger" title={t("flows.refund.restrictedTitle")}>
+            {t("flows.refund.restrictedBody", { n: ticket.endorsement ?? "" })}
           </Banner>
         )}
         {/* Tarife kuralı özeti — cezayı ve iade hakkını personel işlem ÖNCESİ görür. */}
-        <Banner kind={quote.fareRefundable ? "info" : "warning"} title="Tarife kuralı">
+        <Banner kind={quote.fareRefundable ? "info" : "warning"} title={t("flows.refund.fareRuleTitle")}>
           <ul className="flex flex-col gap-0.5">
-            {ruleSummary(rule).map((r) => <li key={r}>· {r}</li>)}
+            {ruleSummary(rule, undefined, lang).map((r) => <li key={r}>· {r}</li>)}
           </ul>
         </Banner>
 
         {/* 15.1.1 — ilk soru budur; hesap kuralı buna göre değişir. */}
         <div>
-          <div className="microlabel mb-2">İade türü (15.1.1)</div>
+          <div className="microlabel mb-2">{t("flows.refund.typeTitle")}</div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
             {([
-              ["involuntary", "Involuntary", "Taşıma reddedildi: iptal, tarife değişikliği, offload, misconnection, güvenlik…"],
-              ["voluntary", "Voluntary", "Yolcunun kendi talebi — service charge ve iletişim gideri düşülebilir."],
+              ["involuntary", "Involuntary", t("flows.refund.involuntaryDesc")],
+              ["voluntary", "Voluntary", t("flows.refund.voluntaryDesc")],
             ] as const).map(([id, label, desc]) => (
               <button
                 key={id} type="button" onClick={() => setRefundType(id)}
@@ -389,17 +403,19 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
         </div>
 
         {refundType === "involuntary" && (
-          <Field label="Sebep (15.1.1.1)" hint="Handbook'ta sayılan sebepler dışındaki her iade voluntary'dir.">
+          <Field label={t("flows.refund.reasonLabel")} hint={t("flows.refund.reasonHint")}>
             <Select value={reason} onChange={(e) => setReason(e.target.value as InvoluntaryReason)}>
               {(Object.keys(INVOLUNTARY_REASON_LABEL) as InvoluntaryReason[]).map((r) => (
-                <option key={r} value={r}>{INVOLUNTARY_REASON_LABEL[r]}</option>
+                <option key={r} value={r}>
+                  {(lang === "en" ? INVOLUNTARY_REASON_LABEL_EN : INVOLUNTARY_REASON_LABEL)[r]}
+                </option>
               ))}
             </Select>
           </Field>
         )}
 
         <div>
-          <div className="microlabel mb-2">İade edilecek kuponlar</div>
+          <div className="microlabel mb-2">{t("flows.refund.couponsTitle")}</div>
           <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle}
             only={(c) => ["O", "A", "Y"].includes(c.status)} />
         </div>
@@ -409,7 +425,7 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
             <Field label="Service charge (15.1.3.1)">
               <Input value={serviceCharge} onChange={(e) => setServiceCharge(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />
             </Field>
-            <Field label="İletişim gideri">
+            <Field label={t("flows.refund.comms")}>
               <Input value={comms} onChange={(e) => setComms(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />
             </Field>
           </div>
@@ -417,28 +433,30 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 
         {/* --- sistemin hesabı --- */}
         <Inset>
-          <div className="microlabel mb-1.5">Sistem hesabı</div>
-          <Line label="Çıplak ücret bileşeni" value={<span className="num">{quote.fareComponent.toLocaleString("tr-TR")}</span>} />
+          <div className="microlabel mb-1.5">{t("flows.refund.calcTitle")}</div>
+          <Line label={t("flows.refund.fareComponent")} value={<span className="num">{quote.fareComponent.toLocaleString(locale())}</span>} />
           {quote.penalty > 0 && (
-            <Line label="İptal / iade cezası" value={<span className="num text-[var(--t-red-i)]">−{quote.penalty.toLocaleString("tr-TR")}</span>} />
+            <Line label={t("flows.refund.penalty")} value={<span className="num text-[var(--t-red-i)]">−{quote.penalty.toLocaleString(locale())}</span>} />
           )}
           {quote.noShowFee > 0 && (
-            <Line label="No-show ücreti" value={<span className="num text-[var(--t-red-i)]">−{quote.noShowFee.toLocaleString("tr-TR")}</span>} />
+            <Line label={t("flows.refund.noShowFee")} value={<span className="num text-[var(--t-red-i)]">−{quote.noShowFee.toLocaleString(locale())}</span>} />
           )}
-          <Line label="İade edilebilir vergi/harç" value={<span className="num">{quote.tfcComponent.toLocaleString("tr-TR")}</span>} />
-          {quote.deductions > 0 && <Line label="Service charge / iletişim" value={<span className="num">−{quote.deductions.toLocaleString("tr-TR")}</span>} />}
+          <Line label={t("flows.refund.tfcComponent")} value={<span className="num">{quote.tfcComponent.toLocaleString(locale())}</span>} />
+          {quote.deductions > 0 && <Line label={t("flows.refund.deductions")} value={<span className="num">−{quote.deductions.toLocaleString(locale())}</span>} />}
           <Rule className="my-1" />
-          <Line label="Önerilen iade" value={<Money value={quote.amount} size="sm" />} />
+          <Line label={t("flows.refund.suggested")} value={<Money value={quote.amount} size="sm" />} />
           {quote.penaltyExplain && (
-            <div className="mt-1.5 text-[11.5px] leading-snug text-ink-3">{quote.penaltyExplain}</div>
+            <div className="mt-1.5 text-[11.5px] leading-snug text-ink-3">
+              {(lang === "en" ? quote.penaltyExplainEn : quote.penaltyExplain) ?? quote.penaltyExplain}
+            </div>
           )}
           {quote.alternatives && (
             <div className="mt-2 flex flex-col gap-1.5">
               {quote.alternatives.map((a) => (
                 <div key={a.label} className={cn("flex items-center justify-between rounded-md border px-2.5 py-1.5 text-[12.5px]",
                   a.chosen ? "border-brand bg-brand-wash text-ink" : "border-line text-ink-3")}>
-                  <span className="min-w-0 flex-1 pr-2">{a.label}</span>
-                  <span className="num font-medium">{a.amount.toLocaleString("tr-TR")}</span>
+                  <span className="min-w-0 flex-1 pr-2">{lang === "en" ? a.labelEn : a.label}</span>
+                  <span className="num font-medium">{a.amount.toLocaleString(locale())}</span>
                 </div>
               ))}
             </div>
@@ -446,33 +464,30 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
           {/* Vergi kalem kalem: hangisi neden iade edildi. Toplu oran YOK. */}
           {quote.tfcLines.length > 0 && (
             <div className="mt-3">
-              <div className="microlabel mb-1.5">Vergi / harç kalemleri</div>
+              <div className="microlabel mb-1.5">{t("flows.refund.tfcLines")}</div>
               <div className="flex flex-col gap-1">
-                {quote.tfcLines.map((l, i) => {
-                  const def = taxByCode(l.code);
-                  return (
-                    <div key={`${l.code}-${i}`} className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-line px-2.5 py-1.5">
-                      <span className="num text-[12.5px] font-medium text-ink">{l.code}</span>
-                      <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-3">{def?.name ?? "Vergi / harç"}</span>
-                      <span className={cn("num text-[12.5px]", l.refundable ? "text-ink" : "text-ink-3 line-through")}>
-                        {l.amount.toLocaleString("tr-TR")}
-                      </span>
-                      <span className="w-full text-[11px] leading-snug text-ink-3">{l.reason}</span>
-                    </div>
-                  );
-                })}
+                {quote.tfcLines.map((l, i) => (
+                  <div key={`${l.code}-${i}`} className="flex flex-wrap items-baseline gap-x-2 rounded-md border border-line px-2.5 py-1.5">
+                    <span className="num text-[12.5px] font-medium text-ink">{l.code}</span>
+                    <span className="min-w-0 flex-1 truncate text-[11.5px] text-ink-3">{taxName(l.code, lang) ?? t("flows.refund.taxFallback")}</span>
+                    <span className={cn("num text-[12.5px]", l.refundable ? "text-ink" : "text-ink-3 line-through")}>
+                      {l.amount.toLocaleString(locale())}
+                    </span>
+                    <span className="w-full text-[11px] leading-snug text-ink-3">{lang === "en" ? l.reasonEn : l.reason}</span>
+                  </div>
+                ))}
               </div>
             </div>
           )}
           <ul className="mt-2 flex flex-col gap-1">
-            {quote.notes.map((n) => <li key={n} className="text-[11.5px] leading-snug text-ink-3">· {n}</li>)}
+            {(lang === "en" ? quote.notesEn : quote.notes).map((n) => <li key={n} className="text-[11.5px] leading-snug text-ink-3">· {n}</li>)}
           </ul>
         </Inset>
 
         <Field
-          label="İade tutarı"
-          hint={manual == null ? "Sistemin hesabı kullanılıyor. Değiştirmek için tıklayın." : "Elle değiştirildi."}
-          error={deviates ? `Sistem hesabından sapıyor (${quote.amount.amount.toLocaleString("tr-TR")}). Gerekçesi kayda geçer.` : undefined}
+          label={t("flows.refund.amountLabel")}
+          hint={manual == null ? t("flows.refund.amountHintAuto") : t("flows.refund.amountHintManual")}
+          error={deviates ? t("flows.refund.deviates", { n: quote.amount.amount.toLocaleString(locale()) }) : undefined}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -481,36 +496,36 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
               className="num" inputMode="numeric" aria-invalid={deviates || undefined}
             />
             {manual != null && (
-              <Button variant="ghost" size="sm" onClick={() => setManual(null)}>Sistem hesabına dön</Button>
+              <Button variant="ghost" size="sm" onClick={() => setManual(null)}>{t("flows.refund.resetManual")}</Button>
             )}
           </div>
         </Field>
 
-        <Field label="Residual / bakiye (12.7.3 · 15.3)" hint="Kalan bakiye 'For Refund Only' belgesi olarak kesilir.">
+        <Field label={t("flows.refund.residualLabel")} hint={t("flows.refund.residualHint")}>
           <Input value={residual} onChange={(e) => setResidual(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />
         </Field>
 
-        <Field label="İade yöntemi">
+        <Field label={t("flows.refund.methodLabel")}>
           <Select value={method} onChange={(e) => setMethod(e.target.value as "fop" | "voucher")}>
-            <option value="fop">Orijinal ödeme şekline</option>
+            <option value="fop">{t("flows.refund.methodFop")}</option>
             <option value="voucher">Voucher / travel credit (EMD-S)</option>
           </Select>
         </Field>
-        <Field label="Muafiyet" hint="Vefat/hastalık durumunda iptal cezası ve service charge muaf tutulur (13.9 / 15.4).">
+        <Field label={t("flows.refund.waiverLabel")} hint={t("flows.refund.waiverHint")}>
           <Select value={waiver} onChange={(e) => setWaiver(e.target.value as "" | "death" | "illness")}>
-            <option value="">Yok</option>
-            <option value="death">Vefat</option>
-            <option value="illness">Hastalık</option>
+            <option value="">{t("flows.refund.waiverNone")}</option>
+            <option value="death">{t("flows.refund.waiverDeath")}</option>
+            <option value="illness">{t("flows.refund.waiverIllness")}</option>
           </Select>
         </Field>
         {restricted && (
-          <Field label="Kısıtlama override'ı" hint="Yetkili onayı olmadan kısıtlı belge iade edilemez.">
-            <Input value={override} onChange={(e) => setOverride(e.target.value)} placeholder="Süpervizör onayı / referans" />
+          <Field label={t("flows.refund.overrideLabel")} hint={t("flows.refund.overrideHint")}>
+            <Input value={override} onChange={(e) => setOverride(e.target.value)} placeholder={t("flows.refund.overridePlaceholder")} />
           </Field>
         )}
         <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink-2">
           <input type="checkbox" checked={taxOnly} onChange={(e) => setTaxOnly(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--brand)]" />
-          Yalnız vergi iadesi (TFC) — kupon O→Y→R akışı
+          {t("flows.refund.taxOnly")}
         </label>
       </div>
     </Drawer>
@@ -520,6 +535,7 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 /* --- iadeyi geri al (12.13.2) ----------------------------------------- */
 
 function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const cancellable = (ticket.refunds ?? []).filter((r) => !r.cancelledAt);
   const [sel, setSel] = useState<string>(cancellable[0]?.id ?? "");
@@ -527,25 +543,25 @@ function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boo
 
   const run = useMutation({
     mutationFn: () => refundCancel({ ticketNumber: ticket.ticketNumber, refundId: sel, reason, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("İade geri alındı", "Kuponlar yeniden 'open for use'"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Geri alınamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.refundcancel.toastOk"), t("flows.refundcancel.toastOkBody")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.refundcancel.toastFail"), e.message),
   });
 
   return (
     <Drawer
-      open={open} onClose={onClose} title="İadeyi geri al (Refund-Cancel)"
-      hint="Aynı raporlama dönemi içinde iade geri alınır; kuponlar 'open for use'a döner (12.13.2)."
-      footer={<Button variant="success" disabled={!sel || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Geri alınıyor…" : "İadeyi geri al"}</Button>}
+      open={open} onClose={onClose} title={t("flows.refundcancel.title")}
+      hint={t("flows.refundcancel.hint")}
+      footer={<Button variant="success" disabled={!sel || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.refundcancel.pending") : t("flows.refundcancel.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         {cancellable.length === 0 ? (
-          <Banner kind="info" title="Geri alınacak iade yok">
-            Bu bilette açık bir iade kaydı bulunmuyor. Geri alma yalnız iadenin yapıldığı raporlama dönemi içinde mümkündür.
+          <Banner kind="info" title={t("flows.refundcancel.emptyTitle")}>
+            {t("flows.refundcancel.emptyBody")}
           </Banner>
         ) : (
           <>
             <Banner kind="warning">
-              Geri alma yeni bir Settlement Authorisation Code üretir; iade kaydı iptal edilmiş olarak işaretlenir.
+              {t("flows.refundcancel.warn")}
             </Banner>
             <div className="flex flex-col gap-1.5">
               {cancellable.map((r) => (
@@ -555,12 +571,12 @@ function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boo
                     sel === r.id ? "border-brand bg-brand-wash" : "border-line hover:bg-raised")}
                 >
                   <span className="num text-[12.5px] text-ink-2">{formatDateTime(r.at)}</span>
-                  <span className="num text-[12.5px] text-ink">kupon {r.couponSeqs.join(", ")}</span>
+                  <span className="num text-[12.5px] text-ink">{t("flows.refundcancel.coupon", { n: r.couponSeqs.join(", ") })}</span>
                   <span className="ml-auto"><Money value={r.amount} size="sm" /></span>
                 </button>
               ))}
             </div>
-            <Field label="Gerekçe"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Yolcu vazgeçti, hatalı iade…" /></Field>
+            <Field label={t("flows.common.justification")}><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("flows.refundcancel.reasonPlaceholder")} /></Field>
           </>
         )}
       </div>
@@ -571,6 +587,7 @@ function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boo
 /* --- kontrol devri (1.1.5.1) ------------------------------------------ */
 
 function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const { data: agreements = [] } = useQuery({ queryKey: ["agreements"], queryFn: listAgreements });
   const [to, setTo] = useState("");
@@ -581,55 +598,53 @@ function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 
   const grant = useMutation({
     mutationFn: () => grantControl({ ticketNumber: ticket.ticketNumber, toCarrier: to || eligible[0]?.partnerCarrier, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: (t) => { toast.success("Kontrol devredildi", `Airport control ${t.control.holder}'da`); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Devredilemedi", e.message),
+    onSuccess: (res) => { toast.success(t("flows.control.grantedTitle"), t("flows.control.grantedBody", { n: res.control.holder })); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.control.grantFail"), e.message),
   });
   const back = useMutation({
     mutationFn: () => returnControl({ ticketNumber: ticket.ticketNumber, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("Kontrol Validating Carrier'a döndü"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("İade edilemedi", e.message),
+    onSuccess: () => { toast.success(t("flows.control.returned")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.control.returnFail"), e.message),
   });
   const ask = useMutation({
     mutationFn: () => requestControl({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("Kontrol talebi gönderildi", "Yanıt bekleniyor"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Talep gönderilemedi", e.message),
+    onSuccess: () => { toast.success(t("flows.control.requested"), t("flows.control.requestedBody")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.control.requestFail"), e.message),
   });
 
   return (
     <Drawer
-      open={open} onClose={onClose} title="Kupon kontrolü"
-      hint="Kontrolü yalnız Validating Carrier devreder; aynı anda tek taşıyıcıda durur (1.1.5.1)."
+      open={open} onClose={onClose} title={t("flows.control.title")}
+      hint={t("flows.control.hint")}
       footer={
         isMine
           ? <Button variant="success" disabled={grant.isPending || !eligible.length} onClick={() => grant.mutate()}>
-              {grant.isPending ? "Devrediliyor…" : "Kontrolü devret"}
+              {grant.isPending ? t("flows.control.granting") : t("flows.control.grant")}
             </Button>
           : <>
-              <Button variant="secondary" disabled={ask.isPending} onClick={() => ask.mutate()}>Kontrol iste</Button>
-              <Button variant="success" disabled={back.isPending} onClick={() => back.mutate()}>Kontrolü geri al</Button>
+              <Button variant="secondary" disabled={ask.isPending} onClick={() => ask.mutate()}>{t("flows.control.request")}</Button>
+              <Button variant="success" disabled={back.isPending} onClick={() => back.mutate()}>{t("flows.control.takeBack")}</Button>
             </>
       }
     >
       <div className="flex flex-col gap-4">
         <Inset>
-          <Line label="Kontrol" value={<span className="num">{held}{ticket.control.isValidatingCarrier ? " (Validating Carrier)" : ""}</span>} />
-          {ticket.control.acquiredAt && <Line label="Alındı" value={<span className="num">{formatDateTime(ticket.control.acquiredAt)}</span>} />}
+          <Line label={t("flows.control.holder")} value={<span className="num">{held}{ticket.control.isValidatingCarrier ? " (Validating Carrier)" : ""}</span>} />
+          {ticket.control.acquiredAt && <Line label={t("flows.control.acquired")} value={<span className="num">{formatDateTime(ticket.control.acquiredAt)}</span>} />}
           {ticket.control.deadlineAt && (
-            <Line label="Süre sonu (1.1.4.1)" value={<span className="num">{formatDateTime(ticket.control.deadlineAt)}</span>} />
+            <Line label={t("flows.control.deadline")} value={<span className="num">{formatDateTime(ticket.control.deadlineAt)}</span>} />
           )}
           {ticket.control.grantedUnderAgreement && (
-            <Line label="Anlaşma" value={<span className="num">{ticket.control.grantedUnderAgreement}</span>} />
+            <Line label={t("flows.control.agreement")} value={<span className="num">{ticket.control.grantedUnderAgreement}</span>} />
           )}
         </Inset>
 
         {isMine ? (
           <>
-            <Banner kind="info" title="Devir koşulu">
-              Devir yalnız taraflar arasında aktif ET bilateral anlaşması varsa mümkündür. Kontrol verildiğinde
-              ilgili kuponlar için "O" statüsü bildirilir; karşı taraf 72 saat içinde statü iletmek ya da
-              kontrolü iade etmekle yükümlüdür.
+            <Banner kind="info" title={t("flows.control.condTitle")}>
+              {t("flows.control.condBody")}
             </Banner>
-            <Field label="Devredilecek taşıyıcı" hint={eligible.length ? undefined : "Control transfer yetkili aktif anlaşma yok."}>
+            <Field label={t("flows.control.toCarrier")} hint={eligible.length ? undefined : t("flows.control.noAgreement")}>
               <Select value={to} onChange={(e) => setTo(e.target.value)}>
                 {eligible.map((a) => <option key={a.partnerCarrier} value={a.partnerCarrier}>{a.partnerCarrier} · {a.partnerName}</option>)}
               </Select>
@@ -637,10 +652,10 @@ function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
           </>
         ) : (
           <>
-            <Banner kind="warning" title={`Kontrol ${held}'da`}>
-              Exchange, refund, void ve kağıda basma işlemleri kontrol sizde değilken yapılamaz (1.1.5.3).
+            <Banner kind="warning" title={t("flows.control.heldBy", { n: held })}>
+              {t("flows.control.blocked")}
             </Banner>
-            <Field label="Talep gerekçesi"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reissue / refund" /></Field>
+            <Field label={t("flows.control.requestReason")}><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Reissue / refund" /></Field>
           </>
         )}
       </div>
@@ -651,6 +666,7 @@ function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- print exchange (1.3.4) ------------------------------------------- */
 
 function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [doc, setDoc] = useState("");
@@ -660,25 +676,24 @@ function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: bo
       ticketNumber: ticket.ticketNumber, couponSeqs: sel,
       paperDocumentNumber: doc, reason, idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: () => { toast.success("Print exchange tamamlandı", "Kuponlar X (Print Exchange) statüsünde"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.printex.toastOk"), t("flows.printex.toastOkBody")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.printex.toastFail"), e.message),
   });
   return (
     <Drawer
       open={open} onClose={onClose} title="Print Exchange"
-      hint="Kağıt stoğun numarası ET numarasından FARKLI olduğunda kullanılır (1.3.4)."
-      footer={<Button disabled={!sel.length || doc.trim().length < 6 || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Basılıyor…" : "Print exchange"}</Button>}
+      hint={t("flows.printex.hint")}
+      footer={<Button disabled={!sel.length || doc.trim().length < 6 || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.printing") : "Print exchange"}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Banner kind="warning" title="X final bir statüdür">
-          Kupon kağıda basılır ve elektronik olarak kullanılamaz. Kağıt belgeye <b>ETKT</b> ve orijinal ET
-          numarası ({ticket.ticketNumber}) basılır. Aynı numarayla basmak istiyorsanız "Kağıda Bas" (1.3.3) kullanın.
+        <Banner kind="warning" title={t("flows.printex.warnTitle")}>
+          {t("flows.printex.warnA")} <b>ETKT</b> {t("flows.printex.warnB", { n: ticket.ticketNumber })}
         </Banner>
         <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle} only={(c) => c.status === "O"} />
-        <Field label="Kağıt belge numarası" hint="Stok üzerindeki numara — ET numarasından farklı olmalı.">
+        <Field label={t("flows.printex.docLabel")} hint={t("flows.printex.docHint")}>
           <Input value={doc} onChange={(e) => setDoc(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" placeholder="2359000000001" />
         </Field>
-        <Field label="Sebep"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Ortak talebi, sistem kesintisi…" /></Field>
+        <Field label={t("flows.common.reason")}><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("flows.printex.reasonPlaceholder")} /></Field>
       </div>
     </Drawer>
   );
@@ -687,33 +702,34 @@ function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: bo
 /* --- void ------------------------------------------------------------- */
 
 function VoidFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [reason, setReason] = useState("");
   const [ack, setAck] = useState(false);
 
   const run = useMutation({
     mutationFn: () => voidTicket({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("Bilet void edildi"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Void yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.void.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.void.toastFail"), e.message),
   });
 
   return (
     <Drawer
-      open={open} onClose={onClose} title="Void" hint="Satış kaydının aynı gün içinde iptali."
-      footer={<Button variant="danger" disabled={!ack || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "İşleniyor…" : "Bileti void et"}</Button>}
+      open={open} onClose={onClose} title="Void" hint={t("flows.void.hint")}
+      footer={<Button variant="danger" disabled={!ack || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.processing") : t("flows.void.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Banner kind="danger" title="Geri alınamaz">
-          Void yalnız satış günü içinde ve TÜM kuponlar açıkken (O) yapılabilir. İşlem sonrası bilet kullanılamaz.
+        <Banner kind="danger" title={t("flows.common.irreversible")}>
+          {t("flows.void.warnBody")}
         </Banner>
         <div>
-          <div className="microlabel mb-2">Kuponlar</div>
+          <div className="microlabel mb-2">{t("flows.common.coupons")}</div>
           <CouponPicker coupons={ticket.coupons} selected={ticket.coupons.map((c) => c.seq)} onToggle={() => {}} />
         </div>
-        <Field label="Sebep"><Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Yanlış kesim, yolcu vazgeçti…" /></Field>
+        <Field label={t("flows.common.reason")}><Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("flows.void.reasonPlaceholder")} /></Field>
         <label className="flex cursor-pointer items-center gap-2.5 text-[13px] text-ink-2">
           <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--brand)]" />
-          Sonucu okudum, void işlemini onaylıyorum.
+          {t("flows.void.ack")}
         </label>
       </div>
     </Drawer>
@@ -723,6 +739,7 @@ function VoidFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; on
 /* --- IRROP ------------------------------------------------------------ */
 
 function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("weather");
@@ -736,31 +753,31 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
       ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, endorseTo,
       newFlight: { carrier, flightNumber, date }, idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: ({ fim }) => { toast.success("Yönlendirme uygulandı", `FIM ${fim}`); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Yönlendirilemedi", e.message),
+    onSuccess: ({ fim }) => { toast.success(t("flows.irrop.toastOk"), `FIM ${fim}`); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.irrop.toastFail"), e.message),
   });
 
   return (
     <Drawer
-      open={open} onClose={onClose} title="IRROP / Yönlendirme"
-      hint="Havayolu kaynaklı düzensizlikte yolcunun başka taşıyıcıya aktarımı (Ch 13)."
-      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Uygulanıyor…" : "Yönlendir ve FIM üret"}</Button>}
+      open={open} onClose={onClose} title={t("flows.irrop.title")}
+      hint={t("flows.irrop.hint")}
+      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.irrop.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <div>
-          <div className="microlabel mb-2">Etkilenen kuponlar</div>
+          <div className="microlabel mb-2">{t("flows.irrop.couponsTitle")}</div>
           <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle} only={(c) => c.status === "O"} />
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Sebep">
+          <Field label={t("flows.common.reason")}>
             <Select value={reason} onChange={(e) => setReason(e.target.value)}>
-              {[["weather", "Hava"], ["technical", "Teknik"], ["atc", "ATC"], ["strike", "Grev"]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {[["weather", t("flows.irrop.weather")], ["technical", t("flows.irrop.technical")], ["atc", "ATC"], ["strike", t("flows.irrop.strike")]].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
             </Select>
           </Field>
-          <Field label="Ciro edilen taşıyıcı"><Input value={endorseTo} onChange={(e) => setEndorseTo(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
-          <Field label="Yeni taşıyıcı"><Input value={carrier} onChange={(e) => setCarrier(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
-          <Field label="Yeni uçuş no"><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} /></Field>
-          <Field label="Tarih" className="col-span-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label={t("flows.irrop.endorseTo")}><Input value={endorseTo} onChange={(e) => setEndorseTo(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
+          <Field label={t("flows.irrop.newCarrier")}><Input value={carrier} onChange={(e) => setCarrier(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
+          <Field label={t("flows.common.newFlightNo")}><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} /></Field>
+          <Field label={t("flows.irrop.date")} className="col-span-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
         </div>
       </div>
     </Drawer>
@@ -770,20 +787,21 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
 /* --- endorsement ------------------------------------------------------ */
 
 function EndorseFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [text, setText] = useState(ticket.endorsement ?? "");
   const run = useMutation({
     mutationFn: () => endorseTicket({ ticketNumber: ticket.ticketNumber, endorsement: text, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("Ciro / kısıtlama yazıldı"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Yazılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.endorse.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.endorse.toastFail"), e.message),
   });
   return (
     <Drawer
-      open={open} onClose={onClose} title="Ciro / Endorsement"
-      hint="Endorsements / Restrictions kutusu (Handbook 2.19)."
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Yazılıyor…" : "Kaydet"}</Button>}
+      open={open} onClose={onClose} title={t("flows.endorse.title")}
+      hint={t("flows.endorse.hint")}
+      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.endorse.saving") : t("flows.endorse.save")}</Button>}
     >
-      <Field label="Endorsement / Restrictions" hint="Örn. NON-REF / NON-END / VALID ON TK ONLY">
+      <Field label="Endorsement / Restrictions" hint={t("flows.endorse.example")}>
         <Textarea value={text} onChange={(e) => setText(e.target.value.toUpperCase())} className="num uppercase" />
       </Field>
     </Drawer>
@@ -793,6 +811,7 @@ function EndorseFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- revalidation ----------------------------------------------------- */
 
 function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const first = ticket.coupons.find((c) => c.status === "O");
   const [seq, setSeq] = useState(first?.seq ?? 1);
@@ -804,27 +823,27 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
       ticketNumber: ticket.ticketNumber, couponSeq: seq,
       newFlightNumber: flightNumber, newDeparture: departure, idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: () => { toast.success("Revalidation uygulandı"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Revalidation yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.revalidate.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.revalidate.toastFail"), e.message),
   });
 
   return (
     <Drawer
       open={open} onClose={onClose} title="Revalidation"
-      hint="Rota ve ücret değişmeden uçuş/saat güncellemesi (Ch 1.3.1 / 12.3)."
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Uygulanıyor…" : "Güncelle"}</Button>}
+      hint={t("flows.revalidate.hint")}
+      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.revalidate.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Banner kind="info">Reissue yapılmaz, kupon statüsü O kalır. Rota ya da ücret değişecekse exchange kullanın.</Banner>
-        <Field label="Kupon">
+        <Banner kind="info">{t("flows.revalidate.banner")}</Banner>
+        <Field label={t("flows.common.coupon")}>
           <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
             {ticket.coupons.filter((c) => c.status === "O").map((c) => (
               <option key={c.seq} value={c.seq}>#{c.seq} · {c.segment.origin} → {c.segment.destination}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Yeni uçuş no"><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} className="num" /></Field>
-        <Field label="Yeni kalkış">
+        <Field label={t("flows.common.newFlightNo")}><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} className="num" /></Field>
+        <Field label={t("flows.common.newDeparture")}>
           <Input
             type="datetime-local"
             value={departure ? departure.slice(0, 16) : ""}
@@ -839,24 +858,25 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
 /* --- kağıda bas ------------------------------------------------------- */
 
 function PrintFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("");
   const run = useMutation({
     mutationFn: () => printToPaper({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("Kuponlar kağıda basıldı"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Basılamadı", e.message),
+    onSuccess: () => { toast.success(t("flows.print.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.print.toastFail"), e.message),
   });
   return (
     <Drawer
-      open={open} onClose={onClose} title="Kağıda Bas"
-      hint="Kupon kağıda basılır ve final P statüsüne geçer (Ch 1.3.3)."
-      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Basılıyor…" : "Kağıda bas"}</Button>}
+      open={open} onClose={onClose} title={t("flows.print.title")}
+      hint={t("flows.print.hint")}
+      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.printing") : t("flows.print.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Banner kind="warning">P final bir statüdür; basılan kupon elektronik olarak kullanılamaz.</Banner>
+        <Banner kind="warning">{t("flows.print.banner")}</Banner>
         <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle} only={(c) => c.status === "O"} />
-        <Field label="Sebep"><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Sistem kesintisi, ortak talebi…" /></Field>
+        <Field label={t("flows.common.reason")}><Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("flows.print.reasonPlaceholder")} /></Field>
       </div>
     </Drawer>
   );
@@ -865,6 +885,7 @@ function PrintFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
 /* --- askıya alma / serbest bırakma (S, 1.1.4) ------------------------- */
 
 function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("");
@@ -878,37 +899,35 @@ function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
       return releasing ? releaseCoupons(input) : suspendCoupons(input);
     },
     onSuccess: () => {
-      toast.success(releasing ? "Kuponlar askıdan çıkarıldı" : "Kuponlar askıya alındı");
+      toast.success(releasing ? t("flows.suspend.okRelease") : t("flows.suspend.okSuspend"));
       refresh(ticket.ticketNumber);
       onClose();
     },
-    onError: (e: Error) => toast.danger(releasing ? "Askıdan çıkarılamadı" : "Askıya alınamadı", e.message),
+    onError: (e: Error) => toast.danger(releasing ? t("flows.suspend.failRelease") : t("flows.suspend.failSuspend"), e.message),
   });
 
   return (
     <Drawer
       open={open} onClose={onClose}
-      title={releasing ? "Askıdan Çıkar" : "Askıya Al"}
-      hint={releasing ? "İnceleme kapandı; kupon yeniden kullanılabilir hâle gelir (S→O)." : "Şüpheli belge kullanıma kapatılır; değeri korunur (O/A→S)."}
+      title={releasing ? t("flows.suspend.titleRelease") : t("flows.suspend.titleSuspend")}
+      hint={releasing ? t("flows.suspend.hintRelease") : t("flows.suspend.hintSuspend")}
       footer={
         <Button variant={releasing ? "success" : "danger"} disabled={!sel.length || (!releasing && !reason.trim()) || run.isPending} onClick={() => run.mutate()}>
-          {run.isPending ? "Uygulanıyor…" : releasing ? "Askıdan çıkar" : "Askıya al"}
+          {run.isPending ? t("flows.common.applying") : releasing ? t("flows.suspend.btnRelease") : t("flows.suspend.btnSuspend")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
         <Banner kind={releasing ? "info" : "warning"}>
-          {releasing
-            ? "Askıdaki kupon O'ya döner; iade/exchange gibi işlemler yeniden açılır."
-            : "Askıdaki kupon check-in edilemez, iade/exchange edilemez. Belge iptal edilmez — inceleme sonunda O'ya döner ya da void edilir."}
+          {releasing ? t("flows.suspend.bannerRelease") : t("flows.suspend.bannerSuspend")}
         </Banner>
         <CouponPicker
           coupons={ticket.coupons} selected={sel} onToggle={toggle}
           only={(c) => (releasing ? c.status === "S" : c.status === "O" || c.status === "A")}
         />
-        <Field label="Gerekçe" hint="Denetim kaydına yazılır." required={!releasing}>
+        <Field label={t("flows.common.justification")} hint={t("flows.suspend.reasonHint")} required={!releasing}>
           <Input value={reason} onChange={(e) => setReason(e.target.value)}
-            placeholder={releasing ? "İnceleme kapandı, ödeme doğrulandı…" : "Chargeback itirazı, sahtecilik incelemesi…"} />
+            placeholder={releasing ? t("flows.suspend.phRelease") : t("flows.suspend.phSuspend")} />
         </Field>
       </div>
     </Drawer>
@@ -918,22 +937,23 @@ function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- no-show ---------------------------------------------------------- */
 
 function NoShowFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const run = useMutation({
     mutationFn: () => markNoShow({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("No-show kaydedildi"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Kaydedilemedi", e.message),
+    onSuccess: () => { toast.success(t("flows.noshow.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), e.message),
   });
   return (
     <Drawer
-      open={open} onClose={onClose} title="Binmedi (No-show)"
-      hint="Yolcu uçuşa gelmedi. Statü O kalır, kupon işaretlenir (Ch 13)."
-      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Kaydediliyor…" : "No-show işle"}</Button>}
+      open={open} onClose={onClose} title={t("flows.noshow.title")}
+      hint={t("flows.noshow.hint")}
+      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.recording") : t("flows.noshow.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <CouponPicker coupons={ticket.coupons} selected={sel} onToggle={toggle} only={(c) => c.status === "O" || c.status === "A"} />
-        <Banner kind="info">Sonrasında yolcu için yeniden rezervasyon (exchange) ya da iade akışına geçebilirsiniz.</Banner>
+        <Banner kind="info">{t("flows.noshow.banner")}</Banner>
       </div>
     </Drawer>
   );
@@ -942,11 +962,12 @@ function NoShowFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 /* --- EMD / fazla bagaj ------------------------------------------------ */
 
 function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boolean; baggage: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const [type, setType] = useState<"A" | "S">("A");
   const [seq, setSeq] = useState(ticket.coupons.find((c) => c.status === "O")?.seq ?? 1);
   const [rfisc, setRfisc] = useState(baggage ? "0CC" : RFISC_CATALOG[0]?.rfisc ?? "");
-  const [desc, setDesc] = useState(baggage ? "Fazla Bagaj 23kg" : "");
+  const [desc, setDesc] = useState(() => (baggage ? t("flows.emd.baggageDesc") : ""));
   const [amount, setAmount] = useState("1500");
 
   const run = useMutation({
@@ -954,30 +975,30 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
       ticketNumber: ticket.ticketNumber,
       couponSeq: type === "A" ? seq : undefined,
       type, rfisc,
-      description: desc || RFISC_CATALOG.find((r) => r.rfisc === rfisc)?.label || "Hizmet",
+      description: desc || RFISC_CATALOG.find((r) => r.rfisc === rfisc)?.label || t("flows.emd.serviceFallback"),
       value: { amount: Number(amount) || 0, currency: ticket.fare.total.currency },
       idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: (e) => { toast.success("EMD kesildi", e.emdNumber); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("EMD kesilemedi", e.message),
+    onSuccess: (e) => { toast.success(t("flows.emd.toastOk"), e.emdNumber); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.emd.toastFail"), e.message),
   });
 
   return (
     <Drawer
       open={open} onClose={onClose}
-      title={baggage ? "Fazla Bagaj → EMD-S" : "EMD Kes"}
-      hint="Elektronik Muhtelif Belge — bilet dışı hizmetler (Handbook Ch 5)."
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Kesiliyor…" : "EMD kes"}</Button>}
+      title={baggage ? t("flows.emd.titleBaggage") : t("flows.emd.title")}
+      hint={t("flows.emd.hint")}
+      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.issuing") : t("flows.emd.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Field label="Tip" hint="EMD-A bir ET kuponuna bağlıdır; EMD-S bağımsızdır.">
+        <Field label={t("flows.emd.typeLabel")} hint={t("flows.emd.typeHint")}>
           <Select value={type} onChange={(e) => setType(e.target.value as "A" | "S")}>
-            <option value="A">EMD-A · bağlı</option>
+            <option value="A">{t("flows.emd.typeA")}</option>
             <option value="S">EMD-S · standalone</option>
           </Select>
         </Field>
         {type === "A" && (
-          <Field label="Bağlı kupon">
+          <Field label={t("flows.emd.couponLabel")}>
             <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
               {ticket.coupons.map((c) => (
                 <option key={c.seq} value={c.seq}>#{c.seq} · {c.segment.origin} → {c.segment.destination} ({c.status})</option>
@@ -985,13 +1006,13 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
             </Select>
           </Field>
         )}
-        <Field label="RFISC" hint="Reason For Issuance Sub-Code — hizmetin kataloğ kodu.">
+        <Field label="RFISC" hint={t("flows.emd.rfiscHint")}>
           <Select value={rfisc} onChange={(e) => { setRfisc(e.target.value); setDesc(RFISC_CATALOG.find((r) => r.rfisc === e.target.value)?.label ?? ""); }}>
             {RFISC_CATALOG.map((r) => <option key={r.rfisc} value={r.rfisc}>{r.rfisc} · {r.label}</option>)}
           </Select>
         </Field>
-        <Field label="Açıklama"><Input value={desc} onChange={(e) => setDesc(e.target.value)} /></Field>
-        <Field label="Tutar"><Input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" /></Field>
+        <Field label={t("flows.emd.desc")}><Input value={desc} onChange={(e) => setDesc(e.target.value)} /></Field>
+        <Field label={t("flows.emd.amount")}><Input value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" /></Field>
       </div>
     </Drawer>
   );
@@ -1001,6 +1022,7 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
 /* --- bagaj kaydı (14.4) ----------------------------------------------- */
 
 function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
   const refresh = useRefresh();
   const first = ticket.coupons.find((c) => c.status === "O") ?? ticket.coupons[0];
   const [seq, setSeq] = useState(first?.seq ?? 1);
@@ -1022,18 +1044,18 @@ function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
       weightUnit: unit,
       idempotencyKey: newIdempotencyKey(),
     }),
-    onSuccess: () => { toast.success("Bagaj kaydedildi"); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger("Kaydedilemedi", e.message),
+    onSuccess: () => { toast.success(t("flows.baggage.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), e.message),
   });
 
   return (
     <Drawer
-      open={open} onClose={onClose} title="Bagaj Kaydı"
-      hint="Teslim alınan bagajın parça (PCS) ve ağırlık (WT) girişi — Handbook 14.4."
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? "Kaydediliyor…" : "Bagajı kaydet"}</Button>}
+      open={open} onClose={onClose} title={t("flows.baggage.title")}
+      hint={t("flows.baggage.hint")}
+      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.recording") : t("flows.baggage.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
-        <Field label="Kupon" required>
+        <Field label={t("flows.common.coupon")} required>
           <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
             {ticket.coupons.map((c) => (
               <option key={c.seq} value={c.seq}>#{c.seq} · {c.segment.origin} → {c.segment.destination} ({c.status})</option>
@@ -1043,32 +1065,31 @@ function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 
         {allowance && (
           <Inset className="text-[13px]">
-            <span className="text-ink-2">Ücrete dahil hak: </span>
+            <span className="text-ink-2">{t("flows.baggage.allowance")}</span>
             <span className="num font-medium text-ink">
-              {allowance.type === "weight" ? `${allowance.value} ${allowance.unit ?? "K"}` : `${allowance.value} parça`}
+              {allowance.type === "weight" ? `${allowance.value} ${allowance.unit ?? "K"}` : t("flows.baggage.pieces", { n: allowance.value })}
             </span>
           </Inset>
         )}
 
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Parça (PCS)">
+          <Field label={t("flows.baggage.piecesLabel")}>
             <Input value={pieces} onChange={(e) => setPieces(e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="num" />
           </Field>
-          <Field label="Ağırlık (WT)">
+          <Field label={t("flows.baggage.weightLabel")}>
             <Input value={weight} onChange={(e) => setWeight(e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="num" />
           </Field>
         </div>
-        <Field label="Birim">
+        <Field label={t("flows.baggage.unitLabel")}>
           <Select value={unit} onChange={(e) => setUnit(e.target.value as "K" | "L")}>
-            <option value="K">Kilogram (K)</option>
-            <option value="L">Libre (L)</option>
+            <option value="K">{t("flows.baggage.unitKg")}</option>
+            <option value="L">{t("flows.baggage.unitLb")}</option>
           </Select>
         </Field>
 
         {over != null && over > 0 && (
-          <Banner kind="warning" title={`${over} ${unit} fazla bagaj`}>
-            Hakkı aşan bagaj için EMD-S kesilmelidir (14.5). Kaydettikten sonra
-            İşlemler → Fazla Bagaj adımına geçin.
+          <Banner kind="warning" title={t("flows.baggage.overTitle", { n: over, u: unit })}>
+            {t("flows.baggage.overBody")}
           </Banner>
         )}
       </div>

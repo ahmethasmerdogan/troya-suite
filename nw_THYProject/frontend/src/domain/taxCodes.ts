@@ -28,6 +28,12 @@
 export type TfcType = "departure" | "sales" | "transportation";
 
 /**
+ * Belge/açıklama dili. Arayüz dilinden BAĞIMSIZ tutulur (store'a bağlanmaz —
+ * domain katmanı sunumu import etmez).
+ */
+export type DocLang = "tr" | "en";
+
+/**
  * Kalemin iade edilebilirliğini neyin belirlediği.
  *  perDeparture / perEnplanement / perArrival — olay bazlı
  *  percentOfFare — ödenen tutara bağlı, ücret kuralını izler
@@ -91,6 +97,18 @@ export function taxByCode(code?: string): TaxCodeDef | undefined {
 }
 
 /**
+ * Kalemin gösterilecek adı, seçilen dilde.
+ *
+ * EN istenip `nameEn` yoksa TR ada düşer. Katalogda olmayan kod için
+ * `undefined` döner — çağıran kendi yedeğini (ör. "Vergi / harç") basar.
+ */
+export function taxName(code?: string, lang: DocLang = "tr"): string | undefined {
+  const def = taxByCode(code);
+  if (!def) return undefined;
+  return lang === "en" ? (def.nameEn || def.name) : def.name;
+}
+
+/**
  * Bu TFC kalemi iade edilir mi?
  *
  * @param code            vergi kodu
@@ -110,19 +128,90 @@ export function isTfcRefundable(code: string, couponFlown: boolean, fareRefundab
   return !couponFlown;
 }
 
-/** Neden iade edildi / edilmedi — personele gösterilecek tek cümle. */
-export function tfcRefundReason(code: string, couponFlown: boolean, fareRefundable: boolean): string {
+/** Gerekçe cümlesinin dilden bağımsız kimliği. */
+export type TfcReasonKey =
+  | "always"
+  | "never"
+  | "flown"
+  | "followsFareRefunded"
+  | "followsFareForfeited"
+  | "notDeparted";
+
+/**
+ * Gerekçe metinleri. TR karşılıklar BİREBİR korunur (testler ve e2e bunlara
+ * bağlıdır); EN yalnızca eklenmiştir.
+ */
+const TFC_REASON_TEXT: Record<TfcReasonKey, Record<DocLang, string>> = {
+  always: {
+    tr: "Kullanılmasa da iade edilir (yasal düzenleme).",
+    en: "Refunded even when unused (statutory requirement).",
+  },
+  never: {
+    tr: "İade edilmez.",
+    en: "Not refundable.",
+  },
+  flown: {
+    tr: "Kupon uçuldu — harç doğdu, iade edilmez.",
+    en: "Coupon flown — the charge was incurred, so it is not refunded.",
+  },
+  followsFareRefunded: {
+    tr: "Ödenen tutara bağlı; ücret iade edilebilir olduğu için iade edilir.",
+    en: "Assessed on the amount paid; refunded because the fare itself is refundable.",
+  },
+  followsFareForfeited: {
+    tr: "Ödenen tutara bağlı; ücret iade edilemediği için iade edilmez.",
+    en: "Assessed on the amount paid; not refunded because the fare itself is non-refundable.",
+  },
+  notDeparted: {
+    tr: "Kalkış gerçekleşmedi — harç doğmadı, iade edilir.",
+    en: "Departure did not take place — no charge was incurred, so it is refunded.",
+  },
+};
+
+/** Gerekçenin hangi kural dalından geldiği (metinsiz). */
+export function tfcRefundReasonKey(code: string, couponFlown: boolean, fareRefundable: boolean): TfcReasonKey {
   const def = taxByCode(code);
   const basis: TfcRefundBasis = def?.refundBasis ?? "perDeparture";
-  if (basis === "always") return "Kullanılmasa da iade edilir (yasal düzenleme).";
-  if (basis === "never") return "İade edilmez.";
-  if (couponFlown) return "Kupon uçuldu — harç doğdu, iade edilmez.";
+  if (basis === "always") return "always";
+  if (basis === "never") return "never";
+  if (couponFlown) return "flown";
   if (basis === "percentOfFare" || def?.followsFare) {
-    return fareRefundable
-      ? "Ödenen tutara bağlı; ücret iade edilebilir olduğu için iade edilir."
-      : "Ödenen tutara bağlı; ücret iade edilemediği için iade edilmez.";
+    return fareRefundable ? "followsFareRefunded" : "followsFareForfeited";
   }
-  return "Kalkış gerçekleşmedi — harç doğmadı, iade edilir.";
+  return "notDeparted";
+}
+
+/** Neden iade edildi / edilmedi — personele gösterilecek tek cümle. */
+export function tfcRefundReason(
+  code: string,
+  couponFlown: boolean,
+  fareRefundable: boolean,
+  lang: DocLang = "tr",
+): string {
+  return TFC_REASON_TEXT[tfcRefundReasonKey(code, couponFlown, fareRefundable)][lang];
+}
+
+const TFC_REASON_EN = new Map<string, string>([
+  ...Object.values(TFC_REASON_TEXT).map((v) => [v.tr, v.en] as const),
+  // refundRules.ts'in kendi ürettiği iki gerekçe — o modül kendi EN alanını
+  // eklerse bu yedek kullanılmaz, eklemezse kalem yine İngilizce görünür.
+  ["Bu kupon iade edilmiyor.", "This coupon is not being refunded."],
+  [
+    "Tarife kuralı gereği vergiler de iade edilmez (Cat 33 vergi göstergesi X).",
+    "Under the fare rule the taxes are not refunded either (Cat 33 tax indicator X).",
+  ],
+]);
+
+/**
+ * Hesaplanmış TR gerekçe metnini seçilen dile çevirir.
+ *
+ * `quoteRefund` gibi çağrılar gerekçeyi TR üretir; sunum katmanı hesabı
+ * yeniden yapmadan yalnız metni çevirebilsin diye. Tanınmayan metin
+ * OLDUĞU GİBİ döner — hiçbir cümle kaybolmaz.
+ */
+export function translateTfcReason(reason: string, lang: DocLang = "tr"): string {
+  if (lang === "tr") return reason;
+  return TFC_REASON_EN.get(reason) ?? reason;
 }
 
 export function isCarrierImposed(code: string): boolean {

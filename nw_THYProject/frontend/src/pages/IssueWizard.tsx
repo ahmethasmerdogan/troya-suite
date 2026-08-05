@@ -9,7 +9,7 @@ import { getPnr, type ReservationSegment } from "@/domain/reservation";
 import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
-import { SSR_CATALOG, SSR_CATEGORY_LABEL, type SsrCategory } from "@/domain/ssr";
+import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
 import type { FormOfPaymentType, Passenger, Segment, Ticket } from "@/domain/types";
@@ -22,7 +22,9 @@ import { toast } from "@/components/ui/toast";
 import {
   Alert, Button, Card, InsetPanel, Modal, ModalClose, OutlineBadge, RadioCards, StatusPill,
 } from "@/ui";
-import { cn } from "@/lib/utils";
+import { useT, type Key } from "@/i18n";
+import { useUI } from "@/store/ui";
+import { cn, locale } from "@/lib/utils";
 
 /* ====================================================================
    Bilet kesme — beş adım.
@@ -34,7 +36,7 @@ import { cn } from "@/lib/utils";
    Kesim tek tıkla olmaz: özet okunur, beyan işaretlenir, sonra kesilir.
    ==================================================================== */
 
-const STEPS = ["Yolcu", "Sefer", "Ücret", "Ödeme", "Onay"] as const;
+const STEPS = ["issue.step.pax", "issue.step.leg", "issue.step.fare", "issue.step.pay", "issue.step.review"] as const;
 
 interface Leg {
   origin: string; destination: string; date: string; flight: FlightItem | null;
@@ -73,6 +75,7 @@ function legFromSegment(s: ReservationSegment): Leg {
 }
 
 export function IssueWizard() {
+  const t = useT();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [issued, setIssued] = useState<Ticket | null>(null);
@@ -128,31 +131,31 @@ export function IssueWizard() {
   const validate = (s: number): Record<string, string> => {
     const e: Record<string, string> = {};
     if (s === 0) {
-      if (pax.surname.trim().length < 2) e.surname = "Soyadı en az 2 karakter (Ch 2)";
-      if (!pax.givenName.trim()) e.givenName = "Ad zorunlu";
-      if (carrier.trim().length !== 2) e.carrier = "Kesen taşıyıcı iki harf olmalı";
+      if (pax.surname.trim().length < 2) e.surname = t("issue.err.surname");
+      if (!pax.givenName.trim()) e.givenName = t("issue.err.givenName");
+      if (carrier.trim().length !== 2) e.carrier = t("issue.err.carrier");
       // Kucak bebeği (1.1.8): ad-soyad zorunlu, doğum tarihi verilmişse 2 yaş altı olmalı.
       if (pax.infant) {
-        if (!pax.infant.surname.trim()) e.infantSurname = "Bebek soyadı zorunlu";
-        if (!pax.infant.givenName.trim()) e.infantGivenName = "Bebek adı zorunlu";
+        if (!pax.infant.surname.trim()) e.infantSurname = t("issue.err.infantSurname");
+        if (!pax.infant.givenName.trim()) e.infantGivenName = t("issue.err.infantGivenName");
         if (pax.infant.dob) {
           const months = (Date.now() - new Date(pax.infant.dob).getTime()) / (1000 * 60 * 60 * 24 * 30.44);
-          if (Number.isNaN(months)) e.infantDob = "Geçerli bir tarih girin";
-          else if (months < 0) e.infantDob = "Doğum tarihi gelecekte olamaz";
-          else if (months >= 24) e.infantDob = "24 ayı dolduran yolcu kucak bebeği olamaz (CHD bileti gerekir)";
+          if (Number.isNaN(months)) e.infantDob = t("issue.err.infantDobInvalid");
+          else if (months < 0) e.infantDob = t("issue.err.infantDobFuture");
+          else if (months >= 24) e.infantDob = t("issue.err.infantDobAge");
         }
       }
     }
     if (s === 1) {
       legs.forEach((l, i) => {
-        if (!l.origin.trim()) e[`leg${i}o`] = "Kalkış havalimanı seçin";
-        if (!l.destination.trim()) e[`leg${i}d`] = "Varış havalimanı seçin";
-        if (!l.date) e[`leg${i}t`] = "Uçuş tarihi seçin";
-        else if (!l.flight) e[`leg${i}f`] = "Listeden bir sefer seçin";
+        if (!l.origin.trim()) e[`leg${i}o`] = t("issue.err.legOrigin");
+        if (!l.destination.trim()) e[`leg${i}d`] = t("issue.err.legDest");
+        if (!l.date) e[`leg${i}t`] = t("issue.err.legDate");
+        else if (!l.flight) e[`leg${i}f`] = t("issue.err.legFlight");
       });
     }
-    if (s === 2 && !offer) e.offer = "Sistem tarifesinden bir ücret seçin";
-    if (s === 3 && fop !== "cash" && fopDetail.trim().length < 4) e.fop = "Ödeme aracı bilgisi zorunlu (en az 4 karakter)";
+    if (s === 2 && !offer) e.offer = t("issue.err.offer");
+    if (s === 3 && fop !== "cash" && fopDetail.trim().length < 4) e.fop = t("issue.err.fop");
     return e;
   };
 
@@ -161,10 +164,10 @@ export function IssueWizard() {
     setErrors(e);
     if (Object.keys(e).length) {
       setBlocked(
-        step === 0 ? "Zorunlu alanlar eksik"
-          : step === 1 ? "Sefer seçimi tamamlanmadı"
-            : step === 2 ? "Ücret seçilmedi"
-              : "Ödeme bilgisi eksik",
+        step === 0 ? t("issue.blocked.pax")
+          : step === 1 ? t("issue.blocked.leg")
+            : step === 2 ? t("issue.blocked.fare")
+              : t("issue.blocked.pay"),
       );
       return;
     }
@@ -205,7 +208,7 @@ export function IssueWizard() {
       idempotencyKey: newIdempotencyKey(),
     }),
     onSuccess: (t) => { setConfirming(false); setIssued(t); },
-    onError: (e: Error) => { setConfirming(false); toast.danger("Bilet kesilemedi", e.message); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
   });
 
   if (issued) {
@@ -223,8 +226,8 @@ export function IssueWizard() {
   return (
     <>
       <PageTitle
-        title="Bilet Kes"
-        hint="Yolcu → Sefer → Ücret → Ödeme → Onay. Para işlemi sunucu sonucunu bekler; iyimser arayüz yoktur."
+        title={t("issue.title")}
+        hint={t("issue.hint")}
       />
 
       {/* Üç sütun: solda adım rayı (tamamlananların özetiyle), ortada form,
@@ -235,14 +238,14 @@ export function IssueWizard() {
 
         <div className="min-w-0">
           {srcPnr && (
-            <Alert tone="info" title={`${srcPnr.recordLocator} rezervasyonundan dolduruldu`} className="mb-4">
-              Yolcu, güzergâh ve seferler rezervasyondan geldi; kesim tamamlanınca doküman numarası PNR'a yazılır.
-              {srcPnr.passengers.length > 1 && ` PNR'da ${srcPnr.passengers.length} yolcu var — bu kesim ilk yolcu içindir.`}
+            <Alert tone="info" title={t("issue.fromPnr.title", { rl: srcPnr.recordLocator })} className="mb-4">
+              {t("issue.fromPnr.body")}
+              {srcPnr.passengers.length > 1 && ` ${t("issue.fromPnr.multi", { n: srcPnr.passengers.length })}`}
             </Alert>
           )}
           {blocked && (
             <Alert tone="danger" title={blocked} className="mb-4">
-              İşaretli alanları doldurun. Zorunlu alanlar etiketlerinde <b>*</b> ile gösterilir.
+              {t("issue.blocked.body1")} <b>*</b> {t("issue.blocked.body2")}
             </Alert>
           )}
           <Card className="p-5">
@@ -262,50 +265,49 @@ export function IssueWizard() {
       {/* Aksiyon şeridi ekranın altına yapışır — uzun formda "İleri" aranmaz. */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur-sm">
         <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-3 sm:px-6 lg:px-8">
-          <Button variant="ghost" disabled={step === 0} iconLeft={<ChevronLeft size={15} strokeWidth={2} />} onClick={() => setStep((s) => Math.max(0, s - 1))}>Geri</Button>
-          <span className="num hidden text-[12px] text-ink-3 sm:block">Adım {step + 1} / {STEPS.length}</span>
+          <Button variant="ghost" disabled={step === 0} iconLeft={<ChevronLeft size={15} strokeWidth={2} />} onClick={() => setStep((s) => Math.max(0, s - 1))}>{t("issue.back")}</Button>
+          <span className="num hidden text-[12px] text-ink-3 sm:block">{t("issue.stepCounter", { n: step + 1, total: STEPS.length })}</span>
           <span className="ml-auto flex items-center gap-4">
             <span className="flex items-baseline gap-2">
-              <span className="microlabel">Tahsilat</span>
+              <span className="microlabel">{t("issue.collect")}</span>
               {offer ? <Money value={offer.total} size="md" /> : <span className="num text-ink-3">—</span>}
             </span>
             {step < STEPS.length - 1 ? (
-              <Button variant="green" onClick={next} iconRight={<ChevronRight size={15} strokeWidth={2} />}>İleri</Button>
+              <Button variant="green" onClick={next} iconRight={<ChevronRight size={15} strokeWidth={2} />}>{t("issue.next")}</Button>
             ) : (
-              <Button variant="green" onClick={() => { setAck(false); setConfirming(true); }}>Bileti Kes</Button>
+              <Button variant="green" onClick={() => { setAck(false); setConfirming(true); }}>{t("issue.submit")}</Button>
             )}
           </span>
         </div>
       </div>
 
-      <Modal open={confirming} onClose={() => setConfirming(false)} label="Bilet Kesim Onayı" width="max-w-lg">
+      <Modal open={confirming} onClose={() => setConfirming(false)} label={t("issue.confirm.title")} width="max-w-lg">
         <Card className="relative p-6">
           <ModalClose onClose={() => setConfirming(false)} />
-          <h2 className="text-[18px] font-semibold tracking-tight text-ink">Bilet Kesim Onayı</h2>
-          <p className="mt-1 text-[13px] text-ink-2">Aşağıdaki kayıt oluşturulacak ve satış kaydedilecek.</p>
+          <h2 className="text-[18px] font-semibold tracking-tight text-ink">{t("issue.confirm.title")}</h2>
+          <p className="mt-1 text-[13px] text-ink-2">{t("issue.confirm.desc")}</p>
 
           <InsetPanel className="mt-4 p-4">
-            <Line label="Yolcu" value={`${pax.surname}/${pax.givenName}`} />
-            <Line label="Güzergah" value={<span className="num">{legs.map((l) => `${l.origin}→${l.destination}`).join(" · ")}</span>} />
-            <Line label="Ücret" value={offer?.fareType.label ?? "—"} />
-            <Line label="Toplam tahsilat" strong value={offer ? <Money value={offer.total} size="sm" /> : "—"} />
+            <Line label={t("issue.confirm.pax")} value={`${pax.surname}/${pax.givenName}`} />
+            <Line label={t("issue.confirm.route")} value={<span className="num">{legs.map((l) => `${l.origin}→${l.destination}`).join(" · ")}</span>} />
+            <Line label={t("issue.confirm.fare")} value={offer?.fareType.label ?? "—"} />
+            <Line label={t("issue.confirm.total")} strong value={offer ? <Money value={offer.total} size="sm" /> : "—"} />
           </InsetPanel>
 
-          <Alert tone="warning" title="IATA beyanı" className="mt-4">
-            Bu işlem bir satış kaydı oluşturur. Void yalnız satış günü içinde mümkündür; sonrasında iade
-            ücret kurallarına tabidir. İşlem denetim kaydına yazılır.
+          <Alert tone="warning" title={t("issue.confirm.iata")} className="mt-4">
+            {t("issue.confirm.iataBody")}
           </Alert>
 
           <label className="mt-4 flex cursor-pointer items-start gap-2.5 text-[13px] text-ink-2">
             <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)}
               className="mt-0.5 h-3.5 w-3.5 accent-[var(--brand)]" />
-            Bilgileri kontrol ettim, kesimi onaylıyorum.
+            {t("issue.confirm.ack")}
           </label>
 
           <div className="mt-5 flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={() => setConfirming(false)}>Vazgeç</Button>
+            <Button variant="ghost" onClick={() => setConfirming(false)}>{t("issue.confirm.cancel")}</Button>
             <Button variant="success" disabled={!ack || issue.isPending} onClick={() => issue.mutate()}>
-              {issue.isPending ? "Kesiliyor…" : "Onaylıyorum — Kes"}
+              {issue.isPending ? t("issue.confirm.pending") : t("issue.confirm.ok")}
             </Button>
           </div>
         </Card>
@@ -319,23 +321,24 @@ export function IssueWizard() {
 function StepRail({
   step, onGo, pax, legs, offer, fop,
 }: { step: number; onGo: (s: number) => void; pax: Passenger; legs: Leg[]; offer: FareOffer | null; fop: FormOfPaymentType }) {
+  const t = useT();
   const route = legs.filter((l) => l.origin && l.destination).map((l) => `${l.origin}→${l.destination}`).join(" · ");
   const sums = [
     pax.surname ? `${pax.surname}/${pax.givenName}` : null,
     route || null,
     offer ? offer.fareType.label : null,
-    fop === "cash" ? "Nakit" : fop === "uatp" ? "UATP" : "Kredi Kartı",
+    fop === "cash" ? t("issue.fop.cash") : fop === "uatp" ? t("issue.fop.uatp") : t("issue.fop.credit"),
     null,
   ];
 
   return (
-    <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:gap-0 lg:overflow-visible" aria-label="Adımlar">
-      {STEPS.map((label, i) => {
+    <nav className="flex gap-2 overflow-x-auto lg:flex-col lg:gap-0 lg:overflow-visible" aria-label={t("issue.rail.aria")}>
+      {STEPS.map((stepKey, i) => {
         const done = i < step;
         const on = i === step;
         return (
           <button
-            key={label}
+            key={stepKey}
             type="button"
             disabled={i > step}
             onClick={() => onGo(i)}
@@ -356,7 +359,7 @@ function StepRail({
               {done ? <Check size={12} strokeWidth={3} /> : i + 1}
             </span>
             <span className="min-w-0">
-              <span className={cn("block text-[13px]", on ? "font-semibold text-brand" : "font-medium text-ink")}>{label}</span>
+              <span className={cn("block text-[13px]", on ? "font-semibold text-brand" : "font-medium text-ink")}>{t(stepKey)}</span>
               {sums[i] && <span className="mt-0.5 block truncate text-[11.5px] text-ink-3">{sums[i]}</span>}
             </span>
           </button>
@@ -370,16 +373,17 @@ function StepRail({
 function LivePreview({
   pax, carrier, pnr, legs, offer,
 }: { pax: Passenger; carrier: string; pnr: string; legs: Leg[]; offer: FareOffer | null }) {
+  const t = useT();
   const chosen = legs.filter((l) => l.flight);
   return (
     <div className="sticky top-4 flex flex-col gap-3">
       <Card className="overflow-hidden">
         <div className="flex items-center gap-2 bg-[var(--brand)] px-4 py-2 text-white">
-          <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">Önizleme</span>
+          <span className="text-[11px] font-semibold uppercase tracking-[0.14em]">{t("issue.preview.title")}</span>
           <span className="num ml-auto text-[10.5px] text-white/80">{carrier || "TK"}</span>
         </div>
         <div className="p-4">
-          <div className="microlabel">Yolcu</div>
+          <div className="microlabel">{t("issue.preview.pax")}</div>
           <div className="mt-0.5 truncate text-[15px] font-semibold text-ink">
             {pax.surname ? `${pax.surname}/${pax.givenName || "—"}` : "—"}
           </div>
@@ -388,7 +392,7 @@ function LivePreview({
           <div className="mt-4 flex flex-col gap-2">
             {chosen.length === 0 ? (
               <div className="rounded-xl border border-dashed border-line-strong px-3 py-4 text-center text-[12px] text-ink-3">
-                Sefer seçilmedi
+                {t("issue.preview.noFlight")}
               </div>
             ) : chosen.map((l, i) => (
               <InsetPanel key={i} className="px-3 py-2">
@@ -397,7 +401,7 @@ function LivePreview({
                   <span className="text-[11.5px] font-normal text-ink-3">{l.flight!.flightNumber}</span>
                 </div>
                 <div className="num mt-0.5 text-[11.5px] text-ink-3">
-                  {new Date(l.flight!.departure).toLocaleString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  {new Date(l.flight!.departure).toLocaleString(locale(), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
                 </div>
               </InsetPanel>
             ))}
@@ -410,13 +414,13 @@ function LivePreview({
                 <OutlineBadge tone="gray">{offer.rbd}</OutlineBadge>
               </div>
               <div className="mt-2 flex flex-col gap-1">
-                <Line label="Çıplak ücret" value={<Money value={offer.baseFare} size="sm" />} />
-                <Line label="Vergi & harç" value={<Money value={offer.totalTfc} size="sm" />} />
-                <Line label="Toplam" strong value={<Money value={offer.total} size="sm" />} />
+                <Line label={t("issue.preview.base")} value={<Money value={offer.baseFare} size="sm" />} />
+                <Line label={t("issue.preview.tfc")} value={<Money value={offer.totalTfc} size="sm" />} />
+                <Line label={t("issue.preview.total")} strong value={<Money value={offer.total} size="sm" />} />
               </div>
               <div className="mt-2 flex flex-wrap gap-1.5">
-                <StatusPill tone="gray">{offer.baggageKg} kg bagaj</StatusPill>
-                <StatusPill tone={offer.refundable ? "green" : "gray"} dot>{offer.refundable ? "İade var" : "İade yok"}</StatusPill>
+                <StatusPill tone="gray">{t("issue.preview.baggage", { n: offer.baggageKg })}</StatusPill>
+                <StatusPill tone={offer.refundable ? "green" : "gray"} dot>{offer.refundable ? t("issue.preview.refundable") : t("issue.preview.nonRefundable")}</StatusPill>
               </div>
             </div>
           )}
@@ -433,6 +437,9 @@ function PaxStep({
   pax: Passenger; setPax: (p: Passenger) => void; carrier: string; setCarrier: (v: string) => void;
   pnr: string; setPnr: (v: string) => void; errors: Record<string, string>;
 }) {
+  const t = useT();
+  // SSR açıklamaları katalogdan iki dilli gelir (domain kaydı değişmez, metin seçilir).
+  const lang = useUI((s) => s.lang);
   const byCat = useMemo(() => {
     const m = new Map<SsrCategory, typeof SSR_CATALOG>();
     for (const s of SSR_CATALOG) { if (!m.has(s.category)) m.set(s.category, []); m.get(s.category)!.push(s); }
@@ -446,39 +453,39 @@ function PaxStep({
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Yolcu Bilgileri</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{t("issue.pax.title")}</h2>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          Ad ve soyadı pasaporttaki ile birebir yazın (Türkçe karakter kullanmayın, sistem büyük harfe çevirir).
+          {t("issue.pax.desc")}
         </p>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Field label="Soyadı" required error={errors.surname} info={FIELD_HELP.surname}>
+        <Field label={t("issue.pax.surname")} required error={errors.surname} info={FIELD_HELP.surname}>
           <Input value={pax.surname} onChange={(e) => setPax({ ...pax, surname: e.target.value.toUpperCase() })} placeholder="ERDOGAN" className="uppercase" aria-invalid={!!errors.surname} />
         </Field>
-        <Field label="Ad" required error={errors.givenName} info={FIELD_HELP.givenName}>
+        <Field label={t("issue.pax.givenName")} required error={errors.givenName} info={FIELD_HELP.givenName}>
           <Input value={pax.givenName} onChange={(e) => setPax({ ...pax, givenName: e.target.value.toUpperCase() })} placeholder="AHMET" className="uppercase" aria-invalid={!!errors.givenName} />
         </Field>
-        <Field label="Ünvan / Cinsiyet" info={FIELD_HELP.title}>
+        <Field label={t("issue.pax.titleField")} info={FIELD_HELP.title}>
           <Select value={pax.title} onChange={(e) => setPax({ ...pax, title: e.target.value })}>
             {["MR", "MRS", "MS", "CHD", "INF"].map((x) => <option key={x}>{x}</option>)}
           </Select>
         </Field>
-        <Field label="Kimlik Belgesi (FOID)" info={FIELD_HELP.foid}>
+        <Field label={t("issue.pax.foid")} info={FIELD_HELP.foid}>
           <Input value={pax.foid} onChange={(e) => setPax({ ...pax, foid: e.target.value.toUpperCase() })} placeholder="PP/U12345678" className="uppercase" />
         </Field>
-        <Field label="Kesen Taşıyıcı (Validating Carrier)" required error={errors.carrier}>
+        <Field label={t("issue.pax.carrier")} required error={errors.carrier}>
           <Input value={carrier} onChange={(e) => setCarrier(e.target.value.toUpperCase())} placeholder="TK" maxLength={2} className="uppercase" />
         </Field>
-        <Field label="Rezervasyon (PNR)" hint="Varsa rezervasyon kodunu girin.">
+        <Field label={t("issue.pax.pnr")} hint={t("issue.pax.pnrHint")}>
           <Input value={pnr} onChange={(e) => setPnr(e.target.value.toUpperCase())} placeholder="XQ7T2M" maxLength={6} className="uppercase" />
         </Field>
       </div>
 
-      <Rule label="Kucak Bebeği (Infant)" />
+      <Rule label={t("issue.pax.infantRule")} />
       <p className="-mt-2 text-[13px] text-ink-2">
-        İki yaşını doldurmamış, koltuk işgal etmeyen bebek yetişkinin bileti ile{" "}
-        <b>bağlantılı</b> olarak kaydedilir (Handbook 1.1.8) — ayrı kupon açılmaz.
+        {t("issue.pax.infantNote1")}{" "}
+        <b>{t("issue.pax.infantNoteBold")}</b> {t("issue.pax.infantNote2")}
       </p>
       <div className="flex flex-col gap-3">
         <label className="flex w-fit cursor-pointer items-center gap-2.5 text-[13px] text-ink-2">
@@ -488,25 +495,25 @@ function PaxStep({
             onChange={(e) => setPax({ ...pax, infant: e.target.checked ? { surname: pax.surname, givenName: "" } : undefined })}
             className="h-3.5 w-3.5 accent-[var(--brand)]"
           />
-          Yanında kucak bebeği var
+          {t("issue.pax.infantToggle")}
         </label>
         {pax.infant && (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <Field label="Bebek Soyadı" required error={errors.infantSurname}>
+            <Field label={t("issue.pax.infantSurname")} required error={errors.infantSurname}>
               <Input
                 value={pax.infant.surname}
                 onChange={(e) => setPax({ ...pax, infant: { ...pax.infant!, surname: e.target.value.toUpperCase() } })}
                 placeholder="ERDOGAN" className="uppercase" aria-invalid={!!errors.infantSurname}
               />
             </Field>
-            <Field label="Bebek Adı" required error={errors.infantGivenName}>
+            <Field label={t("issue.pax.infantGivenName")} required error={errors.infantGivenName}>
               <Input
                 value={pax.infant.givenName}
                 onChange={(e) => setPax({ ...pax, infant: { ...pax.infant!, givenName: e.target.value.toUpperCase() } })}
                 placeholder="ADA" className="uppercase" aria-invalid={!!errors.infantGivenName}
               />
             </Field>
-            <Field label="Doğum Tarihi" hint="Yaş kontrolü için." error={errors.infantDob}>
+            <Field label={t("issue.pax.infantDob")} hint={t("issue.pax.infantDobHint")} error={errors.infantDob}>
               <Input
                 type="date"
                 value={pax.infant.dob ?? ""}
@@ -518,14 +525,14 @@ function PaxStep({
         )}
       </div>
 
-      <Rule label="Özel Yolcu Hizmetleri (SSR)" />
+      <Rule label={t("issue.pax.ssrRule")} />
       <p className="-mt-2 text-[13px] text-ink-2">
-        Tekerlekli sandalye, refakat, evcil hayvan gibi hizmetler. Kod ezberlemeniz gerekmez — açıklamasını okuyup seçin.
+        {t("issue.pax.ssrDesc")}
       </p>
       <div className="flex flex-col gap-4">
         {byCat.map(([cat, list]) => (
           <div key={cat}>
-            <div className="microlabel mb-2">{SSR_CATEGORY_LABEL[cat]}</div>
+            <div className="microlabel mb-2">{ssrCategoryLabel(cat, lang)}</div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               {list.map((s) => {
                 const on = pax.ssr?.includes(s.code);
@@ -544,9 +551,9 @@ function PaxStep({
                     <span className="min-w-0">
                       <span className="flex items-center gap-2">
                         <span className="num text-[12.5px] font-semibold text-ink">{s.code}</span>
-                        <OutlineBadge tone={s.free ? "green" : "amber"}>{s.free ? "ÜCRETSİZ" : "ÜCRETLİ · EMD"}</OutlineBadge>
+                        <OutlineBadge tone={s.free ? "green" : "amber"}>{s.free ? t("issue.pax.ssrFree") : t("issue.pax.ssrPaid")}</OutlineBadge>
                       </span>
-                      <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-2">{s.label}</span>
+                      <span className="mt-0.5 block text-[12.5px] leading-snug text-ink-2">{ssrDefLabel(s, lang)}</span>
                     </span>
                   </button>
                 );
@@ -561,6 +568,7 @@ function PaxStep({
 
 /* --- 1 · sefer -------------------------------------------------------- */
 function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) => void; errors: Record<string, string> }) {
+  const t = useT();
   const set = (i: number, patch: Partial<Leg>) =>
     // Güzergâh/tarih değişirse seçim de rezervasyon seferi de düşer.
     setLegs(legs.map((l, j) => (i === j ? { ...l, ...patch, ...(patch.flight === undefined && (patch.origin || patch.destination || patch.date) ? { flight: null, booked: undefined } : {}) } : l)));
@@ -568,9 +576,9 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
   return (
     <div className="flex flex-col gap-5">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Sefer Seçimi</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{t("issue.leg.title")}</h2>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          Uçuş numarasını ve saatini siz yazmazsınız. Güzergâh ve tarihi girin, sistem o güne ait seferleri listeler; uygun olanı seçin.
+          {t("issue.leg.desc")}
         </p>
       </div>
 
@@ -583,21 +591,21 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
         return (
           <div key={i} className="flex flex-col gap-3">
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Nereden" required error={errors[`leg${i}o`]}>
-                <AirportPicker value={leg.origin} onChange={(v) => set(i, { origin: v })} placeholder="İstanbul / IST" />
+              <Field label={t("issue.leg.from")} required error={errors[`leg${i}o`]}>
+                <AirportPicker value={leg.origin} onChange={(v) => set(i, { origin: v })} placeholder={t("fix.issue.origin.placeholder")} />
               </Field>
-              <Field label="Nereye" required error={errors[`leg${i}d`]}>
+              <Field label={t("issue.leg.to")} required error={errors[`leg${i}d`]}>
                 <AirportPicker value={leg.destination} onChange={(v) => set(i, { destination: v })} placeholder="Tokyo / NRT" />
               </Field>
-              <Field label="Tarih" required hint="Uçuş günü" error={errors[`leg${i}t`] ?? errors[`leg${i}f`]}>
+              <Field label={t("issue.leg.date")} required hint={t("issue.leg.dateHint")} error={errors[`leg${i}t`] ?? errors[`leg${i}f`]}>
                 <DayPicker value={leg.date} onChange={(v) => set(i, { date: v })} />
               </Field>
             </div>
 
             {!leg.date ? (
-              <Alert tone="info" title="Bilgi">Sefer listesini görmek için bir tarih seçin.</Alert>
+              <Alert tone="info" title={t("issue.leg.infoTitle")}>{t("issue.leg.infoBody")}</Alert>
             ) : flights.length === 0 ? (
-              <Empty title="Sefer bulunamadı" hint="Bu güzergâh ve tarihte planlı sefer yok." />
+              <Empty title={t("issue.leg.emptyTitle")} hint={t("issue.leg.emptyHint")} />
             ) : (
               <div className="flex flex-col gap-2">
                 {flights.map((f) => {
@@ -613,20 +621,20 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                     >
                       <span className="num text-[13px] font-semibold text-ink">{f.flightNumber}</span>
                       <span className="num text-[15px] font-semibold text-ink">
-                        {new Date(f.departure).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(f.departure).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                         <span className="mx-1.5 text-ink-3">→</span>
-                        {new Date(f.arrival).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                        {new Date(f.arrival).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                       </span>
                       <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin)}</span>
                       {f.id === leg.booked?.id ? (
-                        <OutlineBadge className="ml-auto">Rezervasyonda onaylı · HK</OutlineBadge>
+                        <OutlineBadge className="ml-auto">{t("issue.leg.booked")}</OutlineBadge>
                       ) : (
                         <>
                           <span className="text-[12px] text-ink-3">{f.aircraft}</span>
-                          <span className="num ml-auto text-[12px] text-ink-3">{f.seatsLeft} koltuk</span>
+                          <span className="num ml-auto text-[12px] text-ink-3">{t("issue.leg.seatsLeft", { n: f.seatsLeft })}</span>
                           {f.fromEconomy && (
                             <span className="text-[12px] text-ink-2">
-                              <span className="text-ink-3">Eco'dan </span>
+                              <span className="text-ink-3">{t("issue.leg.fromEco")} </span>
                               <Money value={f.fromEconomy} size="sm" />
                             </span>
                           )}
@@ -642,7 +650,7 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
       })}
 
       <div>
-        <Button variant="white" size="sm" iconLeft={<Plane size={15} strokeWidth={1.75} />} onClick={() => setLegs([...legs, emptyLeg()])}>Bacak ekle</Button>
+        <Button variant="white" size="sm" iconLeft={<Plane size={15} strokeWidth={1.75} />} onClick={() => setLegs([...legs, emptyLeg()])}>{t("issue.leg.addLeg")}</Button>
       </div>
     </div>
   );
@@ -652,26 +660,28 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
 function FareStep({
   offers, offer, setOffer, cabin, setCabin, error,
 }: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang); // ürün açıklaması ve ceza kuralı domainden gelir, dili burada seçilir
   const cabins = ["all", ...Array.from(new Set(offers.map((o) => o.cabin)))];
   const shown = offers.filter((o) => cabin === "all" || o.cabin === cabin);
   const sorted = [...shown].sort((a, b) => a.total.amount - b.total.amount);
   const quick = sorted.length
-    ? [["En Düşük", sorted[0]], ["Ortalama", sorted[Math.floor(sorted.length / 2)]], ["En Yüksek", sorted[sorted.length - 1]]] as const
+    ? [["issue.fare.lowest", sorted[0]], ["issue.fare.mid", sorted[Math.floor(sorted.length / 2)]], ["issue.fare.highest", sorted[sorted.length - 1]]] as const
     : [];
 
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Ücret Seçimi</h2>
+        <h2 className="text-[15px] font-semibold text-ink">{t("issue.fare.title")}</h2>
         <p className="mt-0.5 text-[13px] text-ink-2">
-          Sistem güzergâh ve sefere göre tarifeyi çıkardı. Uygun ücreti seçin — rezervasyon sınıfı (RBD) ve ücret kodu otomatik oluşur.
+          {t("issue.fare.desc")}
         </p>
       </div>
 
       {error && <Alert tone="danger" title={error} />}
 
       {offers.length === 0 ? (
-        <Empty title="Önce sefer seçin" hint="Ücret tarifesi seçilen sefere göre hesaplanır." />
+        <Empty title={t("issue.fare.emptyTitle")} hint={t("issue.fare.emptyHint")} />
       ) : (
         <>
           <div className="flex flex-wrap items-center gap-1.5">
@@ -679,17 +689,17 @@ function FareStep({
               <button key={c} type="button" onClick={() => setCabin(c)}
                 className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
                   cabin === c ? "border-brand bg-brand-wash text-brand" : "border-line text-ink-2 hover:bg-sunken")}>
-                {c === "all" ? "Tümü" : c}
+                {c === "all" ? t("issue.fare.all") : c}
               </button>
             ))}
             {quick.length > 0 && (
               <>
                 <span className="mx-1 h-5 w-px bg-line" />
-                <span className="microlabel">Hızlı seç</span>
-                {quick.map(([label, o]) => (
-                  <button key={label} type="button" onClick={() => setOffer(o)}
+                <span className="microlabel">{t("issue.fare.quick")}</span>
+                {quick.map(([labelKey, o]) => (
+                  <button key={labelKey} type="button" onClick={() => setOffer(o)}
                     className="rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-2 transition-colors hover:border-brand hover:text-brand">
-                    {label} · <span className="num">{o.total.amount.toLocaleString("tr-TR")}</span>
+                    {t(labelKey)} · <span className="num">{o.total.amount.toLocaleString(locale())}</span>
                   </button>
                 ))}
               </>
@@ -710,22 +720,22 @@ function FareStep({
               badges: (
                 <>
                   <span className="num text-[11.5px] text-ink-3">{o.cabin} · {o.rbd} · {o.fareBasis}</span>
-                  {o.recommended && <OutlineBadge tone="green">Önerilen</OutlineBadge>}
+                  {o.recommended && <OutlineBadge tone="green">{t("issue.fare.recommended")}</OutlineBadge>}
                 </>
               ),
-              desc: o.note,
+              desc: lang === "en" ? o.fareType.noteEn : o.note,
               meta: (
                 <span className="flex flex-col gap-1.5">
                   <span className="flex flex-wrap items-center gap-1.5">
-                    <StatusPill tone={o.refundable ? "green" : "gray"} dot>{o.refundable ? "İade edilebilir" : "İade yok"}</StatusPill>
-                    <StatusPill tone={o.changeable ? "green" : "gray"} dot>{o.changeable ? "Değiştirilebilir" : "Değişim yok"}</StatusPill>
-                    <StatusPill tone="gray">{o.baggageKg} kg bagaj</StatusPill>
+                    <StatusPill tone={o.refundable ? "green" : "gray"} dot>{o.refundable ? t("issue.fare.refundable") : t("issue.fare.nonRefundable")}</StatusPill>
+                    <StatusPill tone={o.changeable ? "green" : "gray"} dot>{o.changeable ? t("issue.fare.changeable") : t("issue.fare.nonChangeable")}</StatusPill>
+                    <StatusPill tone="gray">{t("issue.fare.baggage", { n: o.baggageKg })}</StatusPill>
                     <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{o.seatNote}</StatusPill>
-                    <span className="num ml-1 text-[11.5px] text-ink-3">{o.seatsLeft} koltuk</span>
+                    <span className="num ml-1 text-[11.5px] text-ink-3">{t("issue.fare.seatsLeft", { n: o.seatsLeft })}</span>
                   </span>
                   {/* Ceza kuralı satış anında görünür — yolcuya doğru bilgi verilsin. */}
                   <span className="flex flex-col gap-0.5 text-[11.5px] leading-snug text-ink-3">
-                    {ruleSummary(fareRuleFor(o.id)).map((r) => <span key={r}>· {r}</span>)}
+                    {ruleSummary(fareRuleFor(o.id), undefined, lang).map((r) => <span key={r}>· {r}</span>)}
                   </span>
                 </span>
               ),
@@ -751,35 +761,36 @@ export function maskCardInput(raw: string): string {
   if (digits.length <= 4) return digits;
   return "X".repeat(digits.length - 4) + digits.slice(-4);
 }
-const FOPS: { id: FormOfPaymentType; label: string; icon: React.ReactNode }[] = [
-  { id: "credit", label: "Kredi Kartı", icon: <CreditCard size={16} strokeWidth={1.75} /> },
-  { id: "cash", label: "Nakit", icon: <Banknote size={16} strokeWidth={1.75} /> },
-  { id: "uatp", label: "UATP", icon: <Wallet size={16} strokeWidth={1.75} /> },
+const FOPS: { id: FormOfPaymentType; labelKey: Key; icon: React.ReactNode }[] = [
+  { id: "credit", labelKey: "issue.fop.credit", icon: <CreditCard size={16} strokeWidth={1.75} /> },
+  { id: "cash", labelKey: "issue.fop.cash", icon: <Banknote size={16} strokeWidth={1.75} /> },
+  { id: "uatp", labelKey: "issue.fop.uatp", icon: <Wallet size={16} strokeWidth={1.75} /> },
 ];
 
 function PayStep({
   fop, setFop, detail, setDetail, error,
 }: { fop: FormOfPaymentType; setFop: (f: FormOfPaymentType) => void; detail: string; setDetail: (v: string) => void; error?: string }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Ödeme</h2>
-        <p className="mt-0.5 text-[13px] text-ink-2">Tahsilat şeklini seçin. Kart bilgisi maskelenerek kaydedilir.</p>
+        <h2 className="text-[15px] font-semibold text-ink">{t("issue.pay.title")}</h2>
+        <p className="mt-0.5 text-[13px] text-ink-2">{t("issue.pay.desc")}</p>
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
         {FOPS.map((f) => (
           <button key={f.id} type="button" onClick={() => setFop(f.id)}
             className={cn("flex items-center gap-2.5 rounded-md border px-4 py-3 text-[13.5px] font-medium transition-colors",
               fop === f.id ? "border-brand bg-brand-wash text-brand" : "border-line text-ink-2 hover:bg-raised")}>
-            {f.icon} {f.label}
+            {f.icon} {t(f.labelKey)}
           </button>
         ))}
       </div>
       {fop !== "cash" && (
         <Field
-          label={fop === "uatp" ? "UATP hesap no" : "Kart (maskeli)"}
+          label={fop === "uatp" ? t("issue.pay.uatpAccount") : t("issue.pay.card")}
           required error={error}
-          hint="Son 4 hane dışındaki rakamlar yazarken maskelenir; tam numara hiç saklanmaz."
+          hint={t("issue.pay.cardHint")}
         >
           <Input
             value={detail}
@@ -800,43 +811,44 @@ function PayStep({
 function ReviewStep({
   pax, carrier, legs, offer, fop, detail,
 }: { pax: Passenger; carrier: string; legs: Leg[]; offer: FareOffer | null; fop: FormOfPaymentType; detail: string }) {
+  const t = useT();
   return (
     <div className="flex flex-col gap-4">
       <div>
-        <h2 className="text-[15px] font-semibold text-ink">Özet</h2>
-        <p className="mt-0.5 text-[13px] text-ink-2">Kesimden önce son kontrol. Onayladığınızda satış kaydı oluşur.</p>
+        <h2 className="text-[15px] font-semibold text-ink">{t("issue.review.title")}</h2>
+        <p className="mt-0.5 text-[13px] text-ink-2">{t("issue.review.desc")}</p>
       </div>
 
-      <Rule label="Yolcu" />
+      <Rule label={t("issue.review.paxRule")} />
       <div>
-        <Line label="Ad Soyad" value={`${pax.surname}/${pax.givenName} ${pax.title ?? ""}`} />
-        <Line label="Kimlik (FOID)" value={<span className="num">{pax.foid || "—"}</span>} />
-        <Line label="Kesen taşıyıcı" value={<span className="num">{carrier}</span>} />
+        <Line label={t("issue.review.name")} value={`${pax.surname}/${pax.givenName} ${pax.title ?? ""}`} />
+        <Line label={t("issue.review.foid")} value={<span className="num">{pax.foid || "—"}</span>} />
+        <Line label={t("issue.review.carrier")} value={<span className="num">{carrier}</span>} />
         {pax.infant && (
-          <Line label="Kucak bebeği (INF)"
+          <Line label={t("issue.review.infant")}
             value={<span className="num">{pax.infant.surname}/{pax.infant.givenName}{pax.infant.dob ? ` · ${pax.infant.dob}` : ""}</span>} />
         )}
         {pax.ssr?.length ? <Line label="SSR" value={<span className="num">{pax.ssr.join(" · ")}</span>} /> : null}
       </div>
 
-      <Rule label="Sefer" />
+      <Rule label={t("issue.review.legRule")} />
       <div>
         {legs.filter((l) => l.flight).map((l, i) => (
           <Line key={i} label={<span className="num">{l.origin} → {l.destination}</span>}
-            value={<span className="num">{l.flight!.flightNumber} · {new Date(l.flight!.departure).toLocaleString("tr-TR")}</span>} />
+            value={<span className="num">{l.flight!.flightNumber} · {new Date(l.flight!.departure).toLocaleString(locale())}</span>} />
         ))}
       </div>
 
-      <Rule label="Ücret" />
+      <Rule label={t("issue.review.fareRule")} />
       {offer && (
         <div>
           <Line label={offer.fareType.label} value={<span className="num">{offer.cabin} · {offer.rbd} · {offer.fareBasis}</span>} />
-          <Line label="Çıplak ücret" value={<Money value={offer.baseFare} size="sm" />} />
-          <Line label="Vergi & harçlar" value={<Money value={offer.totalTfc} size="sm" />} />
-          <Line label="Ödeme" value={fop === "cash" ? "Nakit" : `${fop === "uatp" ? "UATP" : "Kredi Kartı"} ${detail}`} />
+          <Line label={t("issue.review.base")} value={<Money value={offer.baseFare} size="sm" />} />
+          <Line label={t("issue.review.tfc")} value={<Money value={offer.totalTfc} size="sm" />} />
+          <Line label={t("issue.review.payment")} value={fop === "cash" ? t("issue.fop.cash") : `${fop === "uatp" ? t("issue.fop.uatp") : t("issue.fop.credit")} ${detail}`} />
           <Rule className="my-2" />
           <div className="flex items-baseline justify-between">
-            <span className="text-[14px] font-semibold text-ink">Toplam tahsilat</span>
+            <span className="text-[14px] font-semibold text-ink">{t("issue.review.total")}</span>
             <Money value={offer.total} size="lg" />
           </div>
         </div>
@@ -884,7 +896,10 @@ function AirportPicker({ value, onChange, placeholder }: { value: string; onChan
 /* --- tarih seçici ----------------------------------------------------- */
 const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
+const DOW_KEYS = ["issue.dow.mon", "issue.dow.tue", "issue.dow.wed", "issue.dow.thu", "issue.dow.fri", "issue.dow.sat", "issue.dow.sun"] as const;
+
 function DayPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => { const d = value ? new Date(value) : new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const ref = useRef<HTMLDivElement>(null);
@@ -892,8 +907,8 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const pretty = value
-    ? new Date(value).toLocaleDateString("tr-TR", { day: "2-digit", month: "long", year: "numeric", weekday: "short" })
-    : "Gün / Ay / Yıl seçin";
+    ? new Date(value).toLocaleDateString(locale(), { day: "2-digit", month: "long", year: "numeric", weekday: "short" })
+    : t("issue.day.placeholder");
 
   const first = new Date(month.getFullYear(), month.getMonth(), 1);
   const lead = (first.getDay() + 6) % 7; // pazartesi başlangıç
@@ -918,26 +933,26 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
       {open && (
         <div className="anim-pop absolute left-0 top-11 z-40 w-[290px] rounded-lg border border-line bg-panel p-3">
           <div className="mb-2 flex flex-wrap gap-1.5">
-            {([["Bugün", 0], ["Yarın", 1], ["+1 Hafta", 7]] as const).map(([label, add]) => (
-              <button key={label} type="button"
+            {([["issue.day.today", 0], ["issue.day.tomorrow", 1], ["issue.day.week", 7]] as const).map(([labelKey, add]) => (
+              <button key={labelKey} type="button"
                 onClick={() => { const d = new Date(today); d.setDate(d.getDate() + add); pick(d); }}
                 className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-brand hover:text-brand">
-                {label}
+                {t(labelKey)}
               </button>
             ))}
           </div>
           <div className="mb-2 flex items-center justify-between">
-            <button type="button" aria-label="Önceki ay" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
+            <button type="button" aria-label={t("issue.day.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
               className="grid h-7 w-7 place-items-center rounded-md text-ink-2 hover:bg-sunken"><ChevronLeft size={16} strokeWidth={2} /></button>
             <span className="text-[13.5px] font-semibold capitalize text-ink">
-              {month.toLocaleDateString("tr-TR", { month: "long", year: "numeric" })}
+              {month.toLocaleDateString(locale(), { month: "long", year: "numeric" })}
             </span>
-            <button type="button" aria-label="Sonraki ay" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
+            <button type="button" aria-label={t("issue.day.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
               className="grid h-7 w-7 place-items-center rounded-md text-ink-2 hover:bg-sunken"><ChevronRight size={16} strokeWidth={2} /></button>
           </div>
           <div className="grid grid-cols-7 gap-0.5">
-            {["Pt", "Sa", "Ça", "Pe", "Cu", "Ct", "Pa"].map((d) => (
-              <span key={d} className="microlabel grid h-7 place-items-center">{d}</span>
+            {DOW_KEYS.map((dk) => (
+              <span key={dk} className="microlabel grid h-7 place-items-center">{t(dk)}</span>
             ))}
             {cells.map((d, i) => d === null ? <span key={i} /> : (
               <button key={i} type="button" onClick={() => pick(d)}

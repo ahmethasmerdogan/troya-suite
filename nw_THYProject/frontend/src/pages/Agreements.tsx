@@ -18,31 +18,31 @@ export function Agreements() {
   const { data, isLoading } = useQuery({ queryKey: ["agreements"], queryFn: listAgreements });
 
   const columns = [
-    col.accessor("partnerCarrier", { header: "Kod", cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
+    col.accessor("partnerCarrier", { header: t("misc.agreements.col.code"), cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
     col.accessor("partnerName", { header: "Partner", cell: (c) => <span className="text-ink">{c.getValue()}</span> }),
     col.accessor("capabilities", {
       // Dizi alanı; dosyada okunur biçimde virgülle yazılır.
-      header: "Yetenekler", enableSorting: false,
+      header: t("misc.agreements.col.capabilities"), enableSorting: false,
       cell: (c) => <span className="flex flex-wrap gap-1">{c.getValue().map((x) => <Pill key={x} tone="gray">{x}</Pill>)}</span>,
     }),
     col.accessor("controlTransfer", {
-      header: "Control devri", enableSorting: false,
+      header: t("misc.agreements.col.controlTransfer"), enableSorting: false,
       cell: (c) => c.getValue()
-        ? <span className="inline-flex items-center gap-1 text-[12.5px] text-[var(--t-green-i)]"><Check size={14} strokeWidth={2.5} /> var</span>
-        : <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3"><X size={14} strokeWidth={2.5} /> yok</span>,
+        ? <span className="inline-flex items-center gap-1 text-[12.5px] text-[var(--t-green-i)]"><Check size={14} strokeWidth={2.5} /> {t("misc.agreements.yes")}</span>
+        : <span className="inline-flex items-center gap-1 text-[12.5px] text-ink-3"><X size={14} strokeWidth={2.5} /> {t("misc.agreements.no")}</span>,
     }),
     col.accessor("since", {
-      header: "Başlangıç",
+      header: t("misc.agreements.col.since"),
       meta: { exportValue: (a: BilateralAgreement) => formatDate(a.since) },
       cell: (c) => <span className="num text-ink-2">{formatDate(c.getValue())}</span>,
     }),
-    col.accessor("status", { header: "Durum", enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
+    col.accessor("status", { header: t("common.status"), enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
   ] as ColumnDef<BilateralAgreement, unknown>[];
 
   return (
     <>
-      <PageTitle title={t("nav.agreements")} hint="Interline ortaklarıyla belge ve control devri anlaşmaları." />
-      <DataTable data={data ?? []} columns={columns} loading={isLoading} exportName="anlasmalar" empty={{ title: "Anlaşma yok" }} />
+      <PageTitle title={t("nav.agreements")} hint={t("misc.agreements.hint")} />
+      <DataTable data={data ?? []} columns={columns} loading={isLoading} exportName="anlasmalar" empty={{ title: t("misc.agreements.empty") }} />
     </>
   );
 }

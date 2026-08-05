@@ -4,24 +4,37 @@
 import { FLIGHTS, manualBoardedCount, type DepartureFlight } from "./checkin";
 import { airportByCode } from "./airports";
 
+/**
+ * Operasyon metinlerinin dili. Arayüz store'una (`store/ui`) BAĞLANMAZ — domain
+ * katmanı sunumdan bağımsız kalsın (döngüsel bağımlılık olmasın). Varsayılan
+ * her yerde "tr"; çağıran yerler değişmeden çalışır.
+ */
+export type DocLang = "tr" | "en";
+
 // ---- Uçuş operasyon durumu (A-CDM, STD'ye göre eşiklerle türetilir) ----
 export type FlightOpsStatus =
   | "scheduled" | "checkin_open" | "checkin_closed" | "go_to_gate"
   | "boarding" | "final_call" | "gate_closed" | "boarding_complete"
   | "pushback" | "departed";
 
-export const OPS_STATUS_META: Record<FlightOpsStatus, { label: string; tone: "neutral" | "info" | "success" | "warning" | "danger" }> = {
-  scheduled: { label: "Planlandı", tone: "neutral" },
-  checkin_open: { label: "Check-in Açık", tone: "info" },
-  checkin_closed: { label: "Check-in Kapandı", tone: "neutral" },
-  go_to_gate: { label: "Kapıya", tone: "info" },
-  boarding: { label: "Biniş", tone: "success" },
-  final_call: { label: "Son Çağrı", tone: "warning" },
-  gate_closed: { label: "Kapı Kapandı", tone: "danger" },
-  boarding_complete: { label: "Biniş Tamam", tone: "success" },
-  pushback: { label: "Geri İtme", tone: "info" },
-  departed: { label: "Kalktı", tone: "neutral" },
+export const OPS_STATUS_META: Record<FlightOpsStatus, { label: string; labelEn: string; tone: "neutral" | "info" | "success" | "warning" | "danger" }> = {
+  scheduled: { label: "Planlandı", labelEn: "Scheduled", tone: "neutral" },
+  checkin_open: { label: "Check-in Açık", labelEn: "Check-in Open", tone: "info" },
+  checkin_closed: { label: "Check-in Kapandı", labelEn: "Check-in Closed", tone: "neutral" },
+  go_to_gate: { label: "Kapıya", labelEn: "Go to Gate", tone: "info" },
+  boarding: { label: "Biniş", labelEn: "Boarding", tone: "success" },
+  final_call: { label: "Son Çağrı", labelEn: "Final Call", tone: "warning" },
+  gate_closed: { label: "Kapı Kapandı", labelEn: "Gate Closed", tone: "danger" },
+  boarding_complete: { label: "Biniş Tamam", labelEn: "Boarding Complete", tone: "success" },
+  pushback: { label: "Geri İtme", labelEn: "Pushback", tone: "info" },
+  departed: { label: "Kalktı", labelEn: "Departed", tone: "neutral" },
 };
+
+/** Uçuş operasyon durumunun seçilen dildeki etiketi. */
+export function opsStatusLabel(status: FlightOpsStatus, lang: DocLang = "tr"): string {
+  const meta = OPS_STATUS_META[status];
+  return lang === "en" ? meta.labelEn : meta.label;
+}
 
 /** STD'ye kalan dakikadan A-CDM ops durumu türet (eşikler ayarlanabilir varsayılan). */
 export function deriveOpsStatus(minsToDeparture: number, base: DepartureFlight["status"]): FlightOpsStatus {
@@ -48,6 +61,17 @@ export interface OpsAlert {
   title: string;
   detail: string;
   action: string;
+  /** Aynı parametrelerle üretilmiş İngilizce karşılıkları (arayüz dili EN iken gösterilir). */
+  titleEn: string;
+  detailEn: string;
+  actionEn: string;
+}
+
+/** Uyarının seçilen dildeki metinleri — şiddet, kod ve eşikler dilden bağımsızdır. */
+export function opsAlertText(a: OpsAlert, lang: DocLang = "tr"): { title: string; detail: string; action: string } {
+  return lang === "en"
+    ? { title: a.titleEn, detail: a.detailEn, action: a.actionEn }
+    : { title: a.title, detail: a.detail, action: a.action };
 }
 
 export interface OpsPax {
@@ -61,7 +85,12 @@ export interface OpsPax {
   special?: string; // UM / WCHR / STCR...
 }
 
-export interface OpsMilestone { code: string; label: string; actual: boolean; }
+export interface OpsMilestone { code: string; label: string; labelEn: string; actual: boolean; }
+
+/** A-CDM milestone adının seçilen dildeki karşılığı. */
+export function milestoneLabel(m: OpsMilestone, lang: DocLang = "tr"): string {
+  return lang === "en" ? m.labelEn : m.label;
+}
 
 export interface OpsFlight {
   flightId: string;
@@ -157,18 +186,18 @@ function buildPaxList(f: DepartureFlight, accepted: number, boarded: number, con
 }
 
 function buildMilestones(status: FlightOpsStatus): OpsMilestone[] {
-  const order: { code: string; label: string; from: FlightOpsStatus }[] = [
-    { code: "SIBT", label: "Uçak geldi (IN)", from: "scheduled" },
-    { code: "CKO", label: "Check-in açıldı", from: "checkin_open" },
-    { code: "TSAT", label: "Kalkış onay (TSAT)", from: "go_to_gate" },
-    { code: "BRDG", label: "Biniş başladı", from: "boarding" },
-    { code: "ARDT", label: "Hazır (RDY)", from: "boarding_complete" },
-    { code: "AOBT", label: "Off-block (OUT)", from: "pushback" },
-    { code: "ATOT", label: "Havalandı (OFF)", from: "departed" },
+  const order: { code: string; label: string; labelEn: string; from: FlightOpsStatus }[] = [
+    { code: "SIBT", label: "Uçak geldi (IN)", labelEn: "Aircraft in-block (IN)", from: "scheduled" },
+    { code: "CKO", label: "Check-in açıldı", labelEn: "Check-in opened", from: "checkin_open" },
+    { code: "TSAT", label: "Kalkış onay (TSAT)", labelEn: "Start-up approval (TSAT)", from: "go_to_gate" },
+    { code: "BRDG", label: "Biniş başladı", labelEn: "Boarding started", from: "boarding" },
+    { code: "ARDT", label: "Hazır (RDY)", labelEn: "Ready (RDY)", from: "boarding_complete" },
+    { code: "AOBT", label: "Off-block (OUT)", labelEn: "Off-block (OUT)", from: "pushback" },
+    { code: "ATOT", label: "Havalandı (OFF)", labelEn: "Airborne (OFF)", from: "departed" },
   ];
   const seq: FlightOpsStatus[] = ["scheduled", "checkin_open", "checkin_closed", "go_to_gate", "boarding", "final_call", "gate_closed", "boarding_complete", "pushback", "departed"];
   const idx = seq.indexOf(status);
-  return order.map((mtone) => ({ code: mtone.code, label: mtone.label, actual: seq.indexOf(mtone.from) <= idx }));
+  return order.map((mtone) => ({ code: mtone.code, label: mtone.label, labelEn: mtone.labelEn, actual: seq.indexOf(mtone.from) <= idx }));
 }
 
 export async function getOpsBoard(): Promise<OpsBoard> {
@@ -230,21 +259,53 @@ export async function getOpsBoard(): Promise<OpsBoard> {
     const mins = Math.round((new Date(f.departure).getTime() - now) / 60000);
     const status = deriveOpsStatus(mins, f.baseStatus);
     if (f.bagsOffloadPending > 0)
-      alerts.push({ id: f.flightId + "-A1", code: "A1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "critical", title: "No-show bagajı indir", detail: `${f.bagsOffloadPending} yolcu binmedi, bagajı yüklü — uçaktan indirilmeli (BRS/Annex 17).`, action: "Bagajı tanımla & offload" });
+      alerts.push({
+        id: f.flightId + "-A1", code: "A1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "critical",
+        title: "No-show bagajı indir", detail: `${f.bagsOffloadPending} yolcu binmedi, bagajı yüklü — uçaktan indirilmeli (BRS/Annex 17).`, action: "Bagajı tanımla & offload",
+        titleEn: "Offload no-show baggage", detailEn: `${f.bagsOffloadPending} passenger(s) did not board with baggage loaded — must be offloaded (BRS/Annex 17).`, actionEn: "Identify bag & offload",
+      });
     if (status === "boarding" && f.boarded / Math.max(1, f.accepted) < 0.7 && mins <= 22)
-      alerts.push({ id: f.flightId + "-B1", code: "B1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning", title: "Biniş geride", detail: `Biniş %${Math.round((f.boarded / Math.max(1, f.accepted)) * 100)} — eşiğin altında, kalkışa ${mins} dk.`, action: "Final call / gate'e personel" });
+      alerts.push({
+        id: f.flightId + "-B1", code: "B1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning",
+        title: "Biniş geride", detail: `Biniş %${Math.round((f.boarded / Math.max(1, f.accepted)) * 100)} — eşiğin altında, kalkışa ${mins} dk.`, action: "Final call / gate'e personel",
+        titleEn: "Boarding behind schedule", detailEn: `Boarding ${Math.round((f.boarded / Math.max(1, f.accepted)) * 100)}% — below threshold, ${mins} min to departure.`, actionEn: "Final call / staff to gate",
+      });
     if (f.connectingRisk > 0)
-      alerts.push({ id: f.flightId + "-C1", code: "C1", flightId: f.flightId, flightNumber: f.flightNumber, severity: mins <= 20 ? "critical" : "warning", title: "Bağlantı riski (MCT)", detail: `${f.connectingRisk} aktarma yolcusu için kalan süre MCT'ye yakın.`, action: "Bekle / re-protect / hızlı transfer" });
+      alerts.push({
+        id: f.flightId + "-C1", code: "C1", flightId: f.flightId, flightNumber: f.flightNumber, severity: mins <= 20 ? "critical" : "warning",
+        title: "Bağlantı riski (MCT)", detail: `${f.connectingRisk} aktarma yolcusu için kalan süre MCT'ye yakın.`, action: "Bekle / re-protect / hızlı transfer",
+        titleEn: "Connection risk (MCT)", detailEn: `Connecting time is close to MCT for ${f.connectingRisk} transfer passenger(s).`, actionEn: "Hold / re-protect / fast transfer",
+      });
     if (status === "gate_closed" || (status === "final_call" && mins <= 16))
-      alerts.push({ id: f.flightId + "-D1", code: "D1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning", title: "Kapı kapanıyor", detail: `Kalkışa ${mins} dk — gate kapanış kararı.`, action: "Eksik yolcu çağrısı" });
+      alerts.push({
+        id: f.flightId + "-D1", code: "D1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning",
+        title: "Kapı kapanıyor", detail: `Kalkışa ${mins} dk — gate kapanış kararı.`, action: "Eksik yolcu çağrısı",
+        titleEn: "Gate closing", detailEn: `${mins} min to departure — gate closing decision.`, actionEn: "Page missing passengers",
+      });
     if (f.specialPaxPending > 0)
-      alerts.push({ id: f.flightId + "-H1", code: "H1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning", title: "Özel yolcu asistanı bekliyor", detail: `${f.specialPaxPending} özel yolcuya (UM/WCHR vb.) asistan atanmadı.`, action: "Ön-biniş asistanı ata" });
+      alerts.push({
+        id: f.flightId + "-H1", code: "H1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning",
+        title: "Özel yolcu asistanı bekliyor", detail: `${f.specialPaxPending} özel yolcuya (UM/WCHR vb.) asistan atanmadı.`, action: "Ön-biniş asistanı ata",
+        titleEn: "Special assistance pending", detailEn: `No assistant assigned to ${f.specialPaxPending} special passenger(s) (UM/WCHR etc.).`, actionEn: "Assign pre-boarding assistant",
+      });
     if (f.delayed)
-      alerts.push({ id: f.flightId + "-I1", code: "I1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning", title: "Rötar / OTP riski", detail: `ETD STD'den sonra — gecikme sebebi kodlanmalı.`, action: "Sebep kodla, turnaround hızlandır" });
+      alerts.push({
+        id: f.flightId + "-I1", code: "I1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning",
+        title: "Rötar / OTP riski", detail: `ETD STD'den sonra — gecikme sebebi kodlanmalı.`, action: "Sebep kodla, turnaround hızlandır",
+        titleEn: "Delay / OTP risk", detailEn: `ETD is later than STD — the delay reason must be coded.`, actionEn: "Code the reason, speed up turnaround",
+      });
     if (f.gateChanged)
-      alerts.push({ id: f.flightId + "-G1", code: "G1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "info", title: "Gate değişikliği", detail: `${f.flightNumber} kapısı ${f.gate} olarak güncellendi.`, action: "FIDS/yolcu bilgilendir" });
+      alerts.push({
+        id: f.flightId + "-G1", code: "G1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "info",
+        title: "Gate değişikliği", detail: `${f.flightNumber} kapısı ${f.gate} olarak güncellendi.`, action: "FIDS/yolcu bilgilendir",
+        titleEn: "Gate change", detailEn: `Gate for ${f.flightNumber} updated to ${f.gate}.`, actionEn: "Update FIDS / inform passengers",
+      });
     if (!f.crewReady)
-      alerts.push({ id: f.flightId + "-J1", code: "J1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "critical", title: "Ekip/loadsheet hazır değil", detail: `${f.flightNumber} için W&B/ekip eksik.`, action: "Eksik kalemi kovala" });
+      alerts.push({
+        id: f.flightId + "-J1", code: "J1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "critical",
+        title: "Ekip/loadsheet hazır değil", detail: `${f.flightNumber} için W&B/ekip eksik.`, action: "Eksik kalemi kovala",
+        titleEn: "Crew / loadsheet not ready", detailEn: `W&B / crew missing for ${f.flightNumber}.`, actionEn: "Chase the missing item",
+      });
   }
   const sev = { critical: 0, warning: 1, info: 2 };
   // Operasyon personelinin kapattığı uyarıları çıkar (oturum boyunca).

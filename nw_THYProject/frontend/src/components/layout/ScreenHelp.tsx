@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { BookOpen, HelpCircle, Keyboard, Lightbulb, X } from "lucide-react";
 import { Modal } from "@/components/ui/overlay";
+import { useT, type Key } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -16,143 +17,143 @@ import { cn } from "@/lib/utils";
    ==================================================================== */
 
 interface ScreenGuide {
-  title: string;
-  what: string;
-  steps: string[];
-  watch?: string[];
-  shortcuts?: [string, string][];
+  title: Key;
+  what: Key;
+  steps: Key[];
+  watch?: Key[];
+  shortcuts?: [string, Key][];
 }
 
 const GUIDES: { match: (path: string) => boolean; guide: ScreenGuide }[] = [
   {
     match: (p) => p === "/issue",
     guide: {
-      title: "Bilet Kesme",
-      what: "Yolcuya elektronik bilet düzenlersiniz. Beş adım: yolcu, sefer, ücret, ödeme, onay.",
+      title: "admin.help.issue.title",
+      what: "admin.help.issue.what",
       steps: [
-        "Ad ve soyadı pasaporttaki gibi yazın — sonradan değiştirmek yeni belge gerektirir.",
-        "Uçuş numarasını SİZ yazmazsınız: güzergâh ve tarihi girin, sistem o günün seferlerini listeler.",
-        "Ücreti de siz yazmazsınız: sistem tarifesinden uygun ücreti seçersiniz; RBD ve ücret kodu otomatik dolar.",
-        "Onay ekranında özeti okuyup beyanı işaretlemeden kesim yapılmaz.",
+        "admin.help.issue.s1",
+        "admin.help.issue.s2",
+        "admin.help.issue.s3",
+        "admin.help.issue.s4",
       ],
       watch: [
-        "Kucak bebeği 24 aydan küçük olmalı; büyükse çocuk (CHD) bileti gerekir.",
-        "Ücretli özel hizmet seçerseniz ayrıca EMD düzenlenir.",
-        "Void yalnız satış günü içinde mümkündür; sonrası iade kurallarına tabidir.",
+        "admin.help.issue.w1",
+        "admin.help.issue.w2",
+        "admin.help.issue.w3",
       ],
     },
   },
   {
     match: (p) => p.startsWith("/tickets/"),
     guide: {
-      title: "Bilet Kaydı",
-      what: "Belgenin tamamı: kuponlar, ücret dökümü, kontrol bilgisi ve yaşam döngüsü.",
+      title: "admin.help.ticket.title",
+      what: "admin.help.ticket.what",
       steps: [
-        "Üstteki belge yüzü yolcunun elindeki bilete karşılık gelir; Yazdır ile kâğıda basılır.",
-        "Her bacak ayrı bir KUPONDUR ve statüsü bağımsız yürür (O açık, F uçulmuş, V iptal…).",
-        "Exchange / Refund / Void toolbar'da; diğer işlemler 'İşlemler' menüsündedir.",
-        "Yaşam döngüsü kaydın denetim geçmişidir — kim, ne zaman, ne yaptı, ne kadar.",
+        "admin.help.ticket.s1",
+        "admin.help.ticket.s2",
+        "admin.help.ticket.s3",
+        "admin.help.ticket.s4",
       ],
       watch: [
-        "Kupon kontrolü başka taşıyıcıdaysa işlem yapılamaz; önce kontrolü isteyin.",
-        "Kuponlar sırayla kullanılır: önceki kupon açıkken sonraki honor edilmez.",
+        "admin.help.ticket.w1",
+        "admin.help.ticket.w2",
       ],
-      shortcuts: [["e", "Exchange"], ["r", "Refund"], ["v", "Void"]],
+      shortcuts: [["e", "admin.help.sc.exchange"], ["r", "admin.help.sc.refund"], ["v", "admin.help.sc.void"]],
     },
   },
   {
     match: (p) => p === "/search",
     guide: {
-      title: "Bilet Arama",
-      what: "Tek çubuk her şeyi tanır: bilet no, PNR, yolcu adı, havalimanı, uçuş no, kart son 4 hane.",
+      title: "admin.help.search.title",
+      what: "admin.help.search.what",
       steps: [
-        "Durum sekmeleri 17 kupon kodunu gruplar — void edilen bilet kaybolmaz, 'İptal (Void)' sekmesindedir.",
-        "Gelişmiş panel tarih aralığı, FOID ve kart ile daraltır.",
-        "Satır sonundaki ikonlar: kaydı aç, yolcu belgesi.",
-        "CSV dışa aktarımı ekranda göründüğü gibi çıkar (Excel uyumlu).",
+        "admin.help.search.s1",
+        "admin.help.search.s2",
+        "admin.help.search.s3",
+        "admin.help.search.s4",
       ],
-      shortcuts: [["⌘K", "Komut paleti"]],
+      shortcuts: [["⌘K", "admin.help.sc.palette"]],
     },
   },
   {
     match: (p) => p.startsWith("/checkin/") && p.includes("/seat/"),
     guide: {
-      title: "Koltuk Seçimi",
-      what: "Kabin uçağın gerçek düzeninden çizilir; her koltuk her yolcuya verilemez.",
+      title: "admin.help.seat.title",
+      what: "admin.help.seat.what",
       steps: [
-        "Turuncu ⊘ koltuk bu yolcuya kapalıdır; nedeni sağdaki 'Kapalı koltuklar' panelinde yazar.",
-        "Yeşil zeminli sıralar acil çıkış sıralarıdır.",
-        "Seçtiğiniz koltuğun tarifi (pencere/koridor, çıkış, bölme başı) alt şeritte görünür.",
+        "admin.help.seat.s1",
+        "admin.help.seat.s2",
+        "admin.help.seat.s3",
       ],
       watch: [
-        "Bebekli, çocuk ve hareket kısıtlı yolcu çıkış sırasına oturamaz (EASA/DOT).",
-        "WCHC ve sedye yolcusu yalnız pencere kenarına; evcil hayvan bölme başına oturamaz.",
+        "admin.help.seat.w1",
+        "admin.help.seat.w2",
       ],
     },
   },
   {
     match: (p) => p.startsWith("/checkin"),
     guide: {
-      title: "Yolcu Kabul",
-      what: "Uçuşa yolcu kabul eder, biniş yapar ve kapıyı kapatırsınız. Her adım bilet kuponunu ilerletir.",
+      title: "admin.help.checkin.title",
+      what: "admin.help.checkin.what",
       steps: [
-        "Kontrol al: kuponları havalimanı kontrolüne alır (O→A).",
-        "Kabul et: koltuk verir, kuponu check-in'e taşır (A→C) ve bagajı kupona yazar.",
-        "Bindir: kuponu uçağa alınmış yapar (C→L).",
-        "Uçuşu kapat: binenlerin kuponu uçulmuş olur (L→F), binmeyenler no-show.",
+        "admin.help.checkin.s1",
+        "admin.help.checkin.s2",
+        "admin.help.checkin.s3",
+        "admin.help.checkin.s4",
       ],
-      watch: ["Uluslararası uçuşta APIS (pasaport + uyruk) eksikse kabul yapılamaz."],
+      watch: ["admin.help.checkin.w1"],
     },
   },
   {
     match: (p) => p.startsWith("/report"),
     guide: {
-      title: "Raporlar",
-      what: "Üç rapor üç ayrı soruya cevap verir.",
+      title: "admin.help.report.title",
+      what: "admin.help.report.what",
       steps: [
-        "Satış / İşlem: bugün ne oldu — belge belge işlem listesi.",
-        "Mali Rapor: ceza, vergi, KDV ve iade türü kırılımı.",
-        "Dönem Kapanışı: günü kapatır; kapanan dönemde void ve iade geri alma yapılamaz.",
+        "admin.help.report.s1",
+        "admin.help.report.s2",
+        "admin.help.report.s3",
       ],
-      watch: ["Dönem kapanışı geri alınamaz; kapatmadan önce açık kalemleri kontrol edin."],
+      watch: ["admin.help.report.w1"],
     },
   },
   {
     match: (p) => p.startsWith("/res"),
     guide: {
-      title: "Rezervasyon (QuickRes)",
-      what: "PNR arar, açar ve yeni rezervasyon oluşturursunuz.",
+      title: "admin.help.res.title",
+      what: "admin.help.res.what",
       steps: [
-        "Uygunluk sorgusunda sınıfa tıklamak rezervasyon formunu o seferle doldurur.",
-        "PNR detayında 'Bilet Kes' yolcu ve seferi kesim formuna taşır.",
-        "Kesim tamamlanınca doküman numarası PNR'a yazılır ve rezervasyon 'biletlendi' olur.",
+        "admin.help.res.s1",
+        "admin.help.res.s2",
+        "admin.help.res.s3",
       ],
-      watch: ["Kesim süre limiti (TTL/ADTK) dolan rezervasyon düşebilir — uyarı bandına dikkat edin."],
+      watch: ["admin.help.res.w1"],
     },
   },
   {
     match: (p) => p === "/chat",
     guide: {
-      title: "Mesajlaşma",
-      what: "Gişedeki personelin süpervizöre soru sorduğu yer. Kanallar herkese açık, kişiler birebir.",
+      title: "admin.help.chat.title",
+      what: "admin.help.chat.what",
       steps: [
-        "'Bilet ekle' ile kaydı mesaja iliştirin — karşı taraf sağ panelde canlı görür.",
-        "Kişi satırındaki (i) kişi kartını açar: unvan, birim, kime bağlı olduğu.",
-        "Durumunuzu (Müsait / Meşgul / Uzakta) kendiniz bildirirsiniz.",
+        "admin.help.chat.s1",
+        "admin.help.chat.s2",
+        "admin.help.chat.s3",
       ],
     },
   },
 ];
 
 const DEFAULT_GUIDE: ScreenGuide = {
-  title: "Troya Suite",
-  what: "Rezervasyon (QuickRes), biletleme (Troya) ve yolcu kabul (QuickCheck-in) tek panelde.",
+  title: "admin.help.default.title",
+  what: "admin.help.default.what",
   steps: [
-    "Üstteki modül şeridi hangi işi yaptığınızı seçer; alt satır o modülün bölümleridir.",
-    "⌘K komut paleti bilet no, PNR ya da EMD numarasını doğrudan açar.",
-    "Yetkiniz olmayan işlem kilitli görünür; üzerine gelince hangi rolün gerektiği yazar.",
+    "admin.help.default.s1",
+    "admin.help.default.s2",
+    "admin.help.default.s3",
   ],
-  shortcuts: [["⌘K", "Komut paleti"]],
+  shortcuts: [["⌘K", "admin.help.sc.palette"]],
 };
 
 function guideFor(path: string): ScreenGuide {
@@ -163,14 +164,15 @@ function guideFor(path: string): ScreenGuide {
 export function ScreenHelpButton({ className }: { className?: string }) {
   const [open, setOpen] = useState(false);
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const t = useT();
   const g = guideFor(path);
 
   return (
     <>
       <button
         onClick={() => setOpen(true)}
-        aria-label="Bu ekran nasıl kullanılır"
-        title="Bu ekran nasıl kullanılır"
+        aria-label={t("admin.help.button")}
+        title={t("admin.help.button")}
         className={cn(
           "grid h-8 w-8 place-items-center rounded-[10px] text-ink-3 transition-colors hover:bg-inset hover:text-ink",
           className,
@@ -179,19 +181,19 @@ export function ScreenHelpButton({ className }: { className?: string }) {
         <HelpCircle size={17} strokeWidth={1.75} />
       </button>
 
-      <Modal open={open} onClose={() => setOpen(false)} title={`${g.title} — nasıl kullanılır`} width="md">
+      <Modal open={open} onClose={() => setOpen(false)} title={t("admin.help.modalTitle", { title: t(g.title) })} width="md">
         <div className="flex flex-col gap-4">
-          <p className="text-[13.5px] leading-relaxed text-ink-2">{g.what}</p>
+          <p className="text-[13.5px] leading-relaxed text-ink-2">{t(g.what)}</p>
 
           <section>
-            <div className="microlabel mb-1.5">Adımlar</div>
+            <div className="microlabel mb-1.5">{t("admin.help.steps")}</div>
             <ol className="flex flex-col gap-1.5">
               {g.steps.map((s, i) => (
                 <li key={s} className="flex gap-2.5 text-[13px] text-ink-2">
                   <span className="num mt-px grid h-4.5 w-4.5 flex-shrink-0 place-items-center rounded-full bg-inset text-[10.5px] text-ink-3">
                     {i + 1}
                   </span>
-                  {s}
+                  {t(s)}
                 </li>
               ))}
             </ol>
@@ -200,10 +202,10 @@ export function ScreenHelpButton({ className }: { className?: string }) {
           {g.watch && (
             <section className="rounded-md border border-line bg-inset p-3">
               <div className="microlabel mb-1.5 flex items-center gap-1.5">
-                <Lightbulb size={13} strokeWidth={1.75} className="text-[var(--t-amber-i)]" /> Dikkat
+                <Lightbulb size={13} strokeWidth={1.75} className="text-[var(--t-amber-i)]" /> {t("admin.help.watch")}
               </div>
               <ul className="flex list-disc flex-col gap-1 pl-4 text-[12.5px] text-ink-2">
-                {g.watch.map((w) => <li key={w}>{w}</li>)}
+                {g.watch.map((w) => <li key={w}>{t(w)}</li>)}
               </ul>
             </section>
           )}
@@ -211,13 +213,13 @@ export function ScreenHelpButton({ className }: { className?: string }) {
           {g.shortcuts && (
             <section>
               <div className="microlabel mb-1.5 flex items-center gap-1.5">
-                <Keyboard size={13} strokeWidth={1.75} /> Kısayollar
+                <Keyboard size={13} strokeWidth={1.75} /> {t("admin.help.shortcuts")}
               </div>
               <div className="flex flex-wrap gap-2">
                 {g.shortcuts.map(([k, label]) => (
                   <span key={k} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-ink-2">
                     <kbd className="num rounded-sm bg-inset px-1.5 py-0.5 text-[11px] text-ink">{k}</kbd>
-                    {label}
+                    {t(label)}
                   </span>
                 ))}
               </div>
@@ -229,10 +231,10 @@ export function ScreenHelpButton({ className }: { className?: string }) {
               to="/guide" onClick={() => setOpen(false)}
               className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-brand hover:underline"
             >
-              <BookOpen size={14} strokeWidth={1.75} /> Tüm kullanım kılavuzu
+              <BookOpen size={14} strokeWidth={1.75} /> {t("admin.help.fullGuide")}
             </Link>
             <button onClick={() => setOpen(false)} className="ml-auto inline-flex items-center gap-1.5 text-[12.5px] text-ink-3 hover:text-ink">
-              <X size={13} strokeWidth={2} /> Kapat
+              <X size={13} strokeWidth={2} /> {t("admin.help.close")}
             </button>
           </div>
         </div>

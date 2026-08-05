@@ -49,30 +49,30 @@ export function PnrDetail() {
       />
       <DetailBody>
         {ttl.kind === "warning" && (
-          <Banner kind="warning" title="Bilet kesim süresi doluyor">
-            Bu rezervasyon için kalan süre {ttl.hoursLeft} saat. Süresinde kesilmezse rezervasyon düşer (SSR ADTK).
+          <Banner kind="warning" title={t("chat.res.ttl.warnTitle")}>
+            {t("chat.res.ttl.warnBody", { n: ttl.hoursLeft })}
           </Banner>
         )}
         {ttl.kind === "expired" && (
-          <Banner kind="danger" title="Bilet kesim süresi doldu">
-            Ticketing time limit geçti; rezervasyon iptale düşmüş olabilir.
+          <Banner kind="danger" title={t("chat.res.ttl.expiredTitle")}>
+            {t("chat.res.ttl.expiredBody")}
           </Banner>
         )}
 
         <Panel>
-          <PanelHead title="Rezervasyon" />
+          <PanelHead title={t("chat.res.reservation")} />
           <PanelBody>
             <MetaGrid>
-              <Meta label="Oluşturma" value={formatDateTime(pnr.createdAt)} mono />
-              <Meta label="Yolcu" value={String(pnr.passengers.length)} mono />
-              <Meta label="Segment" value={String(pnr.segments.length)} mono />
-              <Meta label="İletişim" value={pnr.contact ?? "—"} />
+              <Meta label={t("chat.res.createdAt")} value={formatDateTime(pnr.createdAt)} mono />
+              <Meta label={t("common.passenger")} value={String(pnr.passengers.length)} mono />
+              <Meta label={t("chat.res.segment")} value={String(pnr.segments.length)} mono />
+              <Meta label={t("chat.res.contact")} value={pnr.contact ?? "—"} />
             </MetaGrid>
           </PanelBody>
         </Panel>
 
         <Panel>
-          <PanelHead title="Yolcular" />
+          <PanelHead title={t("chat.res.passengers")} />
           <PanelBody className="pt-1">
             {pnr.passengers.map((p, i) => (
               <div key={i} className="flex items-center gap-2.5 border-b border-hair py-2.5 last:border-0">
@@ -85,7 +85,7 @@ export function PnrDetail() {
         </Panel>
 
         <Panel>
-          <PanelHead title="Segmentler" />
+          <PanelHead title={t("chat.res.segments")} />
           <PanelBody className="pt-1">
             {pnr.segments.map((s, i) => (
               <div key={i} className="flex items-center gap-3 border-b border-hair py-3 last:border-0">
@@ -101,7 +101,7 @@ export function PnrDetail() {
 
         {pnr.ticketNumbers.length > 0 && (
           <Panel>
-            <PanelHead title="Kesilmiş biletler" />
+            <PanelHead title={t("chat.res.issuedTickets")} />
             <PanelBody className="flex flex-wrap gap-2 pt-1">
               {pnr.ticketNumbers.map((tn) => (
                 <Link key={tn} to="/tickets/$ticketNumber" params={{ ticketNumber: tn }}

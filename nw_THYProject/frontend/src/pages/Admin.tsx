@@ -6,10 +6,11 @@ import { listRevenueAlerts, queryTransactions } from "@/domain/api";
 import { UNITS, type DemoUser } from "@/domain/users";
 import { useUsers, type NewUserInput } from "@/store/users";
 import {
-  PERMISSION_LABEL, ROLE_DESC, ROLE_LABEL, ROLE_ORDER, can, permissionsFor, type Permission, type Role,
+  ROLE_ORDER, can, permissionLabel, permissionsFor, roleDesc, roleLabel, type Permission, type Role,
 } from "@/domain/auth";
 import { useUI } from "@/store/ui";
 import { usePerm } from "@/lib/usePerm";
+import { useT, type Key } from "@/i18n";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty, Meta, MetaGrid } from "@/components/ui/surface";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { StatusPill } from "@/components/domain/StatusPill";
@@ -23,12 +24,12 @@ import { formatDateTime, cn } from "@/lib/utils";
  * Bölümler tek rotadan (`/admin/$section`) beslenir; yetkisi olmayan bölüm
  * kilitli görünür (gizlemek yerine göstermek, yeni personele öğretir).
  */
-const SECTIONS: { id: string; label: string; perm?: Permission }[] = [
-  { id: "roles", label: "Roller & Yetkiler", perm: "admin.roles" },
-  { id: "users", label: "Kullanıcılar", perm: "admin.users" },
-  { id: "logs", label: "Denetim Kaydı", perm: "admin.users" },
-  { id: "revenue", label: "Gelir Koruma", perm: "revenue.view" },
-  { id: "settings", label: "Ayarlar", perm: "admin.settings" },
+const SECTIONS: { id: string; label: Key; perm?: Permission }[] = [
+  { id: "roles", label: "admin.section.roles", perm: "admin.roles" },
+  { id: "users", label: "admin.section.users", perm: "admin.users" },
+  { id: "logs", label: "admin.section.logs", perm: "admin.users" },
+  { id: "revenue", label: "admin.section.revenue", perm: "revenue.view" },
+  { id: "settings", label: "admin.section.settings", perm: "admin.settings" },
 ];
 
 const ALL_PERMS = Array.from(new Set(ROLE_ORDER.flatMap((r) => permissionsFor(r))));
@@ -36,12 +37,13 @@ const ALL_PERMS = Array.from(new Set(ROLE_ORDER.flatMap((r) => permissionsFor(r)
 export function Admin() {
   const { section } = useParams({ from: "/admin/$section" });
   const { can: may, lockHint } = usePerm();
+  const t = useT();
   const current = SECTIONS.find((s) => s.id === section) ?? SECTIONS[0];
   const allowed = !current.perm || may(current.perm);
 
   return (
     <>
-      <PageTitle title="Yönetim" hint="Roller, kullanıcılar, denetim kaydı ve sistem ayarları." />
+      <PageTitle title={t("admin.title")} hint={t("admin.hint")} />
 
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         {SECTIONS.map((s) => {
@@ -57,15 +59,15 @@ export function Admin() {
                 s.id === current.id ? "bg-brand-wash text-brand" : ok ? "text-ink-2 hover:bg-sunken hover:text-ink" : "text-ink-4",
               )}
             >
-              {s.label}
+              {t(s.label)}
             </Link>
           );
         })}
       </div>
 
       {!allowed ? (
-        <Banner kind="warning" title="Yetkiniz yok">
-          Bu bölüm için gereken rol: {lockHint(current.perm!)}
+        <Banner kind="warning" title={t("admin.noPerm.title")}>
+          {t("admin.noPerm.body", { role: lockHint(current.perm!) ?? "" })}
         </Banner>
       ) : current.id === "roles" ? (
         <RoleMatrix />
@@ -83,17 +85,19 @@ export function Admin() {
 }
 
 function RoleMatrix() {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   return (
     <Panel>
-      <PanelHead title="Rol → yetki matrisi" hint="Yetkiler kümülatiftir: üst rol alt rolün her şeyini yapabilir." />
+      <PanelHead title={t("admin.roles.title")} hint={t("admin.roles.hint")} />
       <div className="overflow-x-auto">
         <table className="w-full border-collapse">
           <thead>
             <tr className="border-b border-line bg-raised">
-              <th className="microlabel border-r border-hair px-3 py-2 text-left">Yetki</th>
+              <th className="microlabel border-r border-hair px-3 py-2 text-left">{t("admin.roles.permission")}</th>
               {ROLE_ORDER.map((r) => (
-                <th key={r} className="microlabel border-r border-hair px-3 py-2 text-center last:border-r-0" title={ROLE_DESC[r]}>
-                  {ROLE_LABEL[r]}
+                <th key={r} className="microlabel border-r border-hair px-3 py-2 text-center last:border-r-0" title={roleDesc(r, lang)}>
+                  {roleLabel(r, lang)}
                 </th>
               ))}
             </tr>
@@ -101,7 +105,7 @@ function RoleMatrix() {
           <tbody>
             {ALL_PERMS.map((p) => (
               <tr key={p} className="border-b border-hair last:border-0">
-                <td className="border-r border-hair px-3 py-2 text-[13px] text-ink">{PERMISSION_LABEL[p] ?? p}</td>
+                <td className="border-r border-hair px-3 py-2 text-[13px] text-ink">{permissionLabel(p, lang) ?? p}</td>
                 {ROLE_ORDER.map((r) => (
                   <td key={r} className="border-r border-hair px-3 py-2 text-center last:border-r-0">
                     {can(r as Role, p)
@@ -131,7 +135,9 @@ function RoleMatrix() {
    ==================================================================== */
 function Users() {
   const me = useUI((s) => s.user);
+  const lang = useUI((s) => s.lang);
   const { can } = usePerm();
+  const t = useT();
   const { users, audit, createUser, updateUser, assignRole, setStatus } = useUsers();
   const [q, setQ] = useState("");
   const [creating, setCreating] = useState(false);
@@ -152,21 +158,21 @@ function Users() {
     <div className="flex flex-col gap-4">
       <Panel>
         <PanelHead
-          title="Kullanıcılar"
-          hint={`${users.length} personel · ${users.filter((u) => u.status === "active").length} aktif`}
+          title={t("admin.users.title")}
+          hint={t("admin.users.hint", { n: users.length, active: users.filter((u) => u.status === "active").length })}
           action={
             <span className="flex items-center gap-2">
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Ad · birim · istasyon" className="w-52" />
-              <Button size="sm" disabled={!canWrite} title={canWrite ? undefined : "Müdür ve üzeri gerekir"}
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("admin.users.searchPh")} className="w-52" />
+              <Button size="sm" disabled={!canWrite} title={canWrite ? undefined : t("admin.users.needManager")}
                 onClick={() => setCreating(true)}>
-                <UserPlus size={15} strokeWidth={1.75} /> Yeni kullanıcı
+                <UserPlus size={15} strokeWidth={1.75} /> {t("admin.users.new")}
               </Button>
             </span>
           }
         />
         <PanelBody className="pt-1">
           {rows.length === 0 ? (
-            <Empty title="Kullanıcı bulunamadı" hint="Farklı bir ad, birim ya da istasyon deneyin." />
+            <Empty title={t("admin.users.empty")} hint={t("admin.users.emptyHint")} />
           ) : rows.map((u) => (
             <div key={u.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-3 last:border-0">
               <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-brand text-[12px] font-semibold text-white">
@@ -175,20 +181,20 @@ function Users() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13.5px] font-medium text-ink">{u.name}</span>
-                  {u.id === me?.id && <Pill tone="blue">siz</Pill>}
+                  {u.id === me?.id && <Pill tone="blue">{t("admin.users.you")}</Pill>}
                 </div>
                 <div className="num text-[11.5px] text-ink-3">{u.id} · {u.title} · {u.unit} · {u.location}</div>
               </div>
-              <Pill tone="gray">{ROLE_LABEL[u.role]}</Pill>
-              <Pill tone={u.status === "active" ? "green" : "red"}>{u.status === "active" ? "aktif" : "devre dışı"}</Pill>
+              <Pill tone="gray">{roleLabel(u.role, lang)}</Pill>
+              <Pill tone={u.status === "active" ? "green" : "red"}>{u.status === "active" ? t("admin.users.active") : t("admin.users.inactive")}</Pill>
               <span className="flex items-center gap-1">
-                <Button variant="ghost" size="sm" disabled={!canWrite} onClick={() => setEditing(u)}>Düzenle</Button>
-                <Button variant="ghost" size="sm" disabled={!canRole} title={canRole ? undefined : "Rol atamak için Admin gerekir"}
-                  onClick={() => setRoleFor(u)}>Rol</Button>
+                <Button variant="ghost" size="sm" disabled={!canWrite} onClick={() => setEditing(u)}>{t("admin.users.edit")}</Button>
+                <Button variant="ghost" size="sm" disabled={!canRole} title={canRole ? undefined : t("admin.users.needAdmin")}
+                  onClick={() => setRoleFor(u)}>{t("admin.users.role")}</Button>
                 <Button variant="ghost" size="sm" disabled={!canWrite || u.id === me?.id}
-                  title={u.id === me?.id ? "Kendinizi devre dışı bırakamazsınız" : undefined}
+                  title={u.id === me?.id ? t("admin.users.selfLock") : undefined}
                   onClick={() => setStatusFor(u)}>
-                  {u.status === "active" ? "Devre dışı" : "Etkinleştir"}
+                  {u.status === "active" ? t("admin.users.deactivate") : t("admin.users.activate")}
                 </Button>
               </span>
             </div>
@@ -197,15 +203,17 @@ function Users() {
       </Panel>
 
       <Panel>
-        <PanelHead title="Kullanıcı değişiklikleri" hint="Kim, kimde, neyi, hangi gerekçeyle değiştirdi." />
+        <PanelHead title={t("admin.changes.title")} hint={t("admin.changes.hint")} />
         <PanelBody className="pt-1">
           {audit.length === 0 ? (
-            <Empty title="Değişiklik yok" hint="Kadroda henüz bir değişiklik yapılmadı." />
+            <Empty title={t("admin.changes.empty")} hint={t("admin.changes.emptyHint")} />
           ) : audit.slice(0, 40).map((a) => (
             <div key={a.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
               <span className="num w-40 flex-shrink-0 text-[12px] text-ink-3">{formatDateTime(a.at)}</span>
               <span className="num text-[12.5px] text-ink-2">{a.actor}</span>
-              <Pill tone={a.action === "delete" ? "red" : a.action === "role" ? "violet" : "gray"}>{ACTION_LABEL[a.action]}</Pill>
+              <Pill tone={a.action === "delete" ? "red" : a.action === "role" ? "violet" : "gray"}>
+                {ACTION_KEY[a.action] ? t(ACTION_KEY[a.action]) : a.action}
+              </Pill>
               <span className="text-[13px] text-ink">{a.targetName}</span>
               <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-3">
                 {a.detail}{a.reason ? ` · ${a.reason}` : ""}
@@ -238,8 +246,9 @@ function Users() {
   );
 }
 
-const ACTION_LABEL: Record<string, string> = {
-  create: "Eklendi", update: "Güncellendi", role: "Rol atandı", status: "Durum", delete: "Silindi",
+const ACTION_KEY: Record<string, Key> = {
+  create: "admin.action.create", update: "admin.action.update", role: "admin.action.role",
+  status: "admin.action.status", delete: "admin.action.delete",
 };
 
 /** Ekleme ve düzenleme aynı form — alanlar birebir aynı. */
@@ -252,6 +261,8 @@ function UserFormModal({
   onClose: () => void;
   onSubmit: (v: NewUserInput) => void;
 }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   const [v, setV] = useState<NewUserInput>(blank());
   useEffect(() => {
     if (!open) return;
@@ -267,43 +278,43 @@ function UserFormModal({
   return (
     <Modal
       open={open} onClose={onClose}
-      title={initial ? "Kullanıcıyı düzenle" : "Yeni kullanıcı"}
-      hint={initial ? undefined : "Kullanıcı adı e-postadan üretilir; parola demo ortamında sorulmaz."}
+      title={initial ? t("admin.form.editTitle") : t("admin.form.newTitle")}
+      hint={initial ? undefined : t("admin.form.newHint")}
       width="md"
-      footer={<Button variant="success" disabled={!valid} onClick={() => onSubmit(v)}>{initial ? "Kaydet" : "Kullanıcıyı ekle"}</Button>}
+      footer={<Button variant="success" disabled={!valid} onClick={() => onSubmit(v)}>{initial ? t("admin.form.save") : t("admin.form.create")}</Button>}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Ad Soyad" required>
+        <Field label={t("admin.form.name")} required>
           <Input value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="Elif Demir" />
         </Field>
-        <Field label="E-posta" required hint="Kullanıcı adı buradan türer.">
+        <Field label={t("admin.form.email")} required hint={t("admin.form.emailHint")}>
           <Input value={v.email} onChange={(e) => set("email", e.target.value)} placeholder="e.demir@thy.com" />
         </Field>
-        <Field label="Unvan" required>
-          <Input value={v.title} onChange={(e) => set("title", e.target.value)} placeholder="Bilet Satış Uzmanı" />
+        <Field label={t("admin.form.jobTitle")} required>
+          <Input value={v.title} onChange={(e) => set("title", e.target.value)} placeholder={t("admin.form.jobTitlePh")} />
         </Field>
-        <Field label="Birim">
+        <Field label={t("admin.form.unit")}>
           <Select value={v.unit} onChange={(e) => set("unit", e.target.value as NewUserInput["unit"])}>
             {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
           </Select>
         </Field>
-        <Field label="İstasyon / Ofis">
+        <Field label={t("admin.form.location")}>
           <Input value={v.location} onChange={(e) => set("location", e.target.value.toUpperCase())} placeholder="IST-CTR" className="uppercase num" />
         </Field>
-        <Field label="Dahili">
+        <Field label={t("admin.form.phone")}>
           <Input value={v.phone ?? ""} onChange={(e) => set("phone", e.target.value)} placeholder="4102" className="num" />
         </Field>
-        <Field label="Bağlı olduğu yönetici">
+        <Field label={t("admin.form.manager")}>
           <Select value={v.managerId ?? ""} onChange={(e) => set("managerId", e.target.value || undefined)}>
-            <option value="">— yok —</option>
+            <option value="">{t("admin.form.noManager")}</option>
             {users.filter((u) => u.id !== initial?.id).map((u) => (
               <option key={u.id} value={u.id}>{u.name} · {u.title}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Rol" hint={initial ? "Rol ayrı bir işlemdir; buradan değiştirilmez." : undefined}>
+        <Field label={t("admin.form.role")} hint={initial ? t("admin.form.roleHint") : undefined}>
           <Select value={v.role} disabled={!!initial} onChange={(e) => set("role", e.target.value as Role)}>
-            {ROLE_ORDER.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]}</option>)}
+            {ROLE_ORDER.map((r) => <option key={r} value={r}>{roleLabel(r, lang)}</option>)}
           </Select>
         </Field>
       </div>
@@ -319,6 +330,8 @@ const blank = (): NewUserInput => ({
 function RoleModal({
   user, onClose, onSubmit,
 }: { user: DemoUser | null; onClose: () => void; onSubmit: (role: Role, reason: string) => void }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   const [role, setRole] = useState<Role>("staff");
   const [reason, setReason] = useState("");
   useEffect(() => { if (user) { setRole(user.role); setReason(""); } }, [user]);
@@ -331,39 +344,39 @@ function RoleModal({
 
   return (
     <Modal
-      open onClose={onClose} title={`Rol ata — ${user.name}`}
-      hint="Rol değişikliği yetki matrisini anında değiştirir ve denetim kaydına yazılır."
+      open onClose={onClose} title={t("admin.role.title", { name: user.name })}
+      hint={t("admin.role.hint")}
       width="md"
       footer={
         <Button variant="success" disabled={role === user.role || !reason.trim()} onClick={() => onSubmit(role, reason)}>
-          Rolü ata
+          {t("admin.role.submit")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Rol">
+        <Field label={t("admin.form.role")}>
           <Select value={role} onChange={(e) => setRole(e.target.value as Role)}>
-            {ROLE_ORDER.map((r) => <option key={r} value={r}>{ROLE_LABEL[r]} — {ROLE_DESC[r]}</option>)}
+            {ROLE_ORDER.map((r) => <option key={r} value={r}>{roleLabel(r, lang)} — {roleDesc(r, lang)}</option>)}
           </Select>
         </Field>
 
         <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-md border border-line bg-inset p-3">
-              <div className="microlabel text-[var(--t-green-i)]">Kazanacağı yetkiler</div>
+              <div className="microlabel text-[var(--t-green-i)]">{t("admin.role.gained")}</div>
               <ul className="mt-1.5 flex flex-col gap-1 text-[12px] text-ink-2">
-                {gained.length ? gained.map((p) => <li key={p}>+ {PERMISSION_LABEL[p]}</li>) : <li className="text-ink-4">—</li>}
+                {gained.length ? gained.map((p) => <li key={p}>+ {permissionLabel(p, lang)}</li>) : <li className="text-ink-4">—</li>}
               </ul>
             </div>
             <div className="rounded-md border border-line bg-inset p-3">
-              <div className="microlabel text-[var(--t-red-i)]">Kaybedeceği yetkiler</div>
+              <div className="microlabel text-[var(--t-red-i)]">{t("admin.role.lost")}</div>
               <ul className="mt-1.5 flex flex-col gap-1 text-[12px] text-ink-2">
-                {lost.length ? lost.map((p) => <li key={p}>− {PERMISSION_LABEL[p]}</li>) : <li className="text-ink-4">—</li>}
+                {lost.length ? lost.map((p) => <li key={p}>− {permissionLabel(p, lang)}</li>) : <li className="text-ink-4">—</li>}
               </ul>
             </div>
         </div>
 
-        <Field label="Gerekçe" required hint="Denetim kaydına yazılır.">
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Vardiya sorumluluğu devri" />
+        <Field label={t("admin.reason")} required hint={t("admin.role.reasonHint")}>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("admin.role.reasonPh")} />
         </Field>
       </div>
     </Modal>
@@ -373,6 +386,7 @@ function RoleModal({
 function StatusModal({
   user, onClose, onSubmit,
 }: { user: DemoUser | null; onClose: () => void; onSubmit: (reason: string) => void }) {
+  const t = useT();
   const [reason, setReason] = useState("");
   useEffect(() => { if (user) setReason(""); }, [user]);
   if (!user) return null;
@@ -381,22 +395,20 @@ function StatusModal({
   return (
     <Modal
       open onClose={onClose}
-      title={off ? `Devre dışı bırak — ${user.name}` : `Etkinleştir — ${user.name}`}
+      title={off ? t("admin.status.deactivateTitle", { name: user.name }) : t("admin.status.activateTitle", { name: user.name })}
       width="sm"
       footer={
         <Button variant={off ? "danger" : "success"} disabled={!reason.trim()} onClick={() => onSubmit(reason)}>
-          {off ? "Devre dışı bırak" : "Etkinleştir"}
+          {off ? t("admin.status.deactivate") : t("admin.status.activate")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
         <Banner kind={off ? "warning" : "info"}>
-          {off
-            ? "Devre dışı personel giriş yapamaz; mevcut kayıtları ve denetim geçmişi silinmez."
-            : "Personel yeniden giriş yapabilir ve rolünün yetkileriyle çalışır."}
+          {off ? t("admin.status.deactivateNote") : t("admin.status.activateNote")}
         </Banner>
-        <Field label="Gerekçe" required>
-          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={off ? "İzin / görev değişikliği" : "Göreve dönüş"} />
+        <Field label={t("admin.reason")} required>
+          <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={off ? t("admin.status.reasonPhOff") : t("admin.status.reasonPhOn")} />
         </Field>
       </div>
     </Modal>
@@ -411,12 +423,13 @@ function StatusModal({
  * yazar. Bu ekran o olayları okur — kim (actor), ne zaman, hangi belgede,
  * hangi işlem, hangi statü. Uydurulan hiçbir satır kalmadı.
  */
-const CATEGORY_LABEL: Record<string, string> = {
-  issue: "Kesim", void: "Void", refund: "İade", exchange: "Exchange / Reissue",
-  emd: "EMD", checkin: "Check-in / Biniş", other: "Diğer",
+const CATEGORY_KEY: Record<string, Key> = {
+  issue: "admin.cat.issue", void: "admin.cat.void", refund: "admin.cat.refund", exchange: "admin.cat.exchange",
+  emd: "admin.cat.emd", checkin: "admin.cat.checkin", other: "admin.cat.other",
 };
 
 function Logs() {
+  const t = useT();
   const [q, setQ] = useState("");
   const { data = [], isLoading } = useQuery({ queryKey: ["auditLog"], queryFn: () => queryTransactions({}) });
   const rows = data.filter((r) => {
@@ -429,18 +442,18 @@ function Logs() {
   return (
     <Panel>
       <PanelHead
-        title="Denetim kaydı"
-        hint={`Kim, ne zaman, ne yaptı — event store'dan türer (${data.length} olay).`}
-        action={<Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Belge · personel · yolcu" className="w-56" />}
+        title={t("admin.logs.title")}
+        hint={t("admin.logs.hint", { n: data.length })}
+        action={<Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("admin.logs.searchPh")} className="w-56" />}
       />
       <PanelBody className="pt-1">
         {isLoading ? null : rows.length === 0 ? (
-          <Empty title="Kayıt yok" hint="Bu filtreyle eşleşen denetim kaydı bulunmuyor." />
+          <Empty title={t("admin.logs.empty")} hint={t("admin.logs.emptyHint")} />
         ) : rows.map((r) => (
           <div key={r.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
             <span className="num w-40 flex-shrink-0 text-[12px] text-ink-3">{formatDateTime(r.occurredAt)}</span>
             <span className="num text-[12.5px] text-ink-2">{r.actor}</span>
-            <Pill tone="gray">{CATEGORY_LABEL[r.category] ?? r.category}</Pill>
+            <Pill tone="gray">{CATEGORY_KEY[r.category] ? t(CATEGORY_KEY[r.category]) : r.category}</Pill>
             <Link to="/tickets/$ticketNumber" params={{ ticketNumber: r.ticketNumber }}
               className="num text-[12.5px] font-medium text-brand hover:underline">{r.ticketNumber}</Link>
             <span className="min-w-0 flex-1 truncate text-[13px] text-ink-2" title={r.detail}>{r.detail ?? r.type}</span>
@@ -455,13 +468,15 @@ function Logs() {
 const SEV: Record<string, Tone> = { high: "red", medium: "amber", low: "gray" };
 
 function Revenue() {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   const { data, isLoading } = useQuery({ queryKey: ["revenueAlerts"], queryFn: listRevenueAlerts });
   return (
     <Panel>
-      <PanelHead title="Gelir koruma" hint="Sıra dışı kupon kullanımı, çift belge, statü uyuşmazlığı (Handbook 14.7)." />
+      <PanelHead title={t("admin.revenue.title")} hint={t("admin.revenue.hint")} />
       <PanelBody className="pt-1">
         {isLoading ? null : (data ?? []).length === 0 ? (
-          <Empty title="Uyarı yok" hint="Şu an gelir koruma uyarısı bulunmuyor." />
+          <Empty title={t("admin.revenue.empty")} hint={t("admin.revenue.emptyHint")} />
         ) : (
           (data ?? []).map((a) => (
             <div key={a.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-3 last:border-0">
@@ -469,7 +484,9 @@ function Revenue() {
               <Link to="/tickets/$ticketNumber" params={{ ticketNumber: a.ticketNumber }} className="num text-[13px] font-medium text-brand hover:underline">
                 {a.ticketNumber}
               </Link>
-              <span className="min-w-0 flex-1 text-[13px] text-ink-2">{a.detail}</span>
+              <span className="min-w-0 flex-1 text-[13px] text-ink-2">
+                {lang === "en" ? a.detailEn ?? a.detail : a.detail}
+              </span>
               <span className="num text-[11.5px] text-ink-3">{formatDateTime(a.detectedAt)}</span>
             </div>
           ))
@@ -481,22 +498,23 @@ function Revenue() {
 
 function Settings() {
   const { theme, setTheme, lang, setLang, role } = useUI();
+  const t = useT();
   return (
     <Panel>
-      <PanelHead title="Ayarlar" hint="Bu ortamda oturum düzeyinde tutulur; gerçekte kullanıcı profiline yazılır." />
+      <PanelHead title={t("admin.settings.title")} hint={t("admin.settings.hint")} />
       <PanelBody className="flex flex-col gap-4">
         <MetaGrid>
-          <Meta label="Tema" value={theme === "dark" ? "Koyu" : theme === "light" ? "Açık" : "Sistem"} />
-          <Meta label="Dil" value={lang.toUpperCase()} mono />
-          <Meta label="Rol" value={ROLE_LABEL[role]} />
-          <Meta label="İstasyon" value="IST-CTR" mono />
+          <Meta label={t("admin.settings.theme")} value={theme === "dark" ? t("admin.theme.dark") : theme === "light" ? t("admin.theme.light") : t("admin.theme.system")} />
+          <Meta label={t("admin.settings.lang")} value={lang.toUpperCase()} mono />
+          <Meta label={t("admin.settings.role")} value={roleLabel(role, lang)} />
+          <Meta label={t("admin.settings.station")} value="IST-CTR" mono />
         </MetaGrid>
         <div className="flex flex-wrap gap-2">
           {(["light", "dark", "system"] as const).map((x) => (
             <button key={x} onClick={() => setTheme(x)}
               className={cn("rounded-md border px-3 py-1.5 text-[13px] transition-colors",
                 theme === x ? "border-brand bg-brand-wash text-brand" : "border-line text-ink-2 hover:bg-sunken")}>
-              {x === "light" ? "Açık" : x === "dark" ? "Koyu" : "Sistem"}
+              {x === "light" ? t("admin.theme.light") : x === "dark" ? t("admin.theme.dark") : t("admin.theme.system")}
             </button>
           ))}
           <span className="mx-1 w-px bg-line" />

@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // Mesajlaşma — bilet iliştirme + iliştirilen kaydın canlı görüntüsü + durum bildirimi.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("troya.onboarded", "1");
+    localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr");
     localStorage.setItem("troya.user", "a.erdogan");
     localStorage.removeItem("troya.chat.v1.msgs"); // her testte temiz arşiv
   });

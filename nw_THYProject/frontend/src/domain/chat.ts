@@ -27,19 +27,34 @@ export interface ChatMessage {
   ref?: ChatRef;
 }
 
+/**
+ * Görünen metin dili. Arayüz dilinden BAĞIMSIZ tutulur (store'a bağlanmaz —
+ * domain katmanı sunumu import etmez).
+ */
+export type DocLang = "tr" | "en";
+
 /** Personelin kendi bildirdiği durum — presence'ın "çevrimiçi"den fazlası. */
 export type PresenceStatus = "available" | "busy" | "away";
 
-export const PRESENCE_META: Record<PresenceStatus, { label: string; tone: "green" | "red" | "amber" }> = {
-  available: { label: "Müsait", tone: "green" },
-  busy: { label: "Meşgul", tone: "red" },
-  away: { label: "Uzakta", tone: "amber" },
+export const PRESENCE_META: Record<PresenceStatus, { label: string; labelEn: string; tone: "green" | "red" | "amber" }> = {
+  available: { label: "Müsait", labelEn: "Available", tone: "green" },
+  busy: { label: "Meşgul", labelEn: "Busy", tone: "red" },
+  away: { label: "Uzakta", labelEn: "Away", tone: "amber" },
 };
+
+/** Durum etiketi — EN karşılığı yoksa TR'ye düşer. */
+export function presenceLabel(status: PresenceStatus, lang: DocLang = "tr"): string {
+  const meta = PRESENCE_META[status];
+  return lang === "en" ? (meta.labelEn || meta.label) : meta.label;
+}
 
 export interface ChannelDef {
   id: string; // "ch:ops"
   name: string;
   desc: string;
+  /** Tohum kanalların EN karşılığı; personelin AÇTIĞI kanallarda boştur. */
+  nameEn?: string;
+  descEn?: string;
   /** Kanalı açan personel — tohum kanallarda yok. */
   createdBy?: string;
   createdAt?: string;
@@ -49,10 +64,22 @@ export interface ChannelDef {
 export const OPS_CHANNEL_ID = "ch:ops";
 
 const SEED_CHANNELS: ChannelDef[] = [
-  { id: OPS_CHANNEL_ID, name: "İstasyon Operasyon", desc: "Gate / IRROP / operasyon duyuruları" },
-  { id: "ch:shift", name: "Vardiya Koordinasyon", desc: "Vardiya planı ve devir notları" },
-  { id: "ch:ticketing", name: "Biletleme", desc: "Bilet / EMD / refund soruları" },
+  { id: OPS_CHANNEL_ID, name: "İstasyon Operasyon", nameEn: "Station Operations", desc: "Gate / IRROP / operasyon duyuruları", descEn: "Gate / IRROP / operations announcements" },
+  { id: "ch:shift", name: "Vardiya Koordinasyon", nameEn: "Shift Coordination", desc: "Vardiya planı ve devir notları", descEn: "Shift roster and handover notes" },
+  { id: "ch:ticketing", name: "Biletleme", nameEn: "Ticketing", desc: "Bilet / EMD / refund soruları", descEn: "Ticket / EMD / refund questions" },
 ];
+
+/**
+ * Kanal adı / açıklaması. Personelin açtığı kanallarda EN alanı yoktur —
+ * kullanıcının yazdığı ad hangi dilde yazıldıysa o dilde kalır (veridir).
+ */
+export function channelName(ch: ChannelDef, lang: DocLang = "tr"): string {
+  return lang === "en" ? (ch.nameEn || ch.name) : ch.name;
+}
+
+export function channelDesc(ch: ChannelDef, lang: DocLang = "tr"): string {
+  return lang === "en" ? (ch.descEn || ch.desc) : ch.desc;
+}
 
 const LS_CHANNELS = "troya.chat.v1.channels";
 

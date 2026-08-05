@@ -3,10 +3,11 @@ import { ArrowRight, Eye, EyeOff, LogIn } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { type DemoUser } from "@/domain/users";
 import { useUsers } from "@/store/users";
-import { ROLE_DESC, ROLE_LABEL } from "@/domain/auth";
+import { roleDesc, roleLabel } from "@/domain/auth";
 import { BrandMark } from "@/components/BrandMark";
 import { Field, Input } from "@/components/ui/core";
 import { Alert, Button, Card, OutlineBadge } from "@/ui";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -22,7 +23,9 @@ const PANEL = [
 ].join(", ");
 
 export function Login() {
+  const t = useT();
   const login = useUI((s) => s.login);
+  const lang = useUI((s) => s.lang);
   const users = useUsers((s) => s.users);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -34,7 +37,7 @@ export function Login() {
     // Devre dışı personel giriş yapamaz — yetkilendirmenin en basit kuralı
     // bile arayüzde zorlanmalı (gerçekte bu kontrol OIDC tarafındadır).
     if (u.status === "suspended") {
-      setError(`${u.name} devre dışı bırakılmış. Yönetim > Kullanıcılar bölümünden yeniden etkinleştirilmelidir.`);
+      setError(t("shell.login.suspended", { name: u.name }));
       return;
     }
     setError(null);
@@ -46,7 +49,7 @@ export function Login() {
     e.preventDefault();
     const u = users.find((x) => x.id === username.trim().toLowerCase());
     if (!u) {
-      setError("Kullanıcı bulunamadı. Aşağıdaki test kullanıcılarından biriyle hızlı giriş yapabilirsiniz.");
+      setError(t("shell.login.userNotFound"));
       return;
     }
     submit(u);
@@ -63,34 +66,37 @@ export function Login() {
             <BrandMark size={26} variant="bare" className="text-[#c70a0c]" />
           </span>
           <div>
-            <div className="text-[17px] font-semibold tracking-tight">Troya Suite</div>
-            <div className="text-[12px] text-white/70">Modern Biletleme Platformu</div>
+            <div className="text-[17px] font-semibold tracking-tight">{t("brand.suite")}</div>
+            <div className="text-[12px] text-white/70">{t("shell.login.tagline")}</div>
           </div>
         </div>
 
         <div className="max-w-md">
           <span className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.09em] text-white/80">
-            <span className="h-1.5 w-1.5 rounded-full bg-white" /> PSS · Elektronik Biletleme
+            <span className="h-1.5 w-1.5 rounded-full bg-white" /> {t("shell.login.badge")}
           </span>
           <h1 className="text-[34px] font-semibold leading-[1.12] tracking-tight xl:text-[40px]">
-            Biletleme operasyonunun<br />tek konsolu.
+            {t("shell.login.headline1")}<br />{t("shell.login.headline2")}
           </h1>
           <p className="mt-4 text-[15px] leading-relaxed text-white/75">
-            Bilet kesiminden EMD'ye, exchange/refund'dan interline mesajlaşmaya —
-            IATA standartlarına sadık, tıklama-tabanlı arayüz.
+            {t("shell.login.lede")}
           </p>
         </div>
 
         <div>
           <div className="grid grid-cols-3 gap-2">
-            {[["17", "Kupon statüsü"], ["Ch 1–15", "Handbook kapsamı"], ["TR / EN", "Çift dilli"]].map(([v, l]) => (
+            {[
+              ["17", t("shell.login.stat.status")],
+              ["Ch 1–15", t("shell.login.stat.handbook")],
+              ["TR / EN", t("shell.login.stat.bilingual")],
+            ].map(([v, l]) => (
               <div key={l} className="rounded-[14px] border border-white/20 bg-white/10 px-4 py-3">
                 <div className="num text-[16px] font-semibold tracking-tight">{v}</div>
                 <div className="mt-0.5 text-[10.5px] leading-tight text-white/65">{l}</div>
               </div>
             ))}
           </div>
-          <div className="mt-6 text-[12px] text-white/60">© 2026 Troya · IATA Ticketing Handbook'a dayalı prototip</div>
+          <div className="mt-6 text-[12px] text-white/60">{t("shell.login.copyright")}</div>
         </div>
       </aside>
 
@@ -99,34 +105,34 @@ export function Login() {
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <BrandMark size={36} />
             <div>
-              <div className="text-[16px] font-semibold tracking-tight text-ink">Troya Suite</div>
-              <div className="text-[12px] text-ink-3">Modern Biletleme Platformu</div>
+              <div className="text-[16px] font-semibold tracking-tight text-ink">{t("brand.suite")}</div>
+              <div className="text-[12px] text-ink-3">{t("shell.login.tagline")}</div>
             </div>
           </div>
 
           <Card className="p-6 sm:p-8">
-            <h2 className="text-[22px] font-semibold tracking-tight text-ink">Giriş yap</h2>
-            <p className="mt-1 text-[14px] text-ink-2">Kurumsal hesabınızla devam edin.</p>
+            <h2 className="text-[22px] font-semibold tracking-tight text-ink">{t("shell.login.title")}</h2>
+            <p className="mt-1 text-[14px] text-ink-2">{t("shell.login.subtitle")}</p>
 
             <form onSubmit={onSubmit} className="mt-6 flex flex-col gap-4">
-              <Field label="Kullanıcı adı" htmlFor="username">
-                <Input id="username" placeholder="örn. a.erdogan" autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
+              <Field label={t("shell.login.username")} htmlFor="username">
+                <Input id="username" placeholder={t("shell.login.usernamePlaceholder")} autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} />
               </Field>
-              <Field label="Parola" htmlFor="password">
+              <Field label={t("shell.login.password")} htmlFor="password">
                 <div className="relative">
                   <Input id="password" type={showPw ? "text" : "password"} placeholder="••••••••" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} className="pr-10" />
-                  <button type="button" onClick={() => setShowPw((s) => !s)} aria-label="Parolayı göster" className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink">
+                  <button type="button" onClick={() => setShowPw((s) => !s)} aria-label={t("shell.login.showPassword")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-ink-3 hover:text-ink">
                     {showPw ? <EyeOff size={16} strokeWidth={1.75} /> : <Eye size={16} strokeWidth={1.75} />}
                   </button>
                 </div>
               </Field>
-              {error && <Alert tone="danger" title="Giriş yapılamadı">{error}</Alert>}
-              <Button type="submit" variant="green" size="lg" disabled={!!pending} iconLeft={<LogIn size={16} strokeWidth={1.75} />}>Giriş Yap</Button>
+              {error && <Alert tone="danger" title={t("shell.login.failed")}>{error}</Alert>}
+              <Button type="submit" variant="green" size="lg" disabled={!!pending} iconLeft={<LogIn size={16} strokeWidth={1.75} />}>{t("shell.login.submit")}</Button>
             </form>
           </Card>
 
           <div className="mb-3 mt-7 flex items-center gap-3">
-            <span className="microlabel flex-shrink-0">Hızlı giriş · test kullanıcıları</span>
+            <span className="microlabel flex-shrink-0">{t("shell.login.quick")}</span>
             <span className="h-px flex-1 bg-line" />
           </div>
 
@@ -145,9 +151,9 @@ export function Login() {
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-2">
                     <span className="truncate text-[13px] font-medium text-ink">{u.name}</span>
-                    <OutlineBadge tone="gray">{ROLE_LABEL[u.role]}</OutlineBadge>
+                    <OutlineBadge tone="gray">{roleLabel(u.role, lang)}</OutlineBadge>
                   </span>
-                  <span className="block truncate text-[12px] text-ink-3">{ROLE_DESC[u.role]}</span>
+                  <span className="block truncate text-[12px] text-ink-3">{roleDesc(u.role, lang)}</span>
                 </span>
                 <ArrowRight size={15} strokeWidth={2} className="shrink-0 text-ink-3 transition-transform group-hover:translate-x-0.5 group-hover:text-brand" />
               </button>
@@ -155,7 +161,7 @@ export function Login() {
           </div>
 
           <p className="mt-5 text-center text-[12px] text-ink-3">
-            Demo ortamı — parola gerekmez, herhangi bir test kullanıcısıyla giriş yapın.
+            {t("shell.login.demoNote")}
           </p>
         </div>
       </main>

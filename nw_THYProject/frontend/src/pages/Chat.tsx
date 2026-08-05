@@ -3,13 +3,13 @@ import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, X } from "lucide-react";
 import {
-  dmThreadId, isChannel, unreadCount, PRESENCE_META,
+  channelDesc, channelName, dmThreadId, isChannel, unreadCount, PRESENCE_META,
   type ChatRef, type PresenceStatus,
 } from "@/domain/chat";
 import { useUsers } from "@/store/users";
 import { usePerm } from "@/lib/usePerm";
 import { PersonCard } from "@/components/domain/PersonCard";
-import { ROLE_LABEL } from "@/domain/auth";
+import { roleLabel } from "@/domain/auth";
 import { getTicket, searchTickets } from "@/domain/api";
 import { isOnline, presenceOf, useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
@@ -19,7 +19,15 @@ import { Dot } from "@/components/ui/pill";
 import { Modal, useOutside } from "@/components/ui/overlay";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { Money } from "@/components/domain/Money";
-import { cn } from "@/lib/utils";
+import { useT } from "@/i18n";
+import { cn, locale } from "@/lib/utils";
+
+/** Domain'deki PRESENCE_META etiketlerinin sözlük karşılığı (sunum katmanı). */
+const PRESENCE_KEY = {
+  available: "chat.presence.available",
+  busy: "chat.presence.busy",
+  away: "chat.presence.away",
+} as const;
 
 /**
  * Personel mesajlaşması — gişedeki memurun süpervizöre "buna bakar mısın"
@@ -34,6 +42,8 @@ import { cn } from "@/lib/utils";
  */
 export function Chat() {
   const me = useUI((s) => s.user);
+  const lang = useUI((s) => s.lang);
+  const t = useT();
   const { can } = usePerm();
   const {
     messages, lastRead, presence, typing, status, channels,
@@ -73,7 +83,7 @@ export function Chat() {
         const person = otherId ? users.find((u) => u.id === otherId) : undefined;
         return {
           id,
-          title: ch?.name ?? person?.name ?? otherId ?? id,
+          title: (ch && channelName(ch, lang)) ?? person?.name ?? otherId ?? id,
           preview: last.text || (last.ref ? `📄 ${last.ref.id}` : ""),
           at: last.at,
           unread: unreadCount(msgs, lastRead[id], me.id),
@@ -81,7 +91,7 @@ export function Chat() {
         };
       })
       .sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.at.localeCompare(a.at));
-  }, [messages, lastRead, channels, users, me]);
+  }, [messages, lastRead, channels, users, me, lang]);
 
   const dirMatch = (u: { name: string; title: string; unit: string; location: string }) => {
     const q = dirQ.trim().toLocaleLowerCase("tr-TR");
@@ -148,20 +158,20 @@ export function Chat() {
                 )}
               >
                 <Dot tone={PRESENCE_META[s].tone} />
-                {PRESENCE_META[s].label}
+                {t(PRESENCE_KEY[s])}
               </button>
             ))}
           </div>
         </div>
 
         <div className="border-b border-line p-2">
-          <SearchInput value={dirQ} onChange={setDirQ} placeholder="Kişi · birim · kanal ara" />
+          <SearchInput value={dirQ} onChange={setDirQ} placeholder={t("chat.dirSearchPlaceholder")} />
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
           {conversations.length > 0 && !dirQ.trim() && (
             <>
-              <div className="microlabel border-b border-line px-3 py-2.5">Sohbetler</div>
+              <div className="microlabel border-b border-line px-3 py-2.5">{t("chat.conversations")}</div>
               <div className="flex flex-col p-1.5">
                 {conversations.map((c) => (
                   <Row
@@ -179,28 +189,30 @@ export function Chat() {
           )}
 
           <div className="flex items-center justify-between border-y border-line px-3 py-2">
-            <span className="microlabel">Kanallar</span>
+            <span className="microlabel">{t("chat.channels")}</span>
             {can("chat.channel.create") && (
-              <IconButton label="Yeni kanal" size="sm" onClick={() => setNewChannel(true)}>
+              <IconButton label={t("chat.newChannel")} size="sm" onClick={() => setNewChannel(true)}>
                 <Plus size={14} strokeWidth={2} />
               </IconButton>
             )}
           </div>
           <div className="flex flex-col p-1.5">
-            {channels.filter((c) => dirMatch({ name: c.name, title: c.desc, unit: "", location: "" })).map((c) => {
-              const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
-              return (
-                <Row key={c.id} active={thread === c.id} onClick={() => setThread(c.id)} unread={n}
-                  icon={<Hash size={14} strokeWidth={2} />} label={c.name} />
-              );
-            })}
+            {channels
+              .filter((c) => dirMatch({ name: channelName(c, lang), title: channelDesc(c, lang), unit: "", location: "" }))
+              .map((c) => {
+                const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
+                return (
+                  <Row key={c.id} active={thread === c.id} onClick={() => setThread(c.id)} unread={n}
+                    icon={<Hash size={14} strokeWidth={2} />} label={channelName(c, lang)} />
+                );
+              })}
           </div>
 
           <div className="flex items-center justify-between border-y border-line px-3 py-2">
-            <span className="microlabel">Kişiler</span>
+            <span className="microlabel">{t("chat.people")}</span>
             <span className="flex items-center gap-1.5">
-              <span className="num text-[11px] text-ink-3">{onlineCount} çevrimiçi</span>
-              <IconButton label="Yeni sohbet" size="sm" onClick={() => setNewChat(true)}>
+              <span className="num text-[11px] text-ink-3">{t("chat.online", { n: onlineCount })}</span>
+              <IconButton label={t("chat.newChat")} size="sm" onClick={() => setNewChat(true)}>
                 <MessageSquarePlus size={14} strokeWidth={1.75} />
               </IconButton>
             </span>
@@ -234,7 +246,7 @@ export function Chat() {
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
           {list.length === 0 ? (
-            <Empty title="Henüz mesaj yok" hint="İlk mesajı siz yazın ya da bir bilet iliştirin." />
+            <Empty title={t("chat.empty.title")} hint={t("chat.empty.hint")} />
           ) : (
             <div className="flex flex-col gap-2.5">
               {list.map((m) => {
@@ -246,7 +258,7 @@ export function Chat() {
                         {!mine && <div className="mb-0.5 text-[11.5px] font-medium text-ink-3">{m.fromName}</div>}
                         {m.text && <div className="text-[13.5px] leading-relaxed">{m.text}</div>}
                         <div className={cn("num mt-0.5 text-[10.5px]", mine ? "text-white/70" : "text-ink-3")}>
-                          {new Date(m.at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                          {new Date(m.at).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                         </div>
                       </div>
                       {m.ref && (
@@ -272,23 +284,23 @@ export function Chat() {
             <TicketIcon size={14} strokeWidth={1.75} className="text-brand" />
             <span className="num text-[12px] font-medium text-ink">{attach.id}</span>
             <span className="min-w-0 flex-1 truncate text-[12px] text-ink-3">{attach.label}</span>
-            <IconButton label="İlişiği kaldır" size="sm" onClick={() => setAttach(null)}>
+            <IconButton label={t("chat.attach.remove")} size="sm" onClick={() => setAttach(null)}>
               <X size={13} strokeWidth={2} />
             </IconButton>
           </div>
         )}
 
         <form onSubmit={submit} className="flex items-center gap-2 border-t border-line p-3">
-          <Button type="button" variant="secondary" onClick={() => setPicker(true)} title="Bilet ekle">
-            <Paperclip size={15} strokeWidth={1.75} /> Bilet ekle
+          <Button type="button" variant="secondary" onClick={() => setPicker(true)} title={t("chat.attach.ticket")}>
+            <Paperclip size={15} strokeWidth={1.75} /> {t("chat.attach.ticket")}
           </Button>
           <Input
             value={text}
             onChange={(e) => { setText(e.target.value); notifyTyping(thread); }}
-            placeholder="Mesaj yazın…"
+            placeholder={t("chat.composer.placeholder")}
           />
           <Button type="submit" disabled={!text.trim() && !attach}>
-            <Send size={15} strokeWidth={1.75} /> Gönder
+            <Send size={15} strokeWidth={1.75} /> {t("chat.send")}
           </Button>
         </form>
       </section>
@@ -316,6 +328,8 @@ function ThreadHead({
   typers: string[];
   presence: Record<string, { at: number; status: PresenceStatus }>;
 }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   const channels = useChat((s) => s.channels);
   const users = useUsers((s) => s.users);
   const [card, setCard] = useState(false);
@@ -327,9 +341,9 @@ function ThreadHead({
     return (
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Hash size={15} strokeWidth={2} className="text-ink-3" />
-        <span className="text-[14px] font-semibold text-ink">{ch?.name ?? thread}</span>
-        <span className="hidden text-[12px] text-ink-3 sm:block">· {ch?.desc}</span>
-        {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{typers.join(", ")} yazıyor…</span>}
+        <span className="text-[14px] font-semibold text-ink">{ch ? channelName(ch, lang) : thread}</span>
+        <span className="hidden text-[12px] text-ink-3 sm:block">· {ch && channelDesc(ch, lang)}</span>
+        {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{t("chat.typingBy", { names: typers.join(", ") })}</span>}
       </div>
     );
   }
@@ -340,25 +354,25 @@ function ThreadHead({
     <div ref={cardRef} className="relative flex items-center gap-2.5 border-b border-line px-4 py-3">
       <button
         onClick={() => u && setCard((c) => !c)}
-        aria-label={u ? `${u.name} kişi kartı` : "Sohbet"}
+        aria-label={u ? t("chat.personCard", { name: u.name }) : t("chat.thread")}
         className="grid h-7 w-7 place-items-center rounded-full bg-inset text-[10.5px] font-semibold text-ink-2 transition-opacity hover:opacity-80"
       >
         {u?.initials ?? "??"}
       </button>
       <div className="min-w-0">
         <button onClick={() => u && setCard((c) => !c)} className="truncate text-left text-[14px] font-semibold text-ink hover:underline">
-          {u?.name ?? "Sohbet"}
+          {u?.name ?? t("chat.thread")}
         </button>
         <div className="flex items-center gap-1.5 text-[11.5px] text-ink-3">
           <Dot tone={p.online ? PRESENCE_META[p.status].tone : "gray"} />
           {p.online
-            ? `${PRESENCE_META[p.status].label} · ${u ? ROLE_LABEL[u.role] : ""}`
+            ? `${t(PRESENCE_KEY[p.status])} · ${u ? roleLabel(u.role, lang) : ""}`
             : p.lastSeen
-              ? `Çevrimdışı · son görülme ${new Date(p.lastSeen).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}`
-              : "Çevrimdışı"}
+              ? t("chat.offlineSince", { time: new Date(p.lastSeen).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }) })
+              : t("chat.offline")}
         </div>
       </div>
-      {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">yazıyor…</span>}
+      {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{t("chat.typing")}</span>}
       <Modal open={card && !!u} onClose={() => setCard(false)} title={u?.name ?? ""} width="sm">
         {u && <PersonCard userId={u.id} variant="panel" onNavigate={() => setCard(false)} />}
       </Modal>
@@ -370,11 +384,12 @@ function ThreadHead({
 function RefCard({
   refItem, active, onOpen, className,
 }: { refItem: ChatRef; active: boolean; onOpen: () => void; className?: string }) {
+  const t = useT();
   return (
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`${refItem.id} kaydını görüntüle`}
+      aria-label={t("chat.ref.view", { id: refItem.id })}
       className={cn(
         "mt-1 flex w-full max-w-72 items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-colors",
         active ? "border-brand bg-brand-wash" : "border-line bg-surface hover:border-line-firm hover:bg-inset",
@@ -393,6 +408,7 @@ function RefCard({
 
 /** Sağ panel — iliştirilen bilet canlı kayıttan çözülür (etiket değil, gerçek). */
 function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void }) {
+  const t = useT();
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["ticket", refItem.id],
     queryFn: () => getTicket(refItem.id),
@@ -401,21 +417,21 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
   return (
     <aside className="hidden w-80 flex-shrink-0 flex-col overflow-y-auto border-l border-line bg-surface xl:flex">
       <div className="flex items-center gap-2 border-b border-line px-3 py-2.5">
-        <span className="microlabel flex-1">Bilet görüntüsü</span>
-        <IconButton label="Kapat" size="sm" onClick={onClose}><X size={14} strokeWidth={2} /></IconButton>
+        <span className="microlabel flex-1">{t("chat.ref.panelTitle")}</span>
+        <IconButton label={t("common.close")} size="sm" onClick={onClose}><X size={14} strokeWidth={2} /></IconButton>
       </div>
 
       {isLoading ? (
-        <div className="p-4 text-[13px] text-ink-3">Yükleniyor…</div>
+        <div className="p-4 text-[13px] text-ink-3">{t("common.loading")}</div>
       ) : !ticket ? (
         <div className="p-4">
-          <Empty title="Kayıt bulunamadı" hint={`${refItem.id} bu istasyonda görünmüyor.`} />
+          <Empty title={t("chat.ref.notFound")} hint={t("chat.ref.notFoundHint", { id: refItem.id })} />
         </div>
       ) : (
         <div className="flex flex-col gap-3 p-3">
           <div className="overflow-hidden rounded-lg border border-line">
             <div className="flex items-center justify-between bg-[var(--brand)] px-3 py-1.5 text-white">
-              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em]">Elektronik Bilet</span>
+              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em]">{t("chat.ref.etkt")}</span>
               <span className="num text-[11px]">{ticket.validatingCarrier}</span>
             </div>
             <div className="px-3 py-2.5">
@@ -430,7 +446,7 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
             </div>
           </div>
 
-          <Rule label="Kuponlar" />
+          <Rule label={t("chat.ref.coupons")} />
           <div className="flex flex-col gap-1.5">
             {ticket.coupons.map((c) => (
               <div key={c.seq} className="flex items-center gap-2 rounded-md border border-line px-2.5 py-1.5">
@@ -445,9 +461,9 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
             ))}
           </div>
 
-          <Rule label="Tutar" />
+          <Rule label={t("chat.ref.amount")} />
           <div className="flex items-center justify-between rounded-md bg-inset px-3 py-2">
-            <span className="text-[12px] text-ink-3">Toplam</span>
+            <span className="text-[12px] text-ink-3">{t("common.total")}</span>
             <Money value={ticket.fare.total} size="sm" />
           </div>
 
@@ -456,7 +472,7 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
             params={{ ticketNumber: ticket.ticketNumber }}
             className="flex h-9 items-center justify-center gap-1.5 rounded-md border border-line-firm bg-panel text-[13px] font-medium text-ink transition-colors hover:bg-inset"
           >
-            Bilette aç <ExternalLink size={13} strokeWidth={1.75} />
+            {t("chat.ref.openTicket")} <ExternalLink size={13} strokeWidth={1.75} />
           </Link>
         </div>
       )}
@@ -466,6 +482,7 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
 
 /** Bilet ekleme — numarayı ezberlemeden, arayıp seçerek. */
 function TicketPicker({ onPick, onClose }: { onPick: (r: ChatRef) => void; onClose: () => void }) {
+  const t = useT();
   const [q, setQ] = useState("");
   const { data = [], isFetching } = useQuery({
     queryKey: ["chatPickTickets", q],
@@ -473,14 +490,14 @@ function TicketPicker({ onPick, onClose }: { onPick: (r: ChatRef) => void; onClo
   });
 
   return (
-    <Modal open onClose={onClose} title="Bilet ekle" hint="Aradığınız kaydı seçin — mesaja iliştirilir." width="lg">
+    <Modal open onClose={onClose} title={t("chat.attach.ticket")} hint={t("chat.picker.hint")} width="lg">
       <div className="flex flex-col gap-3">
-        <SearchInput value={q} onChange={setQ} autoFocus placeholder="Bilet no, yolcu, PNR, uçuş no…" />
+        <SearchInput value={q} onChange={setQ} autoFocus placeholder={t("chat.picker.placeholder")} />
         <div className="max-h-80 overflow-y-auto rounded-md border border-line">
           {isFetching && data.length === 0 ? (
-            <div className="p-4 text-[13px] text-ink-3">Aranıyor…</div>
+            <div className="p-4 text-[13px] text-ink-3">{t("chat.searching")}</div>
           ) : data.length === 0 ? (
-            <div className="p-4 text-[13px] text-ink-3">Eşleşen bilet yok.</div>
+            <div className="p-4 text-[13px] text-ink-3">{t("chat.picker.none")}</div>
           ) : (
             data.slice(0, 25).map((t) => (
               <button
@@ -540,6 +557,7 @@ function PersonRow({
   userId: string; active: boolean; unread: number; online: boolean;
   tone: "green" | "red" | "amber" | "gray"; name: string; hint: string; onClick: () => void;
 }) {
+  const t = useT();
   const [card, setCard] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOutside(ref, () => setCard(false));
@@ -566,7 +584,7 @@ function PersonRow({
             </span>
           )}
         </button>
-        <IconButton label={`${name} kişi kartı`} size="sm" variant="ghost" onClick={() => setCard((c) => !c)}>
+        <IconButton label={t("chat.personCard", { name })} size="sm" variant="ghost" onClick={() => setCard((c) => !c)}>
           <Info size={13} strokeWidth={1.75} />
         </IconButton>
       </div>
@@ -583,27 +601,28 @@ function PersonRow({
 function NewChannelModal({
   open, onClose, onCreate,
 }: { open: boolean; onClose: () => void; onCreate: (name: string, desc: string) => void }) {
+  const t = useT();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
   useEffect(() => { if (open) { setName(""); setDesc(""); } }, [open]);
 
   return (
     <Modal
-      open={open} onClose={onClose} title="Yeni kanal"
-      hint="Kanal herkese açıktır; açıldığı anda diğer pencerelerde de görünür."
+      open={open} onClose={onClose} title={t("chat.newChannel")}
+      hint={t("chat.newChannel.hint")}
       width="sm"
       footer={
         <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc)}>
-          Kanalı aç
+          {t("chat.newChannel.submit")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label="Kanal adı" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Gate Ekibi" maxLength={40} />
+        <Field label={t("chat.newChannel.name")} required>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("chat.newChannel.namePlaceholder")} maxLength={40} />
         </Field>
-        <Field label="Açıklama" hint="Kanalın ne için kullanıldığı.">
-          <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Gate operasyonu koordinasyonu" maxLength={80} />
+        <Field label={t("chat.newChannel.desc")} hint={t("chat.newChannel.descHint")}>
+          <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("chat.newChannel.descPlaceholder")} maxLength={80} />
         </Field>
       </div>
     </Modal>
@@ -619,6 +638,7 @@ function NewChatModal({
   onClose: () => void;
   onPick: (id: string) => void;
 }) {
+  const t = useT();
   const [q, setQ] = useState("");
   useEffect(() => { if (open) setQ(""); }, [open]);
   const hits = users.filter((u) => {
@@ -627,12 +647,12 @@ function NewChatModal({
   });
 
   return (
-    <Modal open={open} onClose={onClose} title="Yeni sohbet" hint="Kişiyi ad, unvan ya da birimle bulun." width="sm">
+    <Modal open={open} onClose={onClose} title={t("chat.newChat")} hint={t("chat.newChat.hint")} width="sm">
       <div className="flex flex-col gap-3">
-        <SearchInput value={q} onChange={setQ} placeholder="Ad · unvan · birim" />
+        <SearchInput value={q} onChange={setQ} placeholder={t("chat.newChat.placeholder")} />
         <div className="flex max-h-80 flex-col gap-1 overflow-y-auto">
           {hits.length === 0 ? (
-            <Empty title="Kişi bulunamadı" hint="Farklı bir ad ya da birim deneyin." />
+            <Empty title={t("chat.newChat.none")} hint={t("chat.newChat.noneHint")} />
           ) : hits.map((u) => (
             <button
               key={u.id}

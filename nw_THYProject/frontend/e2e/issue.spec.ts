@@ -7,7 +7,7 @@ import { test, expect } from "@playwright/test";
 
 // Onboarding modal'ını atla.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.user", "a.erdogan"); });
+  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr"); localStorage.setItem("troya.user", "a.erdogan"); });
 });
 
 test.describe("Issue wizard", () => {

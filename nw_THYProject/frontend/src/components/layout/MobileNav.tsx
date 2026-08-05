@@ -29,7 +29,7 @@ export function MobileNav() {
   if (!mobileNav) return null;
 
   return (
-    <div data-print-hide className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Menü">
+    <div data-print-hide className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label={t("shell.menu")}>
       <div className="anim-fade absolute inset-0 bg-[rgba(26,26,23,0.45)] backdrop-blur-[3px]" onClick={() => setMobileNav(false)} />
       <div className="anim-slide-l absolute inset-y-0 left-0 flex w-72 flex-col border-r border-line bg-panel">
         <div className="flex h-14 items-center justify-between border-b border-line px-4">
@@ -37,11 +37,11 @@ export function MobileNav() {
             <BrandMark size={26} />
             <span className="text-[14px] font-semibold text-ink">{t("brand.suite")}</span>
           </span>
-          <IconButton label="Kapat" size="sm" onClick={() => setMobileNav(false)}><X size={17} strokeWidth={1.75} /></IconButton>
+          <IconButton label={t("common.close")} size="sm" onClick={() => setMobileNav(false)}><X size={17} strokeWidth={1.75} /></IconButton>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-3">
-          <div className="microlabel mb-1.5 px-2">Modüller</div>
+          <div className="microlabel mb-1.5 px-2">{t("shell.modules")}</div>
           <nav className="mb-4 flex flex-col gap-0.5">
             <Row to="/" icon={PANEL_ICON} label={t("module.panel")} on={moduleId === "panel"} />
             {MODULES.map((m) => (
@@ -75,7 +75,7 @@ export function MobileNav() {
         <div className="flex items-center gap-2 border-t border-line p-3">
           <Button variant="secondary" size="sm" className="flex-1" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>
             {theme === "dark" ? <Sun size={15} strokeWidth={1.75} /> : <Moon size={15} strokeWidth={1.75} />}
-            {theme === "dark" ? "Açık" : "Koyu"}
+            {t(theme === "dark" ? "settings.theme.light" : "settings.theme.dark")}
           </Button>
           <Button variant="secondary" size="sm" className="flex-1" onClick={() => setLang(lang === "tr" ? "en" : "tr")}>
             <Globe size={15} strokeWidth={1.75} /> {lang === "tr" ? "EN" : "TR"}

@@ -1,6 +1,8 @@
 import * as React from "react";
 import { ChevronDown, Search, X } from "lucide-react";
-import type { FieldHelp } from "@/domain/fieldHelp";
+import { helpDesc, helpExample, type FieldHelp } from "@/domain/fieldHelp";
+import { useT } from "@/i18n";
+import { useUI } from "@/store/ui";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -170,6 +172,10 @@ export function Field({
 
 /** Etiket yanındaki (i) — örnekli açıklama, hover ya da tıkla. */
 export function InfoDot({ help, className }: { help: FieldHelp; className?: string }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
+  const desc = helpDesc(help, lang);
+  const example = helpExample(help, lang);
   const [open, setOpen] = React.useState(false);
   return (
     <span
@@ -179,7 +185,7 @@ export function InfoDot({ help, className }: { help: FieldHelp; className?: stri
     >
       <button
         type="button"
-        aria-label="Açıklama"
+        aria-label={t("shell.field.info")}
         onClick={() => setOpen((o) => !o)}
         className="grid h-4 w-4 place-items-center rounded-full border border-line-firm text-[9px] font-bold text-ink-3 transition-colors hover:border-brand hover:text-brand"
       >
@@ -187,14 +193,14 @@ export function InfoDot({ help, className }: { help: FieldHelp; className?: stri
       </button>
       {open && (
         <span className="anim-pop absolute bottom-6 left-1/2 z-50 w-64 -translate-x-1/2 rounded-md bg-inverse p-3 text-left text-[12px] leading-relaxed text-on-inverse">
-          <span className="block">{help.desc}</span>
-          {help.example && (
+          <span className="block">{desc}</span>
+          {example && (
             <span className="mt-2 block">
-              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-on-inverse-2">Örnek</span>
-              <span className="num mt-0.5 block">{help.example}</span>
+              <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-on-inverse-2">{t("shell.field.example")}</span>
+              <span className="num mt-0.5 block">{example}</span>
             </span>
           )}
-          {help.ref && <span className="mt-2 block text-[11px] text-on-inverse-2">Kaynak: Handbook {help.ref}</span>}
+          {help.ref && <span className="mt-2 block text-[11px] text-on-inverse-2">{t("shell.field.source", { ref: help.ref })}</span>}
         </span>
       )}
     </span>
@@ -219,6 +225,7 @@ export function SearchInput({
   badge?: React.ReactNode;
   className?: string;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -240,7 +247,7 @@ export function SearchInput({
         <button
           type="button"
           onClick={() => onChange("")}
-          aria-label="Temizle"
+          aria-label={t("shell.field.clear")}
           className="shrink-0 text-ink-3 transition-colors hover:text-ink"
         >
           <X size={14} strokeWidth={2} />

@@ -6,7 +6,7 @@ import {
   CreditCard, FileOutput, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
-import { ssrByCode } from "@/domain/ssr";
+import { ssrLabel } from "@/domain/ssr";
 import { usePerm } from "@/lib/usePerm";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import { StatusPill } from "@/components/domain/StatusPill";
@@ -20,7 +20,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge, StatTile,
 } from "@/ui";
-import { formatDateTime, flightCode } from "@/lib/utils";
+import { translate, useT, type Key } from "@/i18n";
+import { useUI } from "@/store/ui";
+import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
 /**
  * Bilet kaydı.
@@ -34,7 +36,12 @@ export function TicketDetail() {
   const { ticketNumber } = useParams({ from: "/tickets/$ticketNumber" });
   const { flow: flowParam } = useSearch({ from: "/tickets/$ticketNumber" });
   const navigate = useNavigate();
+  const t = useT();
+  // SSR açıklaması domain kataloğundan iki dilli gelir.
+  const lang = useUI((s) => s.lang);
   const { can, lockHint } = usePerm();
+  // Ekrandaki özet belge arayüz dilini izler (basılan belge kendi dilini korur).
+  const uiLang = useUI((x) => x.lang);
   const [flow, setFlow] = useState<FlowId | null>(null);
 
   const { data: ticket, isLoading } = useQuery({ queryKey: ["ticket", ticketNumber], queryFn: () => getTicket(ticketNumber) });
@@ -52,8 +59,8 @@ export function TicketDetail() {
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (!ticket)
     return (
-      <Alert tone="warning" title="Bilet bulunamadı">
-        <span className="num">{ticketNumber}</span> numaralı kayıt yok.
+      <Alert tone="warning" title={t("ticket.detail.notFound")}>
+        <span className="num">{ticketNumber}</span> {t("ticket.detail.notFoundBody")}
       </Alert>
     );
 
@@ -66,7 +73,7 @@ export function TicketDetail() {
     <>
       {/* --- başlık şeridi --- */}
       <div className="mb-5 flex flex-wrap items-center gap-3">
-        <button onClick={() => navigate({ to: "/search" })} aria-label="Listeye dön"
+        <button onClick={() => navigate({ to: "/search" })} aria-label={t("ticket.detail.backToList")}
           className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface text-ink-2 transition-colors hover:bg-elev hover:text-ink">
           <ArrowLeft size={16} strokeWidth={1.75} />
         </button>
@@ -78,46 +85,45 @@ export function TicketDetail() {
           </div>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
-          <Button variant="white" size="sm" disabled={!can("ticket.exchange")} title={lockHint("ticket.exchange") ?? "Kısayol: e"}
+          <Button variant="white" size="sm" disabled={!can("ticket.exchange")} title={lockHint("ticket.exchange") ?? t("ticket.detail.shortcut", { k: "e" })}
             iconLeft={<ArrowLeftRight size={15} strokeWidth={1.75} />} onClick={() => setFlow("exchange")}>Exchange</Button>
-          <Button variant="white" size="sm" disabled={!can("ticket.refund")} title={lockHint("ticket.refund") ?? "Kısayol: r"}
+          <Button variant="white" size="sm" disabled={!can("ticket.refund")} title={lockHint("ticket.refund") ?? t("ticket.detail.shortcut", { k: "r" })}
             iconLeft={<Undo2 size={15} strokeWidth={1.75} />} onClick={() => setFlow("refund")}>Refund</Button>
-          <Button variant="white" size="sm" disabled={!can("ticket.void")} title={lockHint("ticket.void") ?? "Kısayol: v"}
+          <Button variant="white" size="sm" disabled={!can("ticket.void")} title={lockHint("ticket.void") ?? t("ticket.detail.shortcut", { k: "v" })}
             iconLeft={<Ban size={15} strokeWidth={1.75} />} onClick={() => setFlow("void")}>Void</Button>
           <MoreMenu can={can} lockHint={lockHint} onPick={setFlow} />
           <Button variant="green" size="sm" iconLeft={<Printer size={15} strokeWidth={1.75} />}
-            onClick={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber } })}>Yazdır</Button>
+            onClick={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber } })}>{t("ticket.detail.print")}</Button>
         </div>
       </div>
 
-      <TicketDocument ticket={ticket} compact className="mb-4" />
+      <TicketDocument ticket={ticket} compact lang={uiLang} className="mb-4" />
 
       {/* --- dört ölçü --- */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile icon={<TicketIcon size={16} strokeWidth={1.75} />} value={ticket.coupons.length} label="Kupon" mono />
-        <StatTile icon={<Plane size={16} strokeWidth={1.75} />} value={open} label="Açık kupon" mono />
-        <StatTile icon={<User size={16} strokeWidth={1.75} />} value={flown} label="Uçulmuş" mono />
-        <StatTile icon={<CreditCard size={16} strokeWidth={1.75} />} value={<Money value={ticket.fare.total} size="sm" />} label="Toplam" />
+        <StatTile icon={<TicketIcon size={16} strokeWidth={1.75} />} value={ticket.coupons.length} label={t("ticket.detail.stat.coupons")} mono />
+        <StatTile icon={<Plane size={16} strokeWidth={1.75} />} value={open} label={t("ticket.detail.stat.open")} mono />
+        <StatTile icon={<User size={16} strokeWidth={1.75} />} value={flown} label={t("ticket.detail.stat.flown")} mono />
+        <StatTile icon={<CreditCard size={16} strokeWidth={1.75} />} value={<Money value={ticket.fare.total} size="sm" />} label={t("ticket.detail.total")} />
       </div>
 
       {!ticket.control.isValidatingCarrier && (
         <Alert
           tone={overdue ? "danger" : "info"}
-          title={overdue ? "Kontrol süresi doldu" : "Kontrol devredildi"}
+          title={overdue ? t("ticket.detail.control.overdueTitle") : t("ticket.detail.control.title")}
           className="mb-4"
         >
-          Bu biletin kuponları <b>{ticket.control.holder}</b>'da. Exchange, refund, void ve kağıda basma
-          işlemleri kontrol geri gelene kadar yapılamaz (1.1.5.3).
+          {t("ticket.detail.control.bodyPre")} <b>{ticket.control.holder}</b>{t("ticket.detail.control.bodyPost")}
           {ticket.control.deadlineAt && (
-            <> Süre sonu <b className="num">{formatDateTime(ticket.control.deadlineAt)}</b>
-              {overdue ? " — kontrol sahibi statü iletmedi ya da iade etmedi (1.1.4.1)." : " (1.1.4.1: 72 saat)."}</>
+            <> {t("ticket.detail.control.deadline")} <b className="num">{formatDateTime(ticket.control.deadlineAt)}</b>
+              {overdue ? t("ticket.detail.control.overdueNote") : t("ticket.detail.control.withinNote")}</>
           )}{" "}
-          <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">Kontrolü yönet</button>
+          <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">{t("ticket.detail.control.manage")}</button>
         </Alert>
       )}
       {open === 0 && (
-        <Alert tone="warning" title="İşlem yapılamaz" className="mb-4">
-          Açık (O) kupon yok — tüm kuponlar final statüde. Bu bilet üzerinde exchange/refund/void yapılamaz.
+        <Alert tone="warning" title={t("ticket.detail.noOpen.title")} className="mb-4">
+          {t("ticket.detail.noOpen.body")}
         </Alert>
       )}
 
@@ -125,23 +131,23 @@ export function TicketDetail() {
         <div className="flex flex-col gap-4">
           {/* --- yolcu --- */}
           <Card className="p-5">
-            <div className="microlabel mb-3">Yolcu ve belge</div>
+            <div className="microlabel mb-3">{t("ticket.detail.paxSection")}</div>
             <div className="grid gap-x-8 sm:grid-cols-2">
-              <MetaRow icon={<User size={16} strokeWidth={1.75} />} label="Yolcu" value={`${p.surname}/${p.givenName}`} />
+              <MetaRow icon={<User size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.passenger")} value={`${p.surname}/${p.givenName}`} />
               <MetaRow icon={<TicketIcon size={16} strokeWidth={1.75} />} label="PNR" value={<span className="num">{ticket.pnr ?? "—"}</span>} />
               <MetaRow icon={<Plane size={16} strokeWidth={1.75} />} label="Carrier" value={<span className="num">{ticket.validatingCarrier}</span>} />
-              <MetaRow icon={<CalendarClock size={16} strokeWidth={1.75} />} label="Kesim" value={<span className="num">{formatDateTime(ticket.issuedAt)}</span>} />
+              <MetaRow icon={<CalendarClock size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.issued")} value={<span className="num">{formatDateTime(ticket.issuedAt)}</span>} />
               <MetaRow icon={<User size={16} strokeWidth={1.75} />} label="FOID" value={<span className="num">{p.foid ?? "—"}</span>} />
-              <MetaRow icon={<CreditCard size={16} strokeWidth={1.75} />} label="Ödeme" value={<span className="num">{fopLabel(ticket.formOfPayment.type)}{ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}</span>} />
+              <MetaRow icon={<CreditCard size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.payment")} value={<span className="num">{fopLabel(ticket.formOfPayment.type)}{ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}</span>} />
             </div>
 
             {(p.ssr?.length || p.infant || ticket.tourCode || ticket.conjunctionTickets?.length || ticket.endorsement) && (
               <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
                 {p.ssr?.map((code) => {
-                  const def = ssrByCode(code);
-                  return <OutlineBadge key={code} tone="blue">{code}{def ? ` · ${def.label}` : ""}</OutlineBadge>;
+                  const label = ssrLabel(code, lang);
+                  return <OutlineBadge key={code} tone="blue">{code}{label ? ` · ${label}` : ""}</OutlineBadge>;
                 })}
-                {p.infant && <OutlineBadge tone="violet">Bebek · {p.infant.surname}/{p.infant.givenName}</OutlineBadge>}
+                {p.infant && <OutlineBadge tone="violet">{t("ticket.detail.infant", { name: `${p.infant.surname}/${p.infant.givenName}` })}</OutlineBadge>}
                 {ticket.tourCode && <OutlineBadge tone="gray">Tour {ticket.tourCode}</OutlineBadge>}
                 {ticket.conjunctionTickets?.map((tn) => (
                   <Link key={tn} to="/tickets/$ticketNumber" params={{ ticketNumber: tn }}>
@@ -156,8 +162,8 @@ export function TicketDetail() {
           {/* --- kuponlar --- */}
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
-              <span className="microlabel">Kuponlar</span>
-              <span className="num text-[12px] text-ink-3">{ticket.coupons.length} kupon · {open} açık</span>
+              <span className="microlabel">{t("ticket.detail.coupons")}</span>
+              <span className="num text-[12px] text-ink-3">{t("ticket.detail.couponCount", { n: ticket.coupons.length, o: open })}</span>
             </div>
             <div className="flex flex-col gap-2.5">
               {ticket.coupons.map((c) => {
@@ -178,27 +184,29 @@ export function TicketDetail() {
                       </span>
                     </div>
                     <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1 border-t border-line pt-2.5 text-[11.5px] text-ink-3">
-                      <span>Sınıf <b className="num font-medium text-ink-2">{c.segment.rbd}</b></span>
-                      <span>Ücret kodu <b className="num font-medium text-ink-2">{c.segment.fareBasis}</b></span>
+                      <span>{t("ticket.detail.cabinClass")} <b className="num font-medium text-ink-2">{c.segment.rbd}</b></span>
+                      <span>{t("ticket.detail.fareBasis")} <b className="num font-medium text-ink-2">{c.segment.fareBasis}</b></span>
                       {c.segment.notValidBefore && <span>NVB <b className="num font-medium text-ink-2">{c.segment.notValidBefore}</b></span>}
                       {c.segment.notValidAfter && <span>NVA <b className="num font-medium text-ink-2">{c.segment.notValidAfter}</b></span>}
-                      <span>Rez. <b className="num font-medium text-ink-2">{c.segment.reservationStatus}</b></span>
+                      <span>{t("ticket.detail.resStatus")} <b className="num font-medium text-ink-2">{c.segment.reservationStatus}</b></span>
                       {c.sac && <span>SAC <b className="num font-medium text-ink-2">{c.sac}</b></span>}
                     </div>
 
                     {/* Bagaj (14.4) — hak ve teslim alınan; fazlası varsa uyarı tonunda */}
                     {c.baggage && (
                       <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="microlabel">Bagaj</span>
+                        <span className="microlabel">{t("ticket.detail.baggage")}</span>
                         {c.baggage.allowance && (
                           <OutlineBadge tone="gray">
-                            Hak {c.baggage.allowance.type === "weight"
-                              ? `${c.baggage.allowance.value} ${c.baggage.allowance.unit ?? "K"}`
-                              : `${c.baggage.allowance.value} PCS`}
+                            {t("ticket.detail.bag.allowance", {
+                              v: c.baggage.allowance.type === "weight"
+                                ? `${c.baggage.allowance.value} ${c.baggage.allowance.unit ?? "K"}`
+                                : `${c.baggage.allowance.value} PCS`,
+                            })}
                           </OutlineBadge>
                         )}
                         {c.baggage.checkedPieces != null && (
-                          <OutlineBadge tone="blue">{c.baggage.checkedPieces} PCS teslim</OutlineBadge>
+                          <OutlineBadge tone="blue">{t("ticket.detail.bag.pieces", { n: c.baggage.checkedPieces })}</OutlineBadge>
                         )}
                         {c.baggage.checkedWeight != null && (
                           <OutlineBadge
@@ -208,10 +216,10 @@ export function TicketDetail() {
                                 ? "amber" : "blue"
                             }
                           >
-                            {c.baggage.checkedWeight} {c.baggage.weightUnit ?? "K"} teslim
+                            {t("ticket.detail.bag.weight", { w: c.baggage.checkedWeight, u: c.baggage.weightUnit ?? "K" })}
                           </OutlineBadge>
                         )}
-                        {c.baggage.excessEmd && <OutlineBadge tone="violet">Fazla → {c.baggage.excessEmd}</OutlineBadge>}
+                        {c.baggage.excessEmd && <OutlineBadge tone="violet">{t("ticket.detail.bag.excess", { n: c.baggage.excessEmd })}</OutlineBadge>}
                       </div>
                     )}
                   </InsetPanel>
@@ -224,10 +232,10 @@ export function TicketDetail() {
           <Card className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="microlabel">EMD / Ancillary</span>
-              <Button variant="white" size="sm" disabled={!can("ticket.emd")} onClick={() => setFlow("emd")}>EMD Ekle</Button>
+              <Button variant="white" size="sm" disabled={!can("ticket.emd")} onClick={() => setFlow("emd")}>{t("ticket.detail.emdAdd")}</Button>
             </div>
             {!emds?.length ? (
-              <p className="py-4 text-center text-[13px] text-ink-3">Bu bilete bağlı muhtelif belge yok.</p>
+              <p className="py-4 text-center text-[13px] text-ink-3">{t("ticket.detail.emdEmpty")}</p>
             ) : (
               <div className="flex flex-col gap-2">
                 {emds.map((e) => (
@@ -247,12 +255,11 @@ export function TicketDetail() {
 
           <Card className="p-5">
             <div className="mb-1 flex items-baseline justify-between">
-              <span className="microlabel">Yaşam döngüsü</span>
-              <span className="num text-[11.5px] text-ink-3">{ticket.history.length} olay</span>
+              <span className="microlabel">{t("ticket.detail.lifecycle")}</span>
+              <span className="num text-[11.5px] text-ink-3">{t("ticket.detail.eventCount", { n: ticket.history.length })}</span>
             </div>
             <p className="mb-3 text-[12px] leading-snug text-ink-3">
-              Belgeye ne olduğu zaman sırasıyla. Girintili satırlar tek bir kupona ait;
-              düğüm rengi statü ailesini, kırmızı halka olumsuz olayı gösterir.
+              {t("ticket.detail.lifecycleHint")}
             </p>
             <LifecycleTimeline ticket={ticket} />
           </Card>
@@ -263,7 +270,7 @@ export function TicketDetail() {
           <Card className="p-5">
             <div className="microlabel mb-3">Fare / TFC</div>
             <div className="flex items-baseline justify-between py-1.5">
-              <span className="text-[13px] text-ink-2">Çıplak Ücret</span>
+              <span className="text-[13px] text-ink-2">{t("ticket.detail.baseFare")}</span>
               <Money value={ticket.fare.baseFare} size="sm" />
             </div>
             {ticket.fare.tfcs.length > 0 && (
@@ -276,13 +283,13 @@ export function TicketDetail() {
                   </div>
                 ))}
                 <div className="mt-1 flex items-baseline justify-between border-t border-line pt-1.5">
-                  <span className="text-[12.5px] font-medium text-ink">Toplam TFC</span>
+                  <span className="text-[12.5px] font-medium text-ink">{t("ticket.detail.totalTfc")}</span>
                   <Money value={ticket.fare.totalTfc} size="sm" />
                 </div>
               </InsetPanel>
             )}
             <div className="mt-2 flex items-baseline justify-between border-t border-line pt-3">
-              <span className="microlabel">Toplam</span>
+              <span className="microlabel">{t("ticket.detail.total")}</span>
               <Money value={ticket.fare.total} size="lg" />
             </div>
             {/* KDV — toplamın İÇİNDEDİR (md.20/4); ayrı tahsil edilmez. */}
@@ -290,17 +297,17 @@ export function TicketDetail() {
               <div className="mt-2 flex items-baseline justify-between">
                 <span className="text-[12.5px] text-ink-3">
                   {ticket.fare.vat.regime === "exempt"
-                    ? "KDV (istisna · md.14)"
-                    : `KDV %${(ticket.fare.vat.rate * 100).toFixed(0)} — toplama dahil`}
+                    ? t("ticket.detail.vatExempt")
+                    : t("ticket.detail.vatIncluded", { r: (ticket.fare.vat.rate * 100).toFixed(0) })}
                 </span>
                 <span className="num text-[12.5px] text-ink-2">
-                  {ticket.fare.vat.amount.toLocaleString("tr-TR")} {ticket.fare.total.currency}
+                  {ticket.fare.vat.amount.toLocaleString(locale())} {ticket.fare.total.currency}
                 </span>
               </div>
             )}
             {ticket.fare.equivFarePaid && (
               <div className="mt-2 flex items-baseline justify-between">
-                <span className="text-[12.5px] text-ink-3">Eşdeğer ödenen</span>
+                <span className="text-[12.5px] text-ink-3">{t("ticket.detail.equivPaid")}</span>
                 <Money value={ticket.fare.equivFarePaid} size="sm" />
               </div>
             )}
@@ -333,8 +340,8 @@ export function TicketDetail() {
           {!!ticket.refunds?.length && (
             <Card className="p-5">
               <div className="mb-3 flex items-center justify-between">
-                <span className="microlabel">İadeler</span>
-                <Button variant="white" size="sm" disabled={!can("ticket.refund")} onClick={() => setFlow("refundcancel")}>Geri al</Button>
+                <span className="microlabel">{t("ticket.detail.refunds")}</span>
+                <Button variant="white" size="sm" disabled={!can("ticket.refund")} onClick={() => setFlow("refundcancel")}>{t("ticket.detail.undo")}</Button>
               </div>
               <div className="flex flex-col gap-2">
                 {ticket.refunds.map((r) => (
@@ -343,8 +350,8 @@ export function TicketDetail() {
                     <OutlineBadge tone={r.refundType === "involuntary" ? "amber" : "gray"}>
                       {r.refundType === "involuntary" ? "Involuntary" : "Voluntary"}
                     </OutlineBadge>
-                    <span className="num text-[12px] text-ink-2">kupon {r.couponSeqs.join(", ")}</span>
-                    {r.cancelledAt && <OutlineBadge tone="pink">Geri alındı</OutlineBadge>}
+                    <span className="num text-[12px] text-ink-2">{t("ticket.detail.refundCoupons", { s: r.couponSeqs.join(", ") })}</span>
+                    {r.cancelledAt && <OutlineBadge tone="pink">{t("ticket.detail.refundCancelled")}</OutlineBadge>}
                     <span className="ml-auto"><Money value={r.amount} size="sm" /></span>
                     {r.sac && <span className="num w-full text-[11px] text-ink-3">SAC {r.sac}</span>}
                   </InsetPanel>
@@ -356,14 +363,14 @@ export function TicketDetail() {
           {/* Kağıda basılan kuponlar (1.3.3 P / 1.3.4 X) */}
           {!!ticket.paperDocuments?.length && (
             <Card className="p-5">
-              <div className="microlabel mb-3">Kağıt belgeler</div>
+              <div className="microlabel mb-3">{t("ticket.detail.paperDocs")}</div>
               <div className="flex flex-col gap-2">
                 {ticket.paperDocuments.map((d, i) => (
                   <div key={i} className="flex flex-wrap items-center gap-2 text-[12.5px]">
                     <OutlineBadge tone={d.kind === "print_exchange" ? "violet" : "gray"}>
-                      {d.kind === "print_exchange" ? "Print exchange (X)" : "Kağıda basıldı (P)"}
+                      {d.kind === "print_exchange" ? "Print exchange (X)" : t("ticket.detail.printedP")}
                     </OutlineBadge>
-                    <span className="num text-ink-2">kupon #{d.couponSeq}</span>
+                    <span className="num text-ink-2">{t("ticket.detail.paperCoupon", { n: d.couponSeq })}</span>
                     <span className="num text-ink">ETKT {d.documentNumber}</span>
                     <span className="num ml-auto text-ink-3">{formatDateTime(d.at)}</span>
                   </div>
@@ -379,8 +386,12 @@ export function TicketDetail() {
   );
 }
 
+const FOP_KEY: Record<string, Key> = {
+  cash: "ticket.fop.cash", credit: "ticket.fop.credit", uatp: "ticket.fop.uatp", other: "ticket.fop.other",
+};
+
 function fopLabel(t: string) {
-  return { cash: "Nakit", credit: "Kredi Kartı", uatp: "UATP", other: "Diğer" }[t] ?? t;
+  return FOP_KEY[t] ? translate(FOP_KEY[t]) : t;
 }
 
 function MoreMenu({
@@ -388,26 +399,27 @@ function MoreMenu({
 }: { can: (p: never) => boolean; lockHint: (p: never) => string | undefined; onPick: (f: FlowId) => void }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const t = useT();
   useOutside(ref, () => setOpen(false));
 
   const items: { id: FlowId; icon: React.ReactNode; label: string; hint: string; perm: string }[] = [
-    { id: "revalidate", icon: <CalendarClock size={15} strokeWidth={1.75} />, label: "Revalidate", hint: "Uçuş/saat değişikliği (Ch 1.3.1/12.3)", perm: "ticket.revalidate" },
-    { id: "irrop", icon: <AlertTriangle size={15} strokeWidth={1.75} />, label: "IRROP / Yönlendirme", hint: "Involuntary rerouting (Ch 13)", perm: "ticket.irrop" },
-    { id: "noshow", icon: <UserX size={15} strokeWidth={1.75} />, label: "Binmedi (No-show)", hint: "Yolcu uçuşa gelmedi (Ch 13)", perm: "ticket.exchange" },
-    { id: "endorse", icon: <Stamp size={15} strokeWidth={1.75} />, label: "Ciro / Endorsement", hint: "Endorsement / restrictions (2.19)", perm: "ticket.endorse" },
-    { id: "bagrecord", icon: <Luggage size={15} strokeWidth={1.75} />, label: "Bagaj Kaydı", hint: "Teslim alınan PCS / WT (14.4)", perm: "ticket.emd" },
-    { id: "baggage", icon: <Luggage size={15} strokeWidth={1.75} />, label: "Fazla Bagaj → EMD-S", hint: "Excess baggage (14.5)", perm: "ticket.emd" },
-    { id: "print", icon: <FileOutput size={15} strokeWidth={1.75} />, label: "Kağıda Bas", hint: "Kupon → P (Ch 1.3.3)", perm: "ticket.print" },
-    { id: "printexchange", icon: <FileOutput size={15} strokeWidth={1.75} />, label: "Print Exchange", hint: "Farklı kağıt belge no → X (1.3.4)", perm: "ticket.print" },
-    { id: "control", icon: <KeyRound size={15} strokeWidth={1.75} />, label: "Kupon Kontrolü", hint: "Devret / geri al / iste (1.1.5.1)", perm: "ticket.exchange" },
-    { id: "refundcancel", icon: <RotateCcw size={15} strokeWidth={1.75} />, label: "İadeyi Geri Al", hint: "Aynı dönem içinde refund-cancel (12.13.2)", perm: "ticket.refund" },
-    { id: "suspend", icon: <PauseOctagon size={15} strokeWidth={1.75} />, label: "Askıya Al / Çıkar", hint: "Şüpheli belgeyi dondur (S, 1.1.4)", perm: "ticket.suspend" },
+    { id: "revalidate", icon: <CalendarClock size={15} strokeWidth={1.75} />, label: "Revalidate", hint: t("ticket.more.revalidate.hint"), perm: "ticket.revalidate" },
+    { id: "irrop", icon: <AlertTriangle size={15} strokeWidth={1.75} />, label: t("ticket.more.irrop"), hint: "Involuntary rerouting (Ch 13)", perm: "ticket.irrop" },
+    { id: "noshow", icon: <UserX size={15} strokeWidth={1.75} />, label: t("ticket.more.noshow"), hint: t("ticket.more.noshow.hint"), perm: "ticket.exchange" },
+    { id: "endorse", icon: <Stamp size={15} strokeWidth={1.75} />, label: t("ticket.more.endorse"), hint: "Endorsement / restrictions (2.19)", perm: "ticket.endorse" },
+    { id: "bagrecord", icon: <Luggage size={15} strokeWidth={1.75} />, label: t("ticket.more.bagrecord"), hint: t("ticket.more.bagrecord.hint"), perm: "ticket.emd" },
+    { id: "baggage", icon: <Luggage size={15} strokeWidth={1.75} />, label: t("ticket.more.baggage"), hint: "Excess baggage (14.5)", perm: "ticket.emd" },
+    { id: "print", icon: <FileOutput size={15} strokeWidth={1.75} />, label: t("ticket.more.print"), hint: t("ticket.more.print.hint"), perm: "ticket.print" },
+    { id: "printexchange", icon: <FileOutput size={15} strokeWidth={1.75} />, label: "Print Exchange", hint: t("ticket.more.printexchange.hint"), perm: "ticket.print" },
+    { id: "control", icon: <KeyRound size={15} strokeWidth={1.75} />, label: t("ticket.more.control"), hint: t("ticket.more.control.hint"), perm: "ticket.exchange" },
+    { id: "refundcancel", icon: <RotateCcw size={15} strokeWidth={1.75} />, label: t("ticket.more.refundcancel"), hint: t("ticket.more.refundcancel.hint"), perm: "ticket.refund" },
+    { id: "suspend", icon: <PauseOctagon size={15} strokeWidth={1.75} />, label: t("ticket.more.suspend"), hint: t("ticket.more.suspend.hint"), perm: "ticket.suspend" },
   ];
 
   return (
     <div ref={ref} className="relative">
       <Button variant="white" size="sm" onClick={() => setOpen((o) => !o)} aria-expanded={open}
-        iconRight={<ChevronDown size={13} strokeWidth={2} />}>İşlemler</Button>
+        iconRight={<ChevronDown size={13} strokeWidth={2} />}>{t("ticket.detail.actions")}</Button>
       {open && (
         <Menu className="w-64">
           {items.map((it) => {

@@ -1774,6 +1774,7 @@ export function scanRevenueAlerts(tickets: Ticket[] = store): RevenueAlert[] {
           id: `seq-${t.ticketNumber}-${c.seq}`, kind: "out_of_sequence", severity: "high",
           ticketNumber: t.ticketNumber,
           detail: `Kupon #${c.seq} (${c.segment.origin}→${c.segment.destination}) kendinden önceki açık kupondan önce honor edilmiş.`,
+          detailEn: `Coupon #${c.seq} (${c.segment.origin}→${c.segment.destination}) was honoured before an earlier open coupon.`,
           detectedAt: t.history[t.history.length - 1]?.occurredAt ?? t.issuedAt,
         });
       }
@@ -1782,6 +1783,7 @@ export function scanRevenueAlerts(tickets: Ticket[] = store): RevenueAlert[] {
           id: `susp-${t.ticketNumber}-${c.seq}`, kind: "status_mismatch", severity: "medium",
           ticketNumber: t.ticketNumber,
           detail: `Kupon #${c.seq} askıda (S) — inceleme kapanana kadar kullanılamaz.`,
+          detailEn: `Coupon #${c.seq} is suspended (S) — not usable until the review is closed.`,
           detectedAt: [...t.history].reverse().find((h) => h.type === "CouponSuspended")?.occurredAt ?? t.issuedAt,
         });
       }
@@ -1792,6 +1794,7 @@ export function scanRevenueAlerts(tickets: Ticket[] = store): RevenueAlert[] {
         id: `ctl-${t.ticketNumber}`, kind: "control_overdue", severity: "medium",
         ticketNumber: t.ticketNumber,
         detail: `Kontrol ${t.control.holder}'da ve süresi ${formatDeadline(t.control.deadlineAt!)} doldu (1.1.4.1 lease aşımı).`,
+        detailEn: `Control is held by ${t.control.holder} and the time limit expired on ${formatDeadline(t.control.deadlineAt!)} (1.1.4.1 lease overrun).`,
         detectedAt: t.control.deadlineAt!,
       });
     }
@@ -1811,6 +1814,7 @@ export function scanRevenueAlerts(tickets: Ticket[] = store): RevenueAlert[] {
         id: `dup-${t.ticketNumber}`, kind: "duplicate", severity: "high",
         ticketNumber: t.ticketNumber,
         detail: `Aynı FOID (${t.passenger.foid}) ve güzergâh ile ${group.length} canlı belge — olası mükerrer kesim.`,
+        detailEn: `${group.length} live documents share the same FOID (${t.passenger.foid}) and routing — possible duplicate issue.`,
         detectedAt: t.issuedAt,
       });
     }

@@ -9,7 +9,7 @@ import { useChatUnreadTotal } from "@/store/chat";
 import { ScreenHelpButton } from "@/components/layout/ScreenHelp";
 import { useT } from "@/i18n";
 import { usePerm } from "@/lib/usePerm";
-import { ROLE_DESC, ROLE_LABEL, ROLE_ORDER, type Role } from "@/domain/auth";
+import { ROLE_ORDER, roleDesc, roleLabel, type Role } from "@/domain/auth";
 import { MODULES, PANEL_ICON, moduleDef, moduleForPath } from "@/modules";
 import { BrandMark } from "@/components/BrandMark";
 import { Menu as Pop, MenuItem, MenuLabel, MenuRule, useOutside } from "@/components/ui/overlay";
@@ -53,7 +53,7 @@ export function Topbar() {
     <header data-print-hide className="z-30 flex-shrink-0 border-b border-line bg-surface">
       {/* --- 1. kat --- */}
       <div className="flex h-14 items-center gap-3 px-3 sm:px-4">
-        <button onClick={() => setMobileNav(true)} className={cn(ICON_BTN, "lg:hidden")} aria-label="Menü">
+        <button onClick={() => setMobileNav(true)} className={cn(ICON_BTN, "lg:hidden")} aria-label={t("shell.menu")}>
           <MenuIcon size={19} strokeWidth={1.75} />
         </button>
 
@@ -65,7 +65,7 @@ export function Topbar() {
         <span className="mx-1 hidden h-6 w-px bg-line lg:block" aria-hidden />
 
         {/* modül gezinme */}
-        <nav className="hidden items-center gap-1 lg:flex" aria-label="Modüller">
+        <nav className="hidden items-center gap-1 lg:flex" aria-label={t("shell.modules")}>
           <ModTab to="/" icon={PANEL_ICON} label={t("module.panel")} on={activeModule === "panel"} />
           {MODULES.map((m) => (
             <ModTab key={m.id} to={m.home} icon={m.icon} label={t(m.labelKey)} on={activeModule === m.id} />
@@ -95,7 +95,7 @@ export function Topbar() {
             )}
           </Link>
           <button onClick={() => setTheme(dark ? "light" : "dark")} className={ICON_BTN}
-            aria-label={dark ? "Açık tema" : "Koyu tema"} title={dark ? "Açık tema" : "Koyu tema"}>
+            aria-label={t(dark ? "shell.theme.light" : "shell.theme.dark")} title={t(dark ? "shell.theme.light" : "shell.theme.dark")}>
             {dark ? <Sun size={17} strokeWidth={1.75} /> : <Moon size={17} strokeWidth={1.75} />}
           </button>
           <LanguageMenu />
@@ -183,7 +183,7 @@ function NotificationMenu() {
           <MenuRule />
           <div className="max-h-96 overflow-y-auto">
             {notices.length === 0 ? (
-              <div className="px-2.5 py-6 text-center text-[12.5px] text-ink-3">Açık duyuru yok.</div>
+              <div className="px-2.5 py-6 text-center text-[12.5px] text-ink-3">{t("shell.notices.empty")}</div>
             ) : (
               notices.slice(0, 12).map((n) => (
                 <NoticeRow key={n.id} notice={n} onNavigate={() => setOpen(false)} />
@@ -230,6 +230,7 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
   const role = useUI((s) => s.role);
   const setRole = useUI((s) => s.setRole);
   const user = useUI((s) => s.user);
+  const lang = useUI((s) => s.lang);
   const logout = useUI((s) => s.logout);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -237,7 +238,7 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
 
   return (
     <div ref={ref} className="relative">
-      <button onClick={() => setOpen((o) => !o)} title={`${user?.name ?? "—"} · ${ROLE_LABEL[role]}`}
+      <button onClick={() => setOpen((o) => !o)} title={`${user?.name ?? "—"} · ${roleLabel(role, lang)}`}
         className="flex h-9 items-center gap-2 rounded-[10px] px-1 transition-colors hover:bg-inset sm:pr-2">
         <span className="grid h-7 w-7 place-items-center rounded-full bg-brand text-[10.5px] font-semibold text-white">
           {user?.initials ?? "??"}
@@ -252,7 +253,7 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-ink">{user?.name ?? "—"}</div>
               <div className="truncate text-[12px] text-ink-3">
-                {user?.location ?? "—"} · TK · <span className="font-medium text-brand">{ROLE_LABEL[role]}</span>
+                {user?.location ?? "—"} · TK · <span className="font-medium text-brand">{roleLabel(role, lang)}</span>
               </div>
             </div>
           </div>
@@ -261,11 +262,11 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
             <UserRound size={15} strokeWidth={1.75} className="text-ink-3" /> {t("nav.profile")}
           </Link>
           <MenuRule />
-          <MenuLabel>Rol (demo)</MenuLabel>
+          <MenuLabel>{t("shell.role.demo")}</MenuLabel>
           {ROLE_ORDER.map((r) => (
             <MenuItem key={r} onSelect={() => setRole(r)} icon={<Dot tone={r === role ? "red" : "gray"} />}>
-              {ROLE_LABEL[r as Role]}
-              <span className="sr-only">{ROLE_DESC[r]}</span>
+              {roleLabel(r as Role, lang)}
+              <span className="sr-only">{roleDesc(r, lang)}</span>
               {r === role && <Check size={14} strokeWidth={2} className="ml-auto text-brand" />}
             </MenuItem>
           ))}

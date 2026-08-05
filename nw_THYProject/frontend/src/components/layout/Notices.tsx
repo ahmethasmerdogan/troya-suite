@@ -2,11 +2,13 @@ import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { Megaphone, TriangleAlert, X } from "lucide-react";
-import { getOpsBoard } from "@/domain/ops";
+import { getOpsBoard, opsAlertText } from "@/domain/ops";
 import { listRevenueAlerts } from "@/domain/api";
 import { OPS_CHANNEL_ID } from "@/domain/chat";
 import { useChat } from "@/store/chat";
+import { useUI } from "@/store/ui";
 import { TONE_DOT, TONE_INK, TONE_WASH, type Tone } from "@/components/ui/pill";
+import { translate, useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -31,11 +33,17 @@ export interface Notice {
 }
 
 const SEV_TONE: Record<NoticeSeverity, Tone> = { critical: "red", warning: "amber", info: "blue" };
-const SEV_LABEL: Record<NoticeSeverity, string> = { critical: "Kritik", warning: "Uyarı", info: "Duyuru" };
+const SEV_LABEL_KEY = {
+  critical: "shell.notice.critical",
+  warning: "shell.notice.warning",
+  info: "shell.notice.info",
+} as const;
 const RANK: Record<NoticeSeverity, number> = { critical: 0, warning: 1, info: 2 };
 
 /** Kabuk genelindeki bildirim akışı — hem üst şerit hem zil menüsü bunu okur. */
 export function useNotices(): Notice[] {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
   const { data: board } = useQuery({ queryKey: ["opsBoard"], queryFn: getOpsBoard, refetchInterval: 30_000 });
   const { data: revenue = [] } = useQuery({ queryKey: ["revenueAlerts"], queryFn: listRevenueAlerts });
   // Kanal listesi artık dinamik; duyuru şeridi sabit id ile bağlanır.
@@ -44,11 +52,12 @@ export function useNotices(): Notice[] {
   const out: Notice[] = [];
 
   for (const a of board?.alerts ?? []) {
+    const txt = opsAlertText(a, lang);
     out.push({
       id: `ops-${a.id}`,
       severity: a.severity,
-      title: `${a.flightNumber} · ${a.title}`,
-      detail: a.detail,
+      title: `${a.flightNumber} · ${txt.title}`,
+      detail: txt.detail,
       to: "/ops",
     });
   }
@@ -57,8 +66,8 @@ export function useNotices(): Notice[] {
     out.push({
       id: `rev-${r.id}`,
       severity: r.severity === "high" ? "critical" : r.severity === "medium" ? "warning" : "info",
-      title: `Gelir koruma · ${r.ticketNumber}`,
-      detail: r.detail,
+      title: `${t("shell.notice.revenue")} · ${r.ticketNumber}`,
+      detail: lang === "en" ? r.detailEn ?? r.detail : r.detail,
       to: "/admin/revenue",
       at: r.detectedAt,
     });
@@ -70,7 +79,7 @@ export function useNotices(): Notice[] {
     out.push({
       id: `chat-${last.id}`,
       severity: "info",
-      title: `İstasyon operasyon · ${last.fromName}`,
+      title: `${t("shell.notice.ops")} · ${last.fromName}`,
       detail: last.text,
       to: "/chat",
       at: last.at,
@@ -94,6 +103,7 @@ function readDismissed(): string[] {
 
 /** Üst şerit — en öncelikli açık duyuru. */
 export function AnnouncementBar() {
+  const t = useT();
   const notices = useNotices();
   const [dismissed, setDismissed] = useState<string[]>(readDismissed);
   const open = notices.filter((n) => !dismissed.includes(n.id));
@@ -115,7 +125,7 @@ export function AnnouncementBar() {
         className="flex-shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
         style={{ background: TONE_DOT[tone], color: "#fff" }}
       >
-        {SEV_LABEL[top.severity]}
+        {t(SEV_LABEL_KEY[top.severity])}
       </span>
       <span className="truncate text-[12.5px] font-semibold">{top.title}</span>
       <span className="hidden min-w-0 flex-1 truncate text-[12.5px] opacity-85 sm:block">{top.detail}</span>
@@ -126,7 +136,7 @@ export function AnnouncementBar() {
       )}
       {top.to && (
         <Link to={top.to} className="flex-shrink-0 text-[12.5px] font-semibold underline underline-offset-2">
-          Aç
+          {t("shell.notice.open")}
         </Link>
       )}
       <button
@@ -135,7 +145,7 @@ export function AnnouncementBar() {
           try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next.slice(-60))); } catch { /* depolama kapalı */ }
           return next;
         })}
-        aria-label="Duyuruyu kapat"
+        aria-label={t("shell.notice.dismiss")}
         className="flex-shrink-0 rounded-sm p-0.5 opacity-60 transition-opacity hover:opacity-100"
       >
         <X size={14} strokeWidth={2} />
@@ -171,8 +181,8 @@ export function NoticeRow({ notice, onNavigate }: { notice: Notice; onNavigate: 
 
 function ago(iso: string): string {
   const m = Math.round((Date.now() - new Date(iso).getTime()) / 60_000);
-  if (m < 1) return "şimdi";
-  if (m < 60) return `${m} dk`;
+  if (m < 1) return translate("shell.ago.now");
+  if (m < 60) return translate("shell.ago.min", { n: m });
   const h = Math.round(m / 60);
-  return h < 24 ? `${h} sa` : `${Math.round(h / 24)} g`;
+  return h < 24 ? translate("shell.ago.hour", { n: h }) : translate("shell.ago.day", { n: Math.round(h / 24) });
 }

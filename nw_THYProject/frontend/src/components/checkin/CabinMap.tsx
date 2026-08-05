@@ -1,9 +1,14 @@
 import { useMemo } from "react";
 import { DoorOpen, Wind } from "lucide-react";
 import type { CheckinPassenger, Seat } from "@/domain/checkin";
-import { seatDenial, type SeatDenial } from "@/domain/seatRules";
+import { denialReason, seatDenial, type SeatDenial } from "@/domain/seatRules";
+import type { DocLang } from "@/domain/ssr";
 import { layoutFor, zoneOfRow, type AircraftLayout } from "@/domain/aircraftLayout";
+import { useT } from "@/i18n";
+import { useUI } from "@/store/ui";
 import { cn } from "@/lib/utils";
+
+type T = ReturnType<typeof useT>;
 
 /* ====================================================================
    Kabin haritası — gerçek uçak gibi.
@@ -31,6 +36,9 @@ export interface CabinMapProps {
 }
 
 export function CabinMap({ seats, aircraftType, passenger, selected, onSelect, ownSeat }: CabinMapProps) {
+  const t = useT();
+  // Kural gerekçesi domainden gelir (TR+EN); hangisinin okunacağını arayüz dili seçer.
+  const lang = useUI((s) => s.lang);
   const layout = layoutFor(aircraftType);
 
   // Kural değerlendirmesi bir kez yapılır; her render'da 250+ kez değil.
@@ -58,7 +66,7 @@ export function CabinMap({ seats, aircraftType, passenger, selected, onSelect, o
         const cols = zone.columns;
         return (
           <section key={`${zone.cabin}-${zone.fromRow}`} className="w-full">
-            <ZoneHead zone={zone.cabin} from={zone.fromRow} to={zone.toRow} />
+            <ZoneHead t={t} zone={zone.cabin} from={zone.fromRow} to={zone.toRow} />
 
             {/* sütun başlıkları */}
             <div className="mb-1 flex items-center justify-center gap-1" aria-hidden>
@@ -91,6 +99,8 @@ export function CabinMap({ seats, aircraftType, passenger, selected, onSelect, o
                       c ? (
                         <SeatCell
                           key={c}
+                          t={t}
+                          lang={lang}
                           seat={seatsOfRow.get(c)}
                           denial={seatsOfRow.get(c) ? denials.get(seatsOfRow.get(c)!.id) ?? null : null}
                           selected={selected === `${row}${c}`}
@@ -116,12 +126,12 @@ export function CabinMap({ seats, aircraftType, passenger, selected, onSelect, o
   );
 }
 
-function ZoneHead({ zone, from, to }: { zone: string; from: number; to: number }) {
+function ZoneHead({ t, zone, from, to }: { t: T; zone: string; from: number; to: number }) {
   return (
     <div className="my-3 flex items-center gap-3">
       <span className="h-px flex-1 bg-line" />
       <span className="microlabel whitespace-nowrap">
-        {zone} · sıra {from}–{to}
+        {t("checkin.map.zoneRows", { zone, from, to })}
       </span>
       <span className="h-px flex-1 bg-line" />
     </div>
@@ -139,8 +149,10 @@ function RowLabel({ row, exit, side }: { row: number; exit: boolean; side: "left
 }
 
 function SeatCell({
-  seat, denial, selected, own, onSelect,
+  t, lang, seat, denial, selected, own, onSelect,
 }: {
+  t: T;
+  lang: DocLang;
   seat?: Seat;
   denial: SeatDenial | null;
   selected: boolean;
@@ -157,11 +169,11 @@ function SeatCell({
   const label = [
     seat.id,
     seat.cabin,
-    seat.position === "window" ? "pencere" : seat.position === "aisle" ? "koridor" : "orta",
-    seat.exit ? "çıkış sırası" : null,
-    seat.bulkhead ? "bölme başı" : null,
-    seat.nearLavatory ? "lavabo yakını" : null,
-    busy ? "dolu" : blocked ? `kapalı — ${denial!.reason}` : "boş",
+    seat.position === "window" ? t("checkin.map.window") : seat.position === "aisle" ? t("checkin.map.aisle") : t("checkin.map.middle"),
+    seat.exit ? t("checkin.seat.exit") : null,
+    seat.bulkhead ? t("checkin.map.bulkhead") : null,
+    seat.nearLavatory ? t("checkin.seat.lavatory") : null,
+    busy ? t("checkin.map.busy") : blocked ? t("checkin.map.blocked", { reason: denialReason(denial!, lang) }) : t("checkin.map.free"),
   ].filter(Boolean).join(" · ");
 
   return (
@@ -195,17 +207,18 @@ function SeatCell({
 
 /** Lejant — her işaretin ne demek olduğu tek yerde. */
 export function CabinLegend({ layout }: { layout?: AircraftLayout }) {
+  const t = useT();
   return (
     <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[11.5px] text-ink-3">
-      <Chip className="border-line bg-panel" label="Boş" />
-      <Chip className="border-brand bg-brand" label="Seçili" />
-      <Chip className="border-line bg-sunken" label="Dolu" />
-      <Chip className="border-[var(--t-amber-d)] bg-[var(--t-amber-w)]" label="Bu yolcuya kapalı" />
+      <Chip className="border-line bg-panel" label={t("checkin.map.legend.free")} />
+      <Chip className="border-brand bg-brand" label={t("checkin.map.legend.selected")} />
+      <Chip className="border-line bg-sunken" label={t("checkin.map.legend.busy")} />
+      <Chip className="border-[var(--t-amber-d)] bg-[var(--t-amber-w)]" label={t("checkin.map.legend.blocked")} />
       <span className="inline-flex items-center gap-1.5">
-        <DoorOpen size={13} strokeWidth={1.75} className="text-[var(--t-green-i)]" /> Çıkış sırası
+        <DoorOpen size={13} strokeWidth={1.75} className="text-[var(--t-green-i)]" /> {t("checkin.map.legend.exit")}
       </span>
       <span className="inline-flex items-center gap-1.5">
-        <Wind size={13} strokeWidth={1.75} className="text-ink-4" /> Kanat hizası
+        <Wind size={13} strokeWidth={1.75} className="text-ink-4" /> {t("checkin.map.legend.wing")}
         {layout && <span className="num">({layout.wingRows[0]}–{layout.wingRows[1]})</span>}
       </span>
     </div>
@@ -222,14 +235,17 @@ function Chip({ className, label }: { className: string; label: string }) {
 }
 
 /** Kapalı sıraların insan-okur özeti — hover'a bakmadan görünsün. */
-export function blockedSummary(seats: Seat[], passenger: CheckinPassenger): { reason: string; seats: string[] }[] {
+export function blockedSummary(
+  seats: Seat[], passenger: CheckinPassenger, lang: DocLang = "tr",
+): { reason: string; seats: string[] }[] {
   const groups = new Map<string, string[]>();
   for (const s of seats) {
     if (s.occupied) continue;
     const d = seatDenial(passenger, s);
     if (!d) continue;
-    if (!groups.has(d.reason)) groups.set(d.reason, []);
-    groups.get(d.reason)!.push(s.id);
+    const reason = denialReason(d, lang);
+    if (!groups.has(reason)) groups.set(reason, []);
+    groups.get(reason)!.push(s.id);
   }
   return [...groups.entries()].map(([reason, list]) => ({ reason, seats: list }));
 }

@@ -1,10 +1,21 @@
+import { tr as searchTr, en as searchEn } from "./keys/search";
+import { tr as shellTr, en as shellEn } from "./keys/shell";
+import { tr as docs2Tr, en as docs2En } from "./keys/docs2";
+import { tr as fixTr, en as fixEn } from "./keys/fix";
+import { tr as flowsTr, en as flowsEn } from "./keys/flows";
+import { tr as issueTr, en as issueEn } from "./keys/issue";
+import { tr as ticketTr, en as ticketEn } from "./keys/ticket";
+import { tr as checkinTr, en as checkinEn } from "./keys/checkin";
+import { tr as adminTr, en as adminEn } from "./keys/admin";
+import { tr as reportTr, en as reportEn } from "./keys/report";
+import { tr as miscTr, en as miscEn } from "./keys/misc";
+import { tr as chatTr, en as chatEn } from "./keys/chat";
+
 import type { Lang } from "@/store/ui";
 
 // Uygulama geneli sözlük (TR/EN). Flat dotted key'ler. Yeni metin eklerken ikisini de doldur.
 // Not: Derin domain string'leri kademeli çevriliyor; chrome + modüller + form'lar kapsanır.
-type Dict = Record<string, string>;
-
-const tr: Dict = {
+const tr = {
   // marka / modüller
   "brand.suite": "Troya Suite",
   "module.panel": "Panel",
@@ -143,9 +154,9 @@ const tr: Dict = {
   "error.home": "Anasayfa",
   "notfound.title": "Sayfa bulunamadı",
   "notfound.desc": "Aradığınız sayfa taşınmış ya da hiç var olmamış olabilir.",
-};
+} as const;
 
-const en: Dict = {
+const en: Record<keyof typeof tr, string> = {
   "brand.suite": "Troya Suite",
   "module.panel": "Panel",
   "module.quickres": "QuickRes",
@@ -277,4 +288,15 @@ const en: Dict = {
   "notfound.desc": "The page you are looking for may have been moved or never existed.",
 };
 
-export const DICT: Record<Lang, Dict> = { tr, en };
+/**
+ * Sözlük alan alan dosyalara bölündü: her alan kendi `keys/*.ts` dosyasında
+ * TR ve EN değerlerini YAN YANA tutar — 130 satır uzaklıktaki iki blok
+ * arasında kayma riski kalmadı.
+ */
+const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr };
+const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn };
+
+export type Key = keyof typeof TR;
+
+/** EN sözlüğü TR ile birebir aynı anahtarları taşımak ZORUNDA — eksik olan tsc hatası. */
+export const DICT: Record<Lang, Record<Key, string>> = { tr: TR, en: EN };

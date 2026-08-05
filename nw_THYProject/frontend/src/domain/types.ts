@@ -408,5 +408,10 @@ export interface RevenueAlert {
   severity: RevenueSeverity;
   ticketNumber: string;
   detail: string;
+  /**
+   * Uyarı metninin İngilizcesi. Canlı tarama (`scanRevenueAlerts`) doldurur;
+   * tohum kayıtlarda boş olabilir, o zaman sunum `detail`e düşer.
+   */
+  detailEn?: string;
   detectedAt: string;
 }

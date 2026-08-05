@@ -17,7 +17,9 @@ import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
-import { formatDateTime, flightCode } from "@/lib/utils";
+import { useT, translate, type Key } from "@/i18n";
+import { useUI } from "@/store/ui";
+import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
 // Uçuş detayı — yolcu kabul (check-in) ve biniş (boarding).
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
@@ -25,16 +27,21 @@ const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
 /** Kalkışa kalan — gişede en çok bakılan sayı. */
 function countdown(iso: string): string {
   const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
-  if (m < 0) return `${formatDateTime(iso)} · kalkış geçti`;
-  if (m < 60) return `${m} dk kaldı`;
-  return `${Math.floor(m / 60)} sa ${m % 60} dk kaldı`;
+  if (m < 0) return translate("checkin.countdown.past", { time: formatDateTime(iso) });
+  if (m < 60) return translate("checkin.countdown.min", { n: m });
+  return translate("checkin.countdown.hour", { h: Math.floor(m / 60), m: m % 60 });
 }
 
 const PAX_TONE: Record<string, Tone> = { not_checked: "gray", checked_in: "blue", boarded: "green" };
-const PAX_LABEL: Record<string, string> = { not_checked: "Kabul bekliyor", checked_in: "Check-in", boarded: "Bindi" };
+const PAX_LABEL: Record<string, Key> = {
+  not_checked: "checkin.pax.notChecked", checked_in: "checkin.pax.checkedIn", boarded: "checkin.pax.boarded",
+};
 
 export function CheckinFlight() {
   const { flightId } = useParams({ from: "/checkin/$flightId" });
+  const t = useT();
+  // Koltuk kısıt notları domainden iki dilli gelir; okunacak dili arayüz seçer.
+  const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [tab, setTab] = useState<"checkin" | "boarding">("checkin");
@@ -72,15 +79,18 @@ export function CheckinFlight() {
       return { pax: done, couponWarning };
     },
     onSuccess: ({ pax: p, couponWarning }) => {
-      toast.success("Yolcu bindirildi", `${p.surname}/${p.givenName} · koltuk ${p.seat ?? "—"}`);
-      if (couponWarning) toast.warning("Kupon ilerletilemedi", couponWarning);
+      toast.success(
+        t("checkin.toast.boarded.title"),
+        t("checkin.toast.seatLine", { name: `${p.surname}/${p.givenName}`, seat: p.seat ?? "—" }),
+      );
+      if (couponWarning) toast.warning(t("checkin.toast.couponFailed"), couponWarning);
       qc.invalidateQueries({ queryKey: ["pax", flightId] });
       qc.invalidateQueries({ queryKey: ["opsBoard"] });
       qc.invalidateQueries({ queryKey: ["flights"] });
       qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
     },
-    onError: (e: Error) => toast.danger("Bindirilemedi", e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
   });
 
   /** Kabulü geri al: koltuk boşalır, kupon havalimanı kontrolüne (A) çekilir. */
@@ -93,10 +103,10 @@ export function CheckinFlight() {
       return done;
     },
     onSuccess: (p) => {
-      toast.success("Kabul geri alındı", `${p.surname}/${p.givenName} · koltuk boşaldı`);
+      toast.success(t("checkin.toast.undone.title"), t("checkin.toast.undone.body", { name: `${p.surname}/${p.givenName}` }));
       refreshAll(p.ticketNumber);
     },
-    onError: (e: Error) => toast.danger("Geri alınamadı", e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), e.message),
   });
 
   /** Kabul edilmiş herkesi tek işlemde bindir. */
@@ -110,8 +120,8 @@ export function CheckinFlight() {
       }
       return done;
     },
-    onSuccess: (list) => { toast.success("Toplu biniş", `${list.length} yolcu bindirildi`); refreshAll(); },
-    onError: (e: Error) => toast.danger("Bindirilemedi", e.message),
+    onSuccess: (list) => { toast.success(t("checkin.toast.boardAll.title"), t("checkin.toast.boardAll.body", { n: list.length })); refreshAll(); },
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
   });
 
   /**
@@ -130,10 +140,10 @@ export function CheckinFlight() {
       return { ...res, flown };
     },
     onSuccess: (r) => {
-      toast.success("Uçuş kapatıldı", `${r.flown} kupon Flown · ${r.noShow.length} no-show`);
+      toast.success(t("checkin.toast.closed.title"), t("checkin.toast.closed.body", { flown: r.flown, noshow: r.noShow.length }));
       refreshAll();
     },
-    onError: (e: Error) => toast.danger("Kapatılamadı", e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.closeFailed"), e.message),
   });
 
   /** Kabul öncesi havalimanı kontrolü al (O→A). */
@@ -146,8 +156,8 @@ export function CheckinFlight() {
       }
       return n;
     },
-    onSuccess: (n) => { toast.success("Havalimanı kontrolü alındı", `${n} kupon için statü "A"`); refreshAll(); },
-    onError: (e: Error) => toast.danger("Kontrol alınamadı", e.message),
+    onSuccess: (n) => { toast.success(t("checkin.toast.control.title"), t("checkin.toast.control.body", { n })); refreshAll(); },
+    onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), e.message),
   });
 
   const rows = useMemo(() => {
@@ -159,7 +169,7 @@ export function CheckinFlight() {
 
   const withList = (detail: React.ReactNode) => <SplitView list={<FlightListPane selected={flightId} />} detail={detail} />;
   if (isLoading) return withList(<DetailBody><Skeleton className="h-64 w-full" /></DetailBody>);
-  if (!flight) return withList(<DetailBody><p className="text-sm text-ink-2">Uçuş bulunamadı.</p></DetailBody>);
+  if (!flight) return withList(<DetailBody><p className="text-sm text-ink-2">{t("checkin.flight.notFound")}</p></DetailBody>);
 
   const intl = isInternational(flight);
   const accepted = (pax ?? []).filter((p) => p.status !== "not_checked").length;
@@ -182,20 +192,20 @@ export function CheckinFlight() {
             {flight.status !== "departed" && flight.status !== "closed" && (
               <>
                 <Button variant="ghost" size="sm" disabled={takeControl.isPending}
-                  title="Kuponları havalimanı kontrolüne al (O→A)"
+                  title={t("checkin.flight.takeControl.title")}
                   onClick={() => takeControl.mutate()}>
-                  <LockKeyhole size={15} strokeWidth={1.75} /> Kontrol al
+                  <LockKeyhole size={15} strokeWidth={1.75} /> {t("checkin.flight.takeControl")}
                 </Button>
                 {tab === "boarding" && (
                   <Button variant="secondary" size="sm" disabled={boardEveryone.isPending}
                     onClick={() => boardEveryone.mutate()}>
-                    <Users size={15} strokeWidth={1.75} /> Tümünü bindir
+                    <Users size={15} strokeWidth={1.75} /> {t("checkin.flight.boardAll")}
                   </Button>
                 )}
                 <Button variant="danger" size="sm" disabled={closeOut.isPending}
-                  title="Kapıyı kapat: binen yolcuların kuponları Flown'a geçer"
+                  title={t("checkin.flight.closeOut.title")}
                   onClick={() => closeOut.mutate()}>
-                  <PlaneLanding size={15} strokeWidth={1.75} /> Uçuşu kapat
+                  <PlaneLanding size={15} strokeWidth={1.75} /> {t("checkin.flight.closeOut")}
                 </Button>
               </>
             )}
@@ -206,7 +216,7 @@ export function CheckinFlight() {
                 onClick={() => setTab(k)}
                 className={`h-7 rounded-sm px-3 text-[12.5px] font-medium transition-colors ${tab === k ? "bg-panel text-ink" : "text-ink-2 hover:text-ink"}`}
               >
-                {k === "checkin" ? "Check-in" : "Biniş"}
+                {k === "checkin" ? t("checkin.tab.checkin") : t("checkin.tab.boarding")}
               </button>
             ))}
           </div>
@@ -216,14 +226,16 @@ export function CheckinFlight() {
       <DetailBody>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
-            label="Kalkış"
-            value={new Date(flight.departure).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+            label={t("checkin.stat.departure")}
+            value={new Date(flight.departure).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
             hint={countdown(flight.departure)}
           />
-          <Stat label="Kapasite" value={flight.capacity} hint={`${flight.aircraft.config}${intl ? " · dış hat" : " · iç hat"}`} />
-          <Stat label="Kabul" value={accepted} unit={`/ ${flight.capacity}`} hint={`%${pct(accepted, flight.capacity)} doluluk`} />
-          <Stat label="Bindi" value={boarded} unit={accepted ? `/ ${accepted}` : undefined} tone="var(--t-green-d)"
-            hint={accepted ? `%${pct(boarded, accepted)} biniş` : undefined} />
+          <Stat label={t("checkin.stat.capacity")} value={flight.capacity}
+            hint={`${flight.aircraft.config} · ${intl ? t("checkin.flight.intl") : t("checkin.flight.domestic")}`} />
+          <Stat label={t("checkin.stat.accepted")} value={accepted} unit={`/ ${flight.capacity}`}
+            hint={t("checkin.flight.loadHint", { n: pct(accepted, flight.capacity) })} />
+          <Stat label={t("checkin.pax.boarded")} value={boarded} unit={accepted ? `/ ${accepted}` : undefined} tone="var(--t-green-d)"
+            hint={accepted ? t("checkin.flight.boardHint", { n: pct(boarded, accepted) }) : undefined} />
         </div>
 
         {/* Kabul → biniş ilerlemesi tek çubukta: gişe bir bakışta nerede olduğunu görür. */}
@@ -232,22 +244,22 @@ export function CheckinFlight() {
             <div className="h-full bg-[var(--t-green-d)] transition-[width]" style={{ width: `${pct(boarded, flight.capacity)}%` }} />
           </div>
           <span className="num text-[11.5px] text-ink-3">
-            {waiting} bekliyor · {accepted - boarded} kapıda · {boarded} uçakta
+            {t("checkin.flight.progress", { waiting, gate: accepted - boarded, boarded })}
           </span>
         </div>
 
         <Panel>
           <PanelHead
-            title={tab === "checkin" ? "Yolcu kabul" : "Biniş"}
+            title={tab === "checkin" ? t("checkin.panel.acceptance") : t("checkin.tab.boarding")}
             hint={flight.aircraft.type + " · " + flight.aircraft.config}
-            action={<SearchInput className="w-64" value={q} onChange={setQ} placeholder="Yolcu · PNR · pasaport · TC" />}
+            action={<SearchInput className="w-64" value={q} onChange={setQ} placeholder={t("checkin.search.pax")} />}
           />
           <PanelBody className="pt-1">
             {rows.length === 0 ? (
-              <Empty icon={<Users size={22} strokeWidth={1.5} />} title="Yolcu yok" hint="Bu sekmede eşleşen yolcu bulunmuyor." />
+              <Empty icon={<Users size={22} strokeWidth={1.5} />} title={t("checkin.empty.pax.title")} hint={t("checkin.empty.pax.hint")} />
             ) : (
               rows.map((p) => {
-                const notes = paxSeatNotes(p);
+                const notes = paxSeatNotes(p, lang);
                 // APIS kapısı: uluslararası uçuşta eksik bilgi kabul ettirmez.
                 const gaps = intl && p.status === "not_checked" ? apisMissing(p) : [];
                 return (
@@ -255,53 +267,53 @@ export function CheckinFlight() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="text-[13.5px] font-medium text-ink">{p.surname}/{p.givenName}</span>
-                        <Pill tone={PAX_TONE[p.status]}>{PAX_LABEL[p.status]}</Pill>
+                        <Pill tone={PAX_TONE[p.status]}>{t(PAX_LABEL[p.status])}</Pill>
                         {p.cabin === "Business" && <Pill tone="violet">Business</Pill>}
-                        {gaps.length > 0 && <Pill tone="amber">APIS eksik</Pill>}
+                        {gaps.length > 0 && <Pill tone="amber">{t("checkin.pill.apisMissing")}</Pill>}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-ink-3">
                         <span className="num">PNR {p.pnr}</span>
                         {p.ticketNumber && <span className="num">TKT {p.ticketNumber}</span>}
-                        {p.seat && <span className="num">Koltuk {p.seat}</span>}
+                        {p.seat && <span className="num">{t("checkin.row.seat", { seat: p.seat })}</span>}
                         <span className="inline-flex items-center gap-1"><Luggage size={12} strokeWidth={1.75} />{p.bags}</span>
                         {notes.map((n) => <span key={n} className="text-[var(--t-amber-i)]">{n}</span>)}
                         {gaps.length > 0 && (
-                          <span className="text-[var(--t-amber-i)]">Eksik: {gaps.join(", ")} — kabul yapılamaz</span>
+                          <span className="text-[var(--t-amber-i)]">{t("checkin.row.apisGaps", { list: gaps.join(", ") })}</span>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
                       {p.status !== "not_checked" && (
-                        <Button variant="ghost" size="sm" onClick={() => setPass(p)} title="Biniş kartı (ETKT)">
-                          <Printer size={15} strokeWidth={1.75} /> Biniş kartı
+                        <Button variant="ghost" size="sm" onClick={() => setPass(p)} title={t("checkin.action.boardingPass.title")}>
+                          <Printer size={15} strokeWidth={1.75} /> {t("checkin.action.boardingPass")}
                         </Button>
                       )}
                       {p.status === "checked_in" && (
                         <Button variant="ghost" size="sm" disabled={undo.isPending}
-                          title="Kabulü geri al — koltuk boşalır, kupon A'ya döner"
+                          title={t("checkin.action.undo.title")}
                           onClick={() => undo.mutate(p)}>
-                          <Undo2 size={15} strokeWidth={1.75} /> Geri al
+                          <Undo2 size={15} strokeWidth={1.75} /> {t("checkin.action.undo")}
                         </Button>
                       )}
                       {gaps.length > 0 && (
-                        <Button variant="secondary" size="sm" title="Pasaport bilgisini gir (APIS)" onClick={() => setApisFor(p)}>
-                          <IdCard size={15} strokeWidth={1.75} /> APIS gir
+                        <Button variant="secondary" size="sm" title={t("checkin.action.apis.title")} onClick={() => setApisFor(p)}>
+                          <IdCard size={15} strokeWidth={1.75} /> {t("checkin.action.apis")}
                         </Button>
                       )}
                       {tab === "checkin" ? (
                         <Button
                           size="sm"
                           disabled={gaps.length > 0}
-                          title={gaps.length ? `APIS eksik: ${gaps.join(", ")}` : undefined}
+                          title={gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") }) : undefined}
                           variant={p.status === "not_checked" ? "primary" : "secondary"}
                           onClick={() => navigate({ to: "/checkin/$flightId/seat/$passengerId", params: { flightId, passengerId: p.id } })}
                         >
                           <UserCheck size={15} strokeWidth={1.75} />
-                          {p.status === "not_checked" ? "Kabul et" : "Koltuk değiştir"}
+                          {p.status === "not_checked" ? t("checkin.action.accept") : t("checkin.action.changeSeat")}
                         </Button>
                       ) : (
                         <Button variant="success" size="sm" disabled={p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
-                          {p.status === "boarded" ? "Bindi" : "Bindir"}
+                          {p.status === "boarded" ? t("checkin.pax.boarded") : t("checkin.action.board")}
                         </Button>
                       )}
                     </div>
@@ -317,10 +329,10 @@ export function CheckinFlight() {
       <Modal
         open={!!pass}
         onClose={() => setPass(null)}
-        title="Biniş kartı"
-        hint="Elektronik bilet karşılığı düzenlenen biniş belgesi — ETKT işareti ve doküman numarası taşır (Handbook 1.2)."
+        title={t("checkin.action.boardingPass")}
+        hint={t("checkin.pass.hint")}
         width="lg"
-        footer={<Button variant="secondary" onClick={() => window.print()}><Printer size={15} strokeWidth={1.75} /> Yazdır</Button>}
+        footer={<Button variant="secondary" onClick={() => window.print()}><Printer size={15} strokeWidth={1.75} /> {t("checkin.print")}</Button>}
       >
         {pass && <BoardingPass flight={flight} pax={pass} />}
       </Modal>
@@ -347,26 +359,27 @@ export function CheckinFlight() {
 function ApisModal({
   pax, flightId, onClose, onSaved,
 }: { pax: CheckinPassenger; flightId: string; onClose: () => void; onSaved: () => void }) {
+  const t = useT();
   const [passport, setPassport] = useState(pax.passport ?? "");
   const [nationality, setNationality] = useState(pax.nationality ?? "");
 
   const save = useMutation({
     mutationFn: () => recordApis(flightId, pax.id, { passport, nationality }),
-    onSuccess: (p) => { toast.success("APIS tamamlandı", `${p.surname}/${p.givenName} · ${p.nationality} ${p.passport}`); onSaved(); },
-    onError: (e: Error) => toast.danger("APIS kaydedilemedi", e.message),
+    onSuccess: (p) => { toast.success(t("checkin.toast.apis.title"), `${p.surname}/${p.givenName} · ${p.nationality} ${p.passport}`); onSaved(); },
+    onError: (e: Error) => toast.danger(t("checkin.toast.apisFailed"), e.message),
   });
 
   return (
     <Modal
       open
       onClose={onClose}
-      title="APIS bilgisi"
-      hint="Advance Passenger Information — uluslararası uçuşta varış ülkesine kalkıştan önce iletilir."
+      title={t("checkin.apis.title")}
+      hint={t("checkin.apis.hint")}
       width="sm"
       footer={
         <Button variant="success" disabled={save.isPending || !passport.trim() || nationality.trim().length !== 2}
           onClick={() => save.mutate()}>
-          {save.isPending ? "Kaydediliyor…" : "Kaydet"}
+          {save.isPending ? t("checkin.apis.saving") : t("checkin.apis.save")}
         </Button>
       }
     >
@@ -374,10 +387,10 @@ function ApisModal({
         <div className="text-[13px] text-ink-2">
           <b>{pax.surname}/{pax.givenName}</b> · PNR <span className="num">{pax.pnr}</span>
         </div>
-        <Field label="Pasaport numarası" required>
+        <Field label={t("checkin.apis.passport")} required>
           <Input value={passport} onChange={(e) => setPassport(e.target.value.toUpperCase())} placeholder="U07654321" className="uppercase num" />
         </Field>
-        <Field label="Uyruk (ISO-2)" required hint="İki harfli ülke kodu — TR, DE, US…">
+        <Field label={t("checkin.apis.nationality")} required hint={t("checkin.apis.nationality.hint")}>
           <Input value={nationality} onChange={(e) => setNationality(e.target.value.toUpperCase())} maxLength={2} placeholder="TR" className="uppercase num" />
         </Field>
       </div>

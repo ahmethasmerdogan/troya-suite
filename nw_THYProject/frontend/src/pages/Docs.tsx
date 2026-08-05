@@ -1,12 +1,14 @@
 import { useUI } from "@/store/ui";
 import { PageTitle, Panel, PanelHead, PanelBody, Stat, Rule } from "@/components/ui/surface";
 import { Pill } from "@/components/ui/pill";
+import { useT } from "@/i18n";
 
 /**
  * Sistem dokümantasyonu — paydaşa (THY/Hitit) sunulabilir teknik özet.
- * İçerik arayüz diline göre değişir.
+ * Kabuk metinleri sözlükte (docs2.docs.*); gövde içeriği burada `lang`-keyed durur.
  */
 export function Docs() {
+  const t = useT();
   const tr = useUI((s) => s.lang) === "tr";
 
   const modules = tr
@@ -46,33 +48,28 @@ export function Docs() {
   const stack = [
     ["Backend", "Kotlin · Spring Boot 3 · PostgreSQL 16 · Kafka/Redpanda · Redis"],
     ["Frontend", "Vite · React 18 · TypeScript · TanStack Router & Query · Zustand"],
-    ["Altyapı", "Docker Compose · OpenAPI · JUnit 5 + Testcontainers · Playwright"],
+    [tr ? "Altyapı" : "Infrastructure", "Docker Compose · OpenAPI · JUnit 5 + Testcontainers · Playwright"],
   ];
 
   return (
     <>
-      <PageTitle
-        title={tr ? "Sistem Dokümantasyonu" : "System Documentation"}
-        hint={tr
-          ? "IATA Ticketing Handbook'tan türetilen elektronik biletleme platformunun teknik özeti."
-          : "Technical overview of the electronic ticketing platform derived from the IATA Ticketing Handbook."}
-      />
+      <PageTitle title={t("docs2.docs.title")} hint={t("docs2.docs.hint")} />
 
       <div className="mb-4 flex items-center gap-3 rounded-lg border border-line bg-panel px-5 py-4">
-        <h2 className="text-[18px] font-semibold tracking-tight text-ink">Troya Suite</h2>
-        <span className="text-[13px] text-ink-2">{tr ? "Modern Biletleme Platformu" : "Modern Ticketing Platform"}</span>
+        <h2 className="text-[18px] font-semibold tracking-tight text-ink">{t("brand.suite")}</h2>
+        <span className="text-[13px] text-ink-2">{t("docs2.docs.tagline")}</span>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={tr ? "Kupon statüsü" : "Coupon statuses"} value="17" hint="Handbook 1.1.4" />
-        <Stat label={tr ? "Handbook kapsamı" : "Handbook coverage"} value="Ch 1–15" />
-        <Stat label={tr ? "Modül" : "Modules"} value="5" />
-        <Stat label={tr ? "Arayüz dili" : "Interface language"} value="TR / EN" />
+        <Stat label={t("docs2.docs.stat.statuses")} value="17" hint="Handbook 1.1.4" />
+        <Stat label={t("docs2.docs.stat.coverage")} value="Ch 1–15" />
+        <Stat label={t("docs2.docs.stat.modules")} value="5" />
+        <Stat label={t("docs2.docs.stat.lang")} value="TR / EN" />
       </div>
 
       <div className="flex flex-col gap-4">
         <Panel>
-          <PanelHead title={tr ? "Modüller & yetenekler" : "Modules & capabilities"} />
+          <PanelHead title={t("docs2.docs.modules")} />
           <PanelBody className="flex flex-col gap-2.5">
             {modules.map(([n, d]) => (
               <div key={n} className="flex flex-wrap items-baseline gap-x-3 border-b border-hair pb-2.5 last:border-0">
@@ -84,7 +81,7 @@ export function Docs() {
         </Panel>
 
         <Panel>
-          <PanelHead title={tr ? "Mimari ilkeler" : "Architecture principles"} />
+          <PanelHead title={t("docs2.docs.principles")} />
           <PanelBody className="grid gap-3 sm:grid-cols-2">
             {principles.map(([n, d]) => (
               <div key={n} className="rounded-md bg-raised p-3">
@@ -96,7 +93,7 @@ export function Docs() {
         </Panel>
 
         <Panel>
-          <PanelHead title={tr ? "Teknoloji Yığını" : "Technology stack"} />
+          <PanelHead title={t("docs2.docs.stack")} />
           <PanelBody className="flex flex-col gap-3">
             {stack.map(([k, v]) => (
               <div key={k}>
@@ -111,7 +108,7 @@ export function Docs() {
         </Panel>
 
         <Panel>
-          <PanelHead title={tr ? "IATA Handbook Kapsamı" : "IATA Handbook coverage"} />
+          <PanelHead title={t("docs2.docs.handbook")} />
           <PanelBody className="grid gap-2 sm:grid-cols-2">
             {[
               ["Ch 1", tr ? "Elektronik bilet kaydı, kupon statüleri, SAC" : "Electronic ticket record, coupon statuses, SAC"],

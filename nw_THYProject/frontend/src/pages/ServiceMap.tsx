@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "@tanstack/react-router";
 import { MOCK_TICKETS, MOCK_EMDS, MOCK_ORDERS } from "@/domain/mockData";
 import { FLIGHTS } from "@/domain/checkin";
+import { useT } from "@/i18n";
 
 // Service Map — claude.ai/design "Service Map.dc.html" tasarımını BİZİM tasarım sistemimize
 // uyarladık: tema-duyarlı (light/dark, CSS değişkenleri), Geist font, shadcn-stili kartlar.
@@ -81,7 +82,7 @@ EDGES.forEach((e) => { (NODE_EDGES[e.s] = NODE_EDGES[e.s] || []).push(e.id); (NO
 const PARTS: PartT[] = [];
 EDGES.forEach((e) => { for (let k = 0; k < 2; k++) PARTS.push({ id: e.id + "_" + k, edge: e.id }); });
 
-const TIME_OPTS = ["Son 15 dakika", "Son 1 saat", "Son 24 saat", "Son 7 gün"];
+const TIME_KEYS = ["fix.map.t15m", "fix.map.t1h", "fix.map.t24h", "fix.map.t7d"] as const;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const ST: Record<Status, string> = { healthy: "#22C55E", degraded: "#F59E0B", error: "#EF4444" };
 const statusColor = (s: Status) => ST[s];
@@ -92,11 +93,12 @@ const fmtLat = (x: number) => (x >= 1000 ? (x / 1000).toFixed(2) + "s" : x < 100
 const errColor = (x: number) => (x >= 3 ? "#EF4444" : x >= 1 ? "#F59E0B" : "var(--text-tertiary)");
 
 export function ServiceMap() {
+  const t = useT();
   const router = useRouter();
   const goBack = () => { if (window.history.length > 1) router.history.back(); else router.navigate({ to: "/ops" }); };
   const [preset, setPreset] = useState<Preset>("maple");
   const [colorMode, setColorMode] = useState<ColorMode>("service");
-  const [timeRange, setTimeRange] = useState(TIME_OPTS[2]);
+  const [timeKey, setTimeKey] = useState<(typeof TIME_KEYS)[number]>(TIME_KEYS[2]);
   const [hovered, setHovered] = useState<string | null>(null);
   const [, setBump] = useState(0);
 
@@ -210,7 +212,7 @@ export function ServiceMap() {
   const onMinimapDown = (e: React.MouseEvent) => { e.stopPropagation(); if (!mini.current || !viewportEl.current || !minimapEl.current) return; const r = minimapEl.current.getBoundingClientRect(); const mx = e.clientX - r.left, my = e.clientY - r.top; const { s, ox, oy, b } = mini.current; const wx = b.x0 + (mx - ox) / s, wy = b.y0 + (my - oy) / s; view.current.x = viewportEl.current.clientWidth / 2 - wx * view.current.k; view.current.y = viewportEl.current.clientHeight / 2 - wy * view.current.k; applyView(); };
 
   const reload = () => { if (reloadIconEl.current) { reloadIconEl.current.style.animation = "none"; void (reloadIconEl.current as unknown as HTMLElement).offsetWidth; reloadIconEl.current.style.animation = "sm-spin .7s ease"; } NODES.forEach((n) => { if (n.status === "degraded") return; n.rate = Math.max(10, n.rate * (0.9 + Math.random() * 0.2)); n.err = Math.max(0, +(n.err * (0.7 + Math.random() * 0.7)).toFixed(2)); n.lat = Math.max(1, n.lat * (0.88 + Math.random() * 0.24)); }); setBump((b) => b + 1); };
-  const cycleTime = () => { const i = TIME_OPTS.indexOf(timeRange); setTimeRange(TIME_OPTS[(i + 1) % TIME_OPTS.length]); };
+  const cycleTime = () => { const i = TIME_KEYS.indexOf(timeKey); setTimeKey(TIME_KEYS[(i + 1) % TIME_KEYS.length]); };
 
   useEffect(() => {
     let raf = 0; let mounted = true;
@@ -281,17 +283,17 @@ export function ServiceMap() {
 
       {/* header */}
       <header style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px 12px", flex: "none" }}>
-        <button onClick={goBack} className="sm-btn" title="Geri" style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, flex: "none", background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 9, color: "var(--text-secondary)", cursor: "pointer" }}>
+        <button onClick={goBack} className="sm-btn" title={t("fix.map.back")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, flex: "none", background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 9, color: "var(--text-secondary)", cursor: "pointer" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         <div style={{ minWidth: 0 }}>
           <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.3px", color: "var(--text-primary)" }}>Service Map</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>Platform servisleri arası bağımlılık ve veri akışı — canlı.</p>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>{t("fix.map.desc")}</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, flex: "none" }}>
           <button onClick={cycleTime} className="sm-btn" style={tbtn}>
             <svg width="13" height="13" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><circle cx="7.5" cy="7.5" r="5.4" /><path d="M7.5 4.4 V7.5 L9.6 9" strokeLinecap="round" /></svg>
-            <span>{timeRange}</span>
+            <span>{t(timeKey)}</span>
             <svg width="11" height="11" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.4"><path d="M4 6 L7.5 9.5 L11 6" /></svg>
           </button>
           <button onClick={reload} className="sm-btn" style={tbtn}>
@@ -305,11 +307,11 @@ export function ServiceMap() {
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 22px 12px", flex: "none", flexWrap: "wrap" }}>
         <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}>RENK</span>
         <div style={{ display: "flex", gap: 2, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 3 }}>
-          <button onClick={() => setColorMode("service")} style={seg(colorMode === "service")}>Servis</button>
-          <button onClick={() => setColorMode("status")} style={seg(colorMode === "status")}>Durum</button>
+          <button onClick={() => setColorMode("service")} style={seg(colorMode === "service")}>{t("fix.map.byService")}</button>
+          <button onClick={() => setColorMode("status")} style={seg(colorMode === "status")}>{t("fix.map.byStatus")}</button>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}>STİL</span>
+          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}>{t("fix.map.style")}</span>
           <div style={{ display: "flex", gap: 2, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 3 }}>
             <button onClick={() => setPreset("maple")} style={seg(preset === "maple")}>Sade</button>
             <button onClick={() => setPreset("neon")} style={seg(preset === "neon")}>Neon</button>
@@ -401,7 +403,7 @@ export function ServiceMap() {
               <TipCell label="P99" value={fmtLat(hv.lat * 2.6)} color="var(--text-secondary)" />
             </div>
             <div style={{ marginTop: 9, paddingTop: 8, borderTop: "1px solid var(--border-subtle)", fontSize: 10.5, color: "var(--text-tertiary)" }}>
-              Durum: <span style={{ color: ST[hv.status], fontWeight: 600 }}>{hv.status === "healthy" ? "Sağlıklı" : hv.status === "degraded" ? "Planlı / bekliyor" : "Hata"}</span>
+              {t("fix.map.statusLabel")}: <span style={{ color: ST[hv.status], fontWeight: 600 }}>{t(hv.status === "healthy" ? "fix.map.healthy" : hv.status === "degraded" ? "fix.map.degraded" : "fix.map.down")}</span>
             </div>
           </div>
         )}

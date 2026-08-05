@@ -5,6 +5,11 @@ import { userById, type DemoUser } from "@/domain/users";
 export type Lang = "tr" | "en";
 export type Theme = "light" | "dark" | "system";
 
+/** <html lang> arayüz diliyle senkron: ekran okuyucu ve tarayıcı doğru dili görür. */
+function applyLang(lang: Lang): void {
+  if (typeof document !== "undefined") document.documentElement.lang = lang;
+}
+
 const LANG_KEY = "troya.lang";
 const THEME_KEY = "troya.theme";
 const ROLE_KEY = "troya.role";
@@ -25,11 +30,13 @@ function initialRole(): Role {
 }
 
 function initialLang(): Lang {
+  let lang: Lang = "tr";
   if (typeof localStorage !== "undefined") {
     const v = localStorage.getItem(LANG_KEY);
-    if (v === "tr" || v === "en") return v;
+    if (v === "tr" || v === "en") lang = v;
   }
-  return "tr";
+  applyLang(lang); // açılışta da <html lang> doğru olsun
+  return lang;
 }
 
 function initialTheme(): Theme {
@@ -87,6 +94,7 @@ export const useUI = create<UIState>((set) => ({
   lang: initialLang(),
   setLang: (lang) => {
     if (typeof localStorage !== "undefined") localStorage.setItem(LANG_KEY, lang);
+    applyLang(lang);
     set({ lang });
   },
   theme: initialTheme(),

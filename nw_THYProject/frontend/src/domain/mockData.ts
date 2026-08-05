@@ -292,10 +292,10 @@ export const MOCK_PTAS: Pta[] = [
 
 // ===== Revenue Protection (14.7) — sahtecilik / anomali bayrakları =====
 export const MOCK_REVENUE_ALERTS: RevenueAlert[] = [
-  { id: "ra1", kind: "out_of_sequence", severity: "high", ticketNumber: "2359988776655", detail: "Kupon #2 (FRA→JFK) #1'den önce honor edilmiş — sıra dışı kullanım.", detectedAt: "2026-06-16T07:42:00Z" },
-  { id: "ra2", kind: "control_overdue", severity: "medium", ticketNumber: "2359988776655", detail: "LH'a devredilen control 72 saat içinde iade edilmedi (lease aşımı).", detectedAt: "2026-06-16T06:10:00Z" },
-  { id: "ra3", kind: "duplicate", severity: "high", ticketNumber: "2351234567890", detail: "Aynı FOID + güzergah ile ikinci bilet algılandı — olası mükerrer kesim.", detectedAt: "2026-06-15T19:25:00Z" },
-  { id: "ra4", kind: "status_mismatch", severity: "low", ticketNumber: "2355544332211", detail: "DCS 'lifted' bildirdi ama kupon statüsü 'A' — interline statü senkron gecikmesi.", detectedAt: "2026-06-15T14:03:00Z" },
+  { id: "ra1", kind: "out_of_sequence", severity: "high", ticketNumber: "2359988776655", detail: "Kupon #2 (FRA→JFK) #1'den önce honor edilmiş — sıra dışı kullanım.", detailEn: "Coupon #2 (FRA→JFK) was honoured before coupon #1 — out-of-sequence use.", detectedAt: "2026-06-16T07:42:00Z" },
+  { id: "ra2", kind: "control_overdue", severity: "medium", ticketNumber: "2359988776655", detail: "LH'a devredilen control 72 saat içinde iade edilmedi (lease aşımı).", detailEn: "Control granted to LH was not returned within 72 hours (lease overrun).", detectedAt: "2026-06-16T06:10:00Z" },
+  { id: "ra3", kind: "duplicate", severity: "high", ticketNumber: "2351234567890", detail: "Aynı FOID + güzergah ile ikinci bilet algılandı — olası mükerrer kesim.", detailEn: "A second ticket with the same FOID and routing was detected — possible duplicate issue.", detectedAt: "2026-06-15T19:25:00Z" },
+  { id: "ra4", kind: "status_mismatch", severity: "low", ticketNumber: "2355544332211", detail: "DCS 'lifted' bildirdi ama kupon statüsü 'A' — interline statü senkron gecikmesi.", detailEn: "DCS reported 'lifted' but the coupon status is 'A' — interline status sync lag.", detectedAt: "2026-06-15T14:03:00Z" },
 ];
 
 // Maskeli ödeme detayından kart son-4 hanesini çıkar (yalnız kredi kartı).

@@ -3,6 +3,12 @@
 
 export type Role = "staff" | "supervisor" | "chief" | "manager" | "admin";
 
+/**
+ * Domain metinlerinin dili. `store/ui`'daki `Lang` ile aynı birleşim; domain
+ * katmanı store'a bağımlı olmasın diye burada ayrıca tanımlıdır (döngüsel import yok).
+ */
+export type DocLang = "tr" | "en";
+
 export const ROLE_ORDER: Role[] = ["staff", "supervisor", "chief", "manager", "admin"];
 
 export const ROLE_LABEL: Record<Role, string> = {
@@ -19,6 +25,29 @@ export const ROLE_DESC: Record<Role, string> = {
   manager: "+ Kullanıcı yönetimi ve sistem ayarları.",
   admin: "+ Rol & yetki yönetimi. Tam erişim.",
 };
+
+// EN karşılıklar — TR tablolar DEĞİŞMEDEN durur; sunum katmanı dile göre seçer.
+export const ROLE_LABEL_EN: Record<Role, string> = {
+  staff: "Staff",
+  supervisor: "Supervisor",
+  chief: "Chief",
+  manager: "Manager",
+  admin: "Admin",
+};
+export const ROLE_DESC_EN: Record<Role, string> = {
+  staff: "Ticket issuance, EMD, check-in/boarding and retrieval.",
+  supervisor: "+ Money transactions: void, refund, exchange, endorsement.",
+  chief: "+ IRROP/FIM and revenue protection visibility.",
+  manager: "+ User management and system settings.",
+  admin: "+ Role & permission management. Full access.",
+};
+
+export function roleLabel(role: Role, lang: DocLang = "tr"): string {
+  return lang === "en" ? ROLE_LABEL_EN[role] : ROLE_LABEL[role];
+}
+export function roleDesc(role: Role, lang: DocLang = "tr"): string {
+  return lang === "en" ? ROLE_DESC_EN[role] : ROLE_DESC[role];
+}
 
 export type Permission =
   | "ticket.issue"
@@ -68,6 +97,35 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "admin.settings": "Sistem ayarları",
   "admin.roles": "Rol & yetki yönetimi",
 };
+
+export const PERMISSION_LABEL_EN: Record<Permission, string> = {
+  "ticket.issue": "Issue ticket",
+  "ticket.exchange": "Exchange / Reissue",
+  "ticket.refund": "Refund",
+  "ticket.void": "Void",
+  "ticket.irrop": "IRROP / FIM",
+  "ticket.endorse": "Endorsement",
+  "ticket.emd": "EMD / Excess baggage",
+  "ticket.revalidate": "Revalidation (flight/time)",
+  "ticket.print": "Print to paper (P)",
+  "ticket.suspend": "Suspend coupon (S)",
+  "pta.manage": "PTA (Prepaid)",
+  "checkin.accept": "Check-in acceptance",
+  "checkin.board": "Boarding",
+  "ops.view": "HUB Control / Operations",
+  "order.view": "View order",
+  "messages.view": "Interline messages",
+  "revenue.view": "Revenue protection",
+  "admin.users": "User list & audit trail",
+  "admin.users.write": "Add / edit / deactivate user",
+  "chat.channel.create": "Create message channel",
+  "admin.settings": "System settings",
+  "admin.roles": "Role & permission management",
+};
+
+export function permissionLabel(p: Permission, lang: DocLang = "tr"): string {
+  return lang === "en" ? PERMISSION_LABEL_EN[p] : PERMISSION_LABEL[p];
+}
 
 // Her rolün KENDİ getirdiği yetkiler; alt roller kümülatif eklenir.
 const INCREMENTAL: Record<Role, Permission[]> = {

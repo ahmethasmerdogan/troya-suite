@@ -7,7 +7,7 @@ import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/s
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/i18n";
-import { formatDateTime, flightCode } from "@/lib/utils";
+import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
 // Uygunluk sorgusu — hangi uçuşta hangi sınıfta kaç koltuk var.
 export function Availability() {
@@ -25,7 +25,7 @@ export function Availability() {
 
   return (
     <>
-      <PageTitle title={t("nav.res.availability")} hint="Güzergâh ve tarihe göre uçuş ve sınıf uygunluğu. Bir sınıfa tıklayın — rezervasyon formu o seferle açılır." />
+      <PageTitle title={t("nav.res.availability")} hint={t("chat.res.avail.hint")} />
 
       <Panel className="mb-4">
         <PanelBody>
@@ -33,12 +33,12 @@ export function Availability() {
             onSubmit={(e) => { e.preventDefault(); search.mutate(); }}
             className="grid grid-cols-1 gap-3 sm:grid-cols-4"
           >
-            <Field label="Nereden"><Input value={origin} onChange={(e) => setOrigin(e.target.value)} maxLength={3} className="uppercase" /></Field>
-            <Field label="Nereye"><Input value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={3} className="uppercase" /></Field>
-            <Field label="Tarih"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+            <Field label={t("chat.res.field.origin")}><Input value={origin} onChange={(e) => setOrigin(e.target.value)} maxLength={3} className="uppercase" /></Field>
+            <Field label={t("chat.res.field.destination")}><Input value={destination} onChange={(e) => setDestination(e.target.value)} maxLength={3} className="uppercase" /></Field>
+            <Field label={t("chat.res.field.date")}><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
             <div className="flex items-end">
               <Button type="submit" className="w-full" disabled={search.isPending}>
-                {search.isPending ? "Aranıyor…" : "Ara"}
+                {search.isPending ? t("chat.searching") : t("common.search")}
               </Button>
             </div>
           </form>
@@ -48,16 +48,16 @@ export function Availability() {
       {search.isPending ? (
         <div className="flex flex-col gap-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
       ) : rows === null ? (
-        <Empty title="Sorgu bekleniyor" hint="Güzergâh ve tarihi girip Ara'ya basın." />
+        <Empty title={t("chat.res.avail.idle")} hint={t("chat.res.avail.idleHint")} />
       ) : rows.length === 0 ? (
-        <Empty title="Uçuş bulunamadı" hint="Farklı bir tarih ya da güzergâh deneyin." />
+        <Empty title={t("chat.res.avail.none")} hint={t("chat.res.avail.noneHint")} />
       ) : (
         <div className="flex flex-col gap-3">
           {rows.map((f) => (
             <Panel key={f.flightNumber}>
               <PanelHead
                 title={<span className="num">{flightCode(f.carrier, f.flightNumber)}</span>}
-                hint={<span className="num">{f.origin} → {f.destination} · {formatDateTime(f.departure)} · {Math.floor(f.durationMin / 60)}sa {f.durationMin % 60}dk</span>}
+                hint={<span className="num">{f.origin} → {f.destination} · {formatDateTime(f.departure)} · {t("chat.res.avail.duration", { h: Math.floor(f.durationMin / 60), m: f.durationMin % 60 })}</span>}
               />
               <PanelBody className="flex flex-wrap gap-2">
                 {f.classes.map((c) => (
@@ -65,7 +65,7 @@ export function Availability() {
                     key={c.rbd}
                     type="button"
                     disabled={c.available <= 0}
-                    title={c.available > 0 ? "Bu sınıfla rezervasyon oluştur" : "Bu sınıfta koltuk yok"}
+                    title={c.available > 0 ? t("chat.res.avail.pick") : t("chat.res.avail.full")}
                     onClick={() => navigate({
                       to: "/res/new",
                       search: {
@@ -78,9 +78,9 @@ export function Availability() {
                   >
                     <span className="num text-[14px] font-semibold text-ink">{c.rbd}</span>
                     <Pill tone={c.cabin === "Business" ? "violet" : "gray"}>{c.cabin}</Pill>
-                    <span className="num text-[12px] text-ink-3">{c.available} koltuk</span>
+                    <span className="num text-[12px] text-ink-3">{t("chat.res.avail.seats", { n: c.available })}</span>
                     <span className="num text-[12.5px] font-medium text-ink">
-                      {c.fareFrom.amount.toLocaleString("tr-TR")} {c.fareFrom.currency}
+                      {c.fareFrom.amount.toLocaleString(locale())} {c.fareFrom.currency}
                     </span>
                   </button>
                 ))}

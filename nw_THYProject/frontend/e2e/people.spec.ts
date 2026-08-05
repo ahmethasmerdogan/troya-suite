@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("troya.onboarded", "1");
+    localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr");
     localStorage.setItem("troya.user", "a.erdogan");
     localStorage.setItem("troya.role", "admin");
   });

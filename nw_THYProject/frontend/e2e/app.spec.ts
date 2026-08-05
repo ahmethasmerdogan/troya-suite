@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // İlk-kullanım onboarding modal'ı pointer event'leri yakalar; her testten
 // önce "troya.onboarded" localStorage flag'i set ederek atla.
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.user", "a.erdogan"); });
+  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr"); localStorage.setItem("troya.user", "a.erdogan"); });
 });
 
 // Uygulama kabuğu (AppShell) + temel navigasyon. Selektörler kaynaktan

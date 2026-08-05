@@ -21,25 +21,25 @@ export function Messages() {
 
   const columns = [
     col.accessor("occurredAt", {
-      header: "Zaman",
+      header: t("misc.messages.col.time"),
       meta: { exportValue: (m: InterlineMessage) => formatDateTime(m.occurredAt) },
       cell: (c) => <span className="num text-ink-2">{formatDateTime(c.getValue())}</span>,
     }),
-    col.accessor("standard", { header: "Standart", cell: (c) => <Pill tone="gray">{c.getValue()}</Pill> }),
-    col.accessor("messageType", { header: "Tip", cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
+    col.accessor("standard", { header: t("misc.messages.col.standard"), cell: (c) => <Pill tone="gray">{c.getValue()}</Pill> }),
+    col.accessor("messageType", { header: t("misc.messages.col.type"), cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
     col.accessor("direction", {
-      header: "Yön",
-      meta: { exportValue: (m: InterlineMessage) => (m.direction === "outbound" ? "Giden" : "Gelen") },
-      cell: (c) => <span className="text-ink-2">{c.getValue() === "outbound" ? "Giden" : "Gelen"}</span>,
+      header: t("misc.messages.col.direction"),
+      meta: { exportValue: (m: InterlineMessage) => (m.direction === "outbound" ? t("misc.messages.outbound") : t("misc.messages.inbound")) },
+      cell: (c) => <span className="text-ink-2">{c.getValue() === "outbound" ? t("misc.messages.outbound") : t("misc.messages.inbound")}</span>,
     }),
     col.accessor("partnerCarrier", { header: "Partner", cell: (c) => <span className="num text-ink-2">{c.getValue()}</span> }),
-    col.accessor("ticketNumber", { header: "Belge", cell: (c) => <span className="num text-ink-2">{c.getValue() ?? "—"}</span> }),
-    col.accessor("status", { header: "Durum", enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
+    col.accessor("ticketNumber", { header: t("misc.messages.col.document"), cell: (c) => <span className="num text-ink-2">{c.getValue() ?? "—"}</span> }),
+    col.accessor("status", { header: t("common.status"), enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
   ] as ColumnDef<InterlineMessage, unknown>[];
 
   return (
     <>
-      <PageTitle title={t("nav.messages")} hint="Ortak taşıyıcılarla belge mesajlaşması — EDIFACT, NDC ve ONE Order zarfları." />
+      <PageTitle title={t("nav.messages")} hint={t("misc.messages.hint")} />
       <DataTable
         data={data ?? []}
         columns={columns}
@@ -48,12 +48,12 @@ export function Messages() {
         rowKey={(m) => `${m.messageType} ${m.partnerCarrier}`}
         pageSize={12}
         exportName="mesajlar"
-        empty={{ title: "Mesaj yok" }}
+        empty={{ title: t("misc.messages.empty") }}
       />
       <Modal open={!!open} onClose={() => setOpen(null)} title={open?.messageType ?? ""} hint={open?.summary} width="lg">
         {open && (
           <Panel>
-            <PanelHead title="Ham mesaj" hint={`${open.standard} · ${open.partnerCarrier}`} />
+            <PanelHead title={t("misc.messages.raw")} hint={`${open.standard} · ${open.partnerCarrier}`} />
             <PanelBody>
               <pre className="num overflow-x-auto whitespace-pre-wrap rounded-md bg-sunken p-3 text-[11.5px] leading-relaxed text-ink-2">
                 {open.payloadPreview}

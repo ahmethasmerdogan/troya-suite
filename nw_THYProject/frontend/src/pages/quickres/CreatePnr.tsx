@@ -37,7 +37,7 @@ export function CreatePnr() {
   const create = useMutation({
     mutationFn: () => createPnr({ passengers: pax, segments: segs, contact: contact || undefined }),
     onSuccess: (p) => {
-      toast.success("Rezervasyon oluşturuldu", `PNR ${p.recordLocator}`);
+      toast.success(t("chat.res.new.created"), `PNR ${p.recordLocator}`);
       navigate({ to: "/res/$pnr", params: { pnr: p.recordLocator } });
     },
     onError: (e: Error) => setError(e.message),
@@ -53,26 +53,31 @@ export function CreatePnr() {
 
   return (
     <>
-      <PageTitle title={t("nav.res.new")} hint="Yolcu ve uçuş bilgilerini girin; sistem PNR (record locator) üretir." />
+      <PageTitle title={t("nav.res.new")} hint={t("chat.res.new.hint")} />
 
       <div className="flex flex-col gap-4">
         {q.fn && q.dep && (
-          <Banner kind="info" title="Uygunluk sorgusundan gelindi">
-            {q.cx}{q.fn} · {q.o} → {q.d} · sınıf {q.rbd} segment olarak dolduruldu. Yolcu bilgilerini girip rezervasyonu oluşturun.
+          <Banner kind="info" title={t("chat.res.new.fromAvail")}>
+            {t("chat.res.new.fromAvailBody", {
+              flight: `${q.cx ?? ""}${q.fn}`,
+              o: q.o ?? "",
+              d: q.d ?? "",
+              rbd: q.rbd ?? "",
+            })}
           </Banner>
         )}
         <Panel>
           <PanelHead
-            title="Yolcular"
-            hint="Ad ve soyadı pasaporttaki ile birebir yazın."
-            action={<Button variant="secondary" size="sm" onClick={() => setPax((a) => [...a, emptyPax()])}><Plus size={15} strokeWidth={2} /> Yolcu</Button>}
+            title={t("chat.res.passengers")}
+            hint={t("chat.res.new.paxHint")}
+            action={<Button variant="secondary" size="sm" onClick={() => setPax((a) => [...a, emptyPax()])}><Plus size={15} strokeWidth={2} /> {t("common.passenger")}</Button>}
           />
           <PanelBody className="flex flex-col gap-3">
             {pax.map((p, i) => (
               <div key={i} className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-                <Field label="Soyadı" required><Input value={p.surname} onChange={(e) => setPaxAt(i, { surname: e.target.value })} placeholder="ERDOGAN" className="uppercase" /></Field>
-                <Field label="Ad" required><Input value={p.givenName} onChange={(e) => setPaxAt(i, { givenName: e.target.value })} placeholder="AHMET" className="uppercase" /></Field>
-                <Field label="Ünvan">
+                <Field label={t("chat.res.field.surname")} required><Input value={p.surname} onChange={(e) => setPaxAt(i, { surname: e.target.value })} placeholder="ERDOGAN" className="uppercase" /></Field>
+                <Field label={t("chat.res.field.givenName")} required><Input value={p.givenName} onChange={(e) => setPaxAt(i, { givenName: e.target.value })} placeholder="AHMET" className="uppercase" /></Field>
+                <Field label={t("chat.res.field.title")}>
                   <Select value={p.title} onChange={(e) => setPaxAt(i, { title: e.target.value })}>
                     {["MR", "MRS", "MS", "CHD", "INF"].map((x) => <option key={x}>{x}</option>)}
                   </Select>
@@ -80,7 +85,7 @@ export function CreatePnr() {
                 <div className="flex items-end">
                   {pax.length > 1 && (
                     <Button variant="ghost" size="sm" onClick={() => setPax((a) => a.filter((_, j) => j !== i))}>
-                      <Trash2 size={15} strokeWidth={1.75} /> Kaldır
+                      <Trash2 size={15} strokeWidth={1.75} /> {t("chat.res.remove")}
                     </Button>
                   )}
                 </div>
@@ -91,19 +96,19 @@ export function CreatePnr() {
 
         <Panel>
           <PanelHead
-            title="Segmentler"
-            hint="Her uçuş bacağı için bir segment."
-            action={<Button variant="secondary" size="sm" onClick={() => setSegs((a) => [...a, emptySeg()])}><Plus size={15} strokeWidth={2} /> Segment</Button>}
+            title={t("chat.res.segments")}
+            hint={t("chat.res.new.segHint")}
+            action={<Button variant="secondary" size="sm" onClick={() => setSegs((a) => [...a, emptySeg()])}><Plus size={15} strokeWidth={2} /> {t("chat.res.segment")}</Button>}
           />
           <PanelBody className="flex flex-col gap-3">
             {segs.map((s, i) => (
               <div key={i} className="grid grid-cols-2 gap-3 sm:grid-cols-6">
-                <Field label="Nereden"><Input value={s.origin} onChange={(e) => setSegAt(i, { origin: e.target.value })} maxLength={3} className="uppercase" /></Field>
-                <Field label="Nereye" required><Input value={s.destination} onChange={(e) => setSegAt(i, { destination: e.target.value })} maxLength={3} className="uppercase" /></Field>
-                <Field label="Taşıyıcı"><Input value={s.carrier} onChange={(e) => setSegAt(i, { carrier: e.target.value })} maxLength={2} className="uppercase" /></Field>
-                <Field label="Uçuş No" required><Input value={s.flightNumber} onChange={(e) => setSegAt(i, { flightNumber: e.target.value })} placeholder="1987" /></Field>
-                <Field label="Sınıf"><Input value={s.rbd} onChange={(e) => setSegAt(i, { rbd: e.target.value })} maxLength={1} className="uppercase" /></Field>
-                <Field label="Kalkış" required>
+                <Field label={t("chat.res.field.origin")}><Input value={s.origin} onChange={(e) => setSegAt(i, { origin: e.target.value })} maxLength={3} className="uppercase" /></Field>
+                <Field label={t("chat.res.field.destination")} required><Input value={s.destination} onChange={(e) => setSegAt(i, { destination: e.target.value })} maxLength={3} className="uppercase" /></Field>
+                <Field label={t("chat.res.field.carrier")}><Input value={s.carrier} onChange={(e) => setSegAt(i, { carrier: e.target.value })} maxLength={2} className="uppercase" /></Field>
+                <Field label={t("chat.res.field.flightNumber")} required><Input value={s.flightNumber} onChange={(e) => setSegAt(i, { flightNumber: e.target.value })} placeholder="1987" /></Field>
+                <Field label={t("chat.res.field.rbd")}><Input value={s.rbd} onChange={(e) => setSegAt(i, { rbd: e.target.value })} maxLength={1} className="uppercase" /></Field>
+                <Field label={t("chat.res.field.departure")} required>
                   <Input type="datetime-local" value={s.departure ? s.departure.slice(0, 16) : ""}
                     onChange={(e) => { const v = e.target.value; if (v) setSegAt(i, { departure: new Date(v).toISOString(), arrival: new Date(new Date(v).getTime() + 3 * 36e5).toISOString() }); }} />
                 </Field>
@@ -114,18 +119,18 @@ export function CreatePnr() {
 
         <Panel>
           <PanelBody>
-            <Field label="İletişim" hint="E-posta ya da telefon — bilgilendirme için.">
+            <Field label={t("chat.res.contact")} hint={t("chat.res.new.contactHint")}>
               <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="ahmet@ornek.com" />
             </Field>
           </PanelBody>
         </Panel>
 
-        {error && <Banner kind="danger" title="Rezervasyon oluşturulamadı">{error}</Banner>}
+        {error && <Banner kind="danger" title={t("chat.res.new.error")}>{error}</Banner>}
 
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={() => navigate({ to: "/res" })}>{t("common.cancel")}</Button>
           <Button variant="success" disabled={!valid || create.isPending} onClick={() => { setError(null); create.mutate(); }}>
-            {create.isPending ? "Oluşturuluyor…" : "Rezervasyon Oluştur"}
+            {create.isPending ? t("chat.res.new.creating") : t("chat.res.new.submit")}
           </Button>
         </div>
       </div>

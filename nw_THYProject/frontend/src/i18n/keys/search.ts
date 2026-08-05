@@ -1,0 +1,201 @@
+/**
+ * "search" alanının çevirileri.
+ *
+ * TR değerleri arayüzde GÖRÜNEN metnin birebir aynısıdır — e2e seçicileri
+ * bu metinlere bağlı, tek kelime değişirse testler düşer.
+ */
+export const tr = {
+  /* --- bilet arama: statü kuyrukları --- */
+  "search.filter.all": "Tümü",
+  "search.filter.open": "Açık",
+  "search.filter.checkedin": "Check-in",
+  "search.filter.flown": "Uçulmuş",
+  "search.filter.airport": "Havalimanı Kontrol",
+  "search.filter.void": "İptal (Void)",
+  "search.filter.refunded": "İade",
+  "search.filter.exchanged": "Değişen",
+  "search.filter.suspended": "Askıda",
+  "search.filter.printed": "Kağıda Basılı",
+  "search.filter.irrop": "Düzensiz",
+
+  /* --- sidebar işleminden gelen bilet seçme şeridi --- */
+  "search.action.endorse": "Endorsement",
+  "search.action.hint": "işlem için bir bilet seçin.",
+  "search.action.dismiss": "Vazgeç",
+
+  /* --- akıllı çubuk --- */
+  "search.placeholder": "TKT no · ERDOGAN · PNR · IST · TK198 · kart son4",
+  "search.shape.tktValid": "TKT no ✓",
+  "search.shape.tkt": "TKT no",
+  "search.shape.text": "metin",
+
+  /* --- gelişmiş arama alanları --- */
+  "search.adv.surname": "Yolcu soyadı",
+  "search.adv.pnr": "Konfirmasyon / PNR",
+  "search.adv.carrier": "Validating carrier",
+  "search.adv.flight": "Uçuş no",
+  "search.adv.origin": "Nereden (O)",
+  "search.adv.destination": "Nereye (D)",
+  "search.adv.foid": "Kimlik (FOID)",
+  "search.adv.cardLast4": "Kart son 4 hane",
+  "search.adv.issuedFrom": "Kesim tarihi (baş.)",
+  "search.adv.issuedTo": "Kesim tarihi (bit.)",
+  "search.adv.travelFrom": "Seyahat tarihi (baş.)",
+  "search.adv.travelTo": "Seyahat tarihi (bit.)",
+
+  /* --- sonuç tablosu --- */
+  "search.col.ticketNo": "Bilet No",
+  "search.col.issued": "Kesim",
+  "search.col.currency": "Para Birimi",
+  "search.row.open": "{n} biletini aç",
+  "search.row.openTitle": "Bilet kaydını aç",
+  "search.row.itinerary": "{n} yol belgesi",
+  "search.row.itineraryTitle": "Yolcu güzergâh belgesi",
+  "search.summary": "Toplam {v}",
+  "search.empty.title": "Eşleşen bilet bulunamadı",
+  "search.empty.hint": "Farklı bir TKT no, PNR ya da yolcu adı deneyin.",
+
+  /* --- panel (anasayfa) --- */
+  "search.panel.greeting.night": "İyi geceler",
+  "search.panel.greeting.morning": "Günaydın",
+  "search.panel.greeting.day": "İyi günler",
+  "search.panel.dist.title": "Kupon durum dağılımı",
+  "search.panel.dist.hint": "17 statü, sekiz aile",
+  "search.panel.weekly.title": "Haftalık bilet",
+  "search.panel.weekly.hint": "son 7 gün",
+  "search.panel.activity.title": "Son aktivite",
+  "search.panel.activity.hint": "event store'dan",
+  "search.panel.dow.mon": "Pzt",
+  "search.panel.dow.tue": "Sal",
+  "search.panel.dow.wed": "Çar",
+  "search.panel.dow.thu": "Per",
+  "search.panel.dow.fri": "Cum",
+  "search.panel.dow.sat": "Cmt",
+  "search.panel.dow.sun": "Paz",
+  "search.panel.notices.title": "İstasyon duyuruları",
+  "search.panel.notices.hint": "{n} acil · {m} açık madde",
+
+  /* --- komut paleti --- */
+  "search.cmd.label": "Komut paleti",
+  "search.cmd.placeholder": "Bilet no · EMD · PNR · order · yolcu · uçuş",
+  "search.cmd.minChars": "Aramak için en az iki karakter yazın.",
+  "search.cmd.noResult": "Eşleşen kayıt yok.",
+  "search.cmd.group.direct": "Doğrudan aç",
+  "search.cmd.group.tickets": "Biletler",
+  "search.cmd.group.emds": "EMD",
+  "search.cmd.group.pnrs": "PNR",
+  "search.cmd.group.go": "Git",
+  "search.cmd.shape.digits13": "13 hane",
+  "search.cmd.shape.order": "order",
+  "search.cmd.shape.pnr": "PNR",
+  "search.cmd.open.ticket": "Bilet olarak aç",
+  "search.cmd.open.order": "Order olarak aç",
+  "search.cmd.open.pnr": "PNR olarak aç",
+
+  /* --- order liste paneli --- */
+  "search.orders.placeholder": "Order ID · yolcu · bağlı ET/EMD no · hizmet",
+  "search.orders.empty": "Order bulunamadı",
+  "search.orders.items": "{n} kalem",
+  "search.orders.count": "{n} order",
+
+  /* --- EMD liste paneli --- */
+  "search.emds.placeholder": "EMD no · ERDOGAN · 0CC · Fazla Bagaj · bağlı TKT no",
+  "search.emds.empty.title": "Eşleşen EMD bulunamadı",
+  "search.emds.empty.hint": "EMD numarası, yolcu adı ya da RFISC deneyin.",
+  "search.emds.count": "{n} EMD",
+} as const;
+
+export const en: Record<keyof typeof tr, string> = {
+  "search.filter.all": "All",
+  "search.filter.open": "Open",
+  "search.filter.checkedin": "Check-in",
+  "search.filter.flown": "Flown",
+  "search.filter.airport": "Airport Control",
+  "search.filter.void": "Void",
+  "search.filter.refunded": "Refunded",
+  "search.filter.exchanged": "Exchanged",
+  "search.filter.suspended": "Suspended",
+  "search.filter.printed": "Printed",
+  "search.filter.irrop": "Irregular",
+
+  "search.action.endorse": "Endorsement",
+  "search.action.hint": "select a ticket for this operation.",
+  "search.action.dismiss": "Dismiss",
+
+  // Örnek değerler (ERDOGAN · IST · TK198) her iki dilde de aynı kalır.
+  "search.placeholder": "TKT no · ERDOGAN · PNR · IST · TK198 · card last4",
+  "search.shape.tktValid": "TKT no ✓",
+  "search.shape.tkt": "TKT no",
+  "search.shape.text": "text",
+
+  "search.adv.surname": "Passenger surname",
+  "search.adv.pnr": "Confirmation / PNR",
+  "search.adv.carrier": "Validating carrier",
+  "search.adv.flight": "Flight no",
+  "search.adv.origin": "From (O)",
+  "search.adv.destination": "To (D)",
+  "search.adv.foid": "ID document (FOID)",
+  "search.adv.cardLast4": "Card last 4 digits",
+  "search.adv.issuedFrom": "Issue date (from)",
+  "search.adv.issuedTo": "Issue date (to)",
+  "search.adv.travelFrom": "Travel date (from)",
+  "search.adv.travelTo": "Travel date (to)",
+
+  "search.col.ticketNo": "Ticket No",
+  "search.col.issued": "Issued",
+  "search.col.currency": "Currency",
+  "search.row.open": "Open ticket {n}",
+  "search.row.openTitle": "Open ticket record",
+  "search.row.itinerary": "{n} itinerary receipt",
+  "search.row.itineraryTitle": "Passenger itinerary receipt",
+  "search.summary": "Total {v}",
+  "search.empty.title": "No matching tickets found",
+  "search.empty.hint": "Try a different TKT no, PNR or passenger name.",
+
+  "search.panel.greeting.night": "Good night",
+  "search.panel.greeting.morning": "Good morning",
+  "search.panel.greeting.day": "Good afternoon",
+  "search.panel.dist.title": "Coupon status distribution",
+  "search.panel.dist.hint": "17 statuses, eight families",
+  "search.panel.weekly.title": "Weekly tickets",
+  "search.panel.weekly.hint": "last 7 days",
+  "search.panel.activity.title": "Recent activity",
+  "search.panel.activity.hint": "from the event store",
+  "search.panel.dow.mon": "Mon",
+  "search.panel.dow.tue": "Tue",
+  "search.panel.dow.wed": "Wed",
+  "search.panel.dow.thu": "Thu",
+  "search.panel.dow.fri": "Fri",
+  "search.panel.dow.sat": "Sat",
+  "search.panel.dow.sun": "Sun",
+  "search.panel.notices.title": "Station notices",
+  "search.panel.notices.hint": "{n} urgent · {m} open items",
+
+  "search.cmd.label": "Command palette",
+  "search.cmd.placeholder": "Ticket no · EMD · PNR · order · passenger · flight",
+  "search.cmd.minChars": "Type at least two characters to search.",
+  "search.cmd.noResult": "No matching records.",
+  "search.cmd.group.direct": "Open directly",
+  "search.cmd.group.tickets": "Tickets",
+  "search.cmd.group.emds": "EMD",
+  "search.cmd.group.pnrs": "PNR",
+  "search.cmd.group.go": "Go to",
+  "search.cmd.shape.digits13": "13 digits",
+  "search.cmd.shape.order": "order",
+  "search.cmd.shape.pnr": "PNR",
+  "search.cmd.open.ticket": "Open as ticket",
+  "search.cmd.open.order": "Open as order",
+  "search.cmd.open.pnr": "Open as PNR",
+
+  "search.orders.placeholder": "Order ID · passenger · linked ET/EMD no · service",
+  "search.orders.empty": "No orders found",
+  "search.orders.items": "{n} items",
+  "search.orders.count": "{n} orders",
+
+  // "Fazla Bagaj" bir ÖRNEK arama terimi: EMD açıklamaları veride Türkçe
+  // duruyor, çevrilmiş bir terim hiçbir kayda eşleşmezdi.
+  "search.emds.placeholder": "EMD no · ERDOGAN · 0CC · Fazla Bagaj · linked TKT no",
+  "search.emds.empty.title": "No matching EMDs found",
+  "search.emds.empty.hint": "Try an EMD number, passenger name or RFISC.",
+  "search.emds.count": "{n} EMD",
+};

@@ -6,6 +6,7 @@ import { StatusPill } from "@/components/domain/StatusPill";
 import { SearchInput } from "@/components/ui/core";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListHead, ListBody, ListFoot } from "@/components/layout/views";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +18,7 @@ const pane = { q: "" };
 export function EmdListPane({ selected }: { selected?: string }) {
   const [q, setQState] = useState(pane.q);
   const navigate = useNavigate();
+  const t = useT();
   const setQ = (v: string) => { pane.q = v; setQState(v); };
   const { data, isLoading } = useQuery({ queryKey: ["emds", q], queryFn: () => searchEmds(q) });
   const rows = data ?? [];
@@ -24,7 +26,7 @@ export function EmdListPane({ selected }: { selected?: string }) {
   return (
     <>
       <ListHead>
-        <SearchInput value={q} onChange={setQ} placeholder="EMD no · ERDOGAN · 0CC · Fazla Bagaj · bağlı TKT no" />
+        <SearchInput value={q} onChange={setQ} placeholder={t("search.emds.placeholder")} />
       </ListHead>
 
       <ListBody>
@@ -34,8 +36,8 @@ export function EmdListPane({ selected }: { selected?: string }) {
           </div>
         ) : rows.length === 0 ? (
           <div className="px-6 py-14 text-center">
-            <div className="text-[14px] font-semibold text-ink">Eşleşen EMD bulunamadı</div>
-            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">EMD numarası, yolcu adı ya da RFISC deneyin.</p>
+            <div className="text-[14px] font-semibold text-ink">{t("search.emds.empty.title")}</div>
+            <p className="mt-1.5 text-[13px] leading-relaxed text-ink-3">{t("search.emds.empty.hint")}</p>
           </div>
         ) : (
           <table className="w-full border-collapse">
@@ -73,7 +75,7 @@ export function EmdListPane({ selected }: { selected?: string }) {
         )}
       </ListBody>
 
-      <ListFoot><span className="num">{rows.length} EMD</span></ListFoot>
+      <ListFoot><span className="num">{t("search.emds.count", { n: rows.length })}</span></ListFoot>
     </>
   );
 }

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/core";
 import { usePerm } from "@/lib/usePerm";
 import { Alert } from "@/ui";
 import { PageTitle } from "@/components/ui/surface";
+import { useT, type Key } from "@/i18n";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,16 +18,17 @@ import { cn } from "@/lib/utils";
  * Üçü de aynı kaynaktan okur: komutların olaya yazdığı parasal döküm.
  * Hiçbir tutar metinden ayrıştırılmaz.
  */
-const TABS = [
-  { to: "/reports", label: "Genel Bakış", hint: "Hangi rapor hangi soruya cevap veriyor" },
-  { to: "/report", label: "Satış / İşlem", hint: "Brüt − iade − iptal = net" },
-  { to: "/report/financial", label: "Mali", hint: "Ceza · vergi · KDV" },
-  { to: "/report/period", label: "Dönem Kapanışı", hint: "Settlement ve geri alma penceresi" },
+const TABS: { to: string; label: Key; hint: Key }[] = [
+  { to: "/reports", label: "report.tab.overview", hint: "report.tab.overview.hint" },
+  { to: "/report", label: "report.tab.sales", hint: "report.tab.sales.hint" },
+  { to: "/report/financial", label: "report.tab.financial", hint: "report.tab.financial.hint" },
+  { to: "/report/period", label: "report.tab.period", hint: "report.tab.period.hint" },
 ];
 
 export function ReportShell({ title, hint, action, children }: {
   title: string; hint: string; action?: ReactNode; children: ReactNode;
 }) {
+  const t = useT();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { can, lockHint } = usePerm();
 
@@ -36,8 +38,8 @@ export function ReportShell({ title, hint, action, children }: {
     return (
       <>
         <PageTitle title={title} hint={hint} />
-        <Alert tone="warning" title="Bu rapora erişim yetkiniz yok">
-          {lockHint("revenue.view") ?? "Raporlar gelir görüntüleme yetkisi gerektirir."}
+        <Alert tone="warning" title={t("report.denied.title")}>
+          {lockHint("revenue.view") ?? t("report.denied.body")}
         </Alert>
       </>
     );
@@ -52,7 +54,7 @@ export function ReportShell({ title, hint, action, children }: {
           <>
             {action}
             <Button variant="secondary" onClick={() => window.print()}>
-              <Printer size={15} strokeWidth={1.75} /> Yazdır
+              <Printer size={15} strokeWidth={1.75} /> {t("report.print")}
             </Button>
           </>
         }
@@ -65,13 +67,13 @@ export function ReportShell({ title, hint, action, children }: {
             <Link
               key={tab.to}
               to={tab.to}
-              title={tab.hint}
+              title={t(tab.hint)}
               className={cn(
                 "relative flex h-10 items-center px-3.5 text-[13.5px] transition-colors",
                 on ? "font-semibold text-ink" : "text-ink-3 hover:text-ink",
               )}
             >
-              {tab.label}
+              {t(tab.label)}
               {on && <span aria-hidden className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-brand" />}
             </Link>
           );

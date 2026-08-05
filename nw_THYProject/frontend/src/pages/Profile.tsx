@@ -6,9 +6,10 @@ import { useUsers } from "@/store/users";
 import { useUI } from "@/store/ui";
 import { reportsOf, chainOf } from "@/domain/users";
 import {
-  PERMISSION_LABEL, ROLE_DESC, ROLE_LABEL, ROLE_ORDER, permissionsFor,
+  ROLE_ORDER, permissionLabel, permissionsFor, roleDesc, roleLabel,
   type Permission, type Role,
 } from "@/domain/auth";
+import { useT } from "@/i18n";
 import { PersonCard } from "@/components/domain/PersonCard";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/surface";
@@ -34,9 +35,10 @@ export function Profile() {
   const me = useUI((s) => s.user);
   const { theme, setTheme, lang, setLang } = useUI();
   const users = useUsers((s) => s.users);
+  const t = useT();
   const { data: tx = [] } = useQuery({ queryKey: ["auditLog"], queryFn: () => queryTransactions({}) });
 
-  if (!me) return <Banner kind="warning">Oturum bulunamadı.</Banner>;
+  if (!me) return <Banner kind="warning">{t("admin.profile.noSession")}</Banner>;
 
   const user = users.find((u) => u.id === me.id) ?? me;
   const mine = permissionsFor(user.role);
@@ -47,12 +49,12 @@ export function Profile() {
 
   return (
     <>
-      <PageTitle title="Profilim" hint="Kimlik bilgileriniz, yetkileriniz, ekibiniz ve son işlemleriniz." />
+      <PageTitle title={t("admin.profile.title")} hint={t("admin.profile.hint")} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[380px_1fr]">
         <div className="flex flex-col gap-4">
           <Panel>
-            <PanelHead title="Personel kartı" />
+            <PanelHead title={t("admin.profile.card")} />
             <PanelBody>
               <PersonCard userId={user.id} variant="panel" />
             </PanelBody>
@@ -60,7 +62,7 @@ export function Profile() {
 
           {chain.length > 0 && (
             <Panel>
-              <PanelHead title="Bağlı olduğu yönetim zinciri" hint="Onay ve yetki devri bu hat üzerinden yürür." />
+              <PanelHead title={t("admin.profile.chain")} hint={t("admin.profile.chainHint")} />
               <PanelBody className="flex flex-col gap-1.5 pt-1">
                 {chain.map((c, i) => (
                   <div key={c.id} className="flex items-center gap-2.5 border-b border-hair py-2 last:border-0">
@@ -72,7 +74,7 @@ export function Profile() {
                       <span className="block truncate text-[13px] text-ink">{c.name}</span>
                       <span className="block truncate text-[11.5px] text-ink-3">{c.title}</span>
                     </span>
-                    <Pill tone="gray">{ROLE_LABEL[c.role]}</Pill>
+                    <Pill tone="gray">{roleLabel(c.role, lang)}</Pill>
                   </div>
                 ))}
               </PanelBody>
@@ -81,18 +83,18 @@ export function Profile() {
 
           {team.length > 0 && (
             <Panel>
-              <PanelHead title="Bana bağlı personel" hint={`${team.length} kişi`} />
+              <PanelHead title={t("admin.profile.team")} hint={t("admin.profile.teamHint", { n: team.length })} />
               <PanelBody className="flex flex-col gap-1.5 pt-1">
-                {team.map((t) => (
-                  <div key={t.id} className="flex items-center gap-2.5 border-b border-hair py-2 last:border-0">
+                {team.map((member) => (
+                  <div key={member.id} className="flex items-center gap-2.5 border-b border-hair py-2 last:border-0">
                     <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-inset text-[10.5px] font-semibold text-ink-2">
-                      {t.initials}
+                      {member.initials}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[13px] text-ink">{t.name}</span>
-                      <span className="block truncate text-[11.5px] text-ink-3">{t.title} · {t.location}</span>
+                      <span className="block truncate text-[13px] text-ink">{member.name}</span>
+                      <span className="block truncate text-[11.5px] text-ink-3">{member.title} · {member.location}</span>
                     </span>
-                    {t.status === "suspended" && <Pill tone="red">Devre dışı</Pill>}
+                    {member.status === "suspended" && <Pill tone="red">{t("admin.suspended")}</Pill>}
                   </div>
                 ))}
               </PanelBody>
@@ -103,9 +105,9 @@ export function Profile() {
         <div className="flex flex-col gap-4">
           <Panel>
             <PanelHead
-              title="Rolüm ve yetkilerim"
-              hint={`${ROLE_LABEL[user.role]} — ${ROLE_DESC[user.role]}`}
-              action={<Pill tone="gray">{mine.length} / {ALL_PERMS.length} yetki</Pill>}
+              title={t("admin.profile.perms")}
+              hint={`${roleLabel(user.role, lang)} — ${roleDesc(user.role, lang)}`}
+              action={<Pill tone="gray">{t("admin.profile.permCount", { n: mine.length, total: ALL_PERMS.length })}</Pill>}
             />
             <PanelBody>
               <div className="grid gap-1.5 sm:grid-cols-2">
@@ -119,14 +121,14 @@ export function Profile() {
                         "flex items-center gap-2 rounded-md border px-2.5 py-1.5 text-[12.5px]",
                         has ? "border-line bg-panel text-ink" : "border-hair bg-inset text-ink-4",
                       )}
-                      title={has ? undefined : need ? `${ROLE_LABEL[need]} ve üzeri gerekir` : undefined}
+                      title={has ? undefined : need ? t("admin.profile.needRole", { role: roleLabel(need, lang) }) : undefined}
                     >
                       <span
                         className="h-1.5 w-1.5 flex-shrink-0 rounded-full"
                         style={{ background: has ? "var(--t-green-d)" : "var(--line-strong)" }}
                       />
-                      <span className="min-w-0 flex-1 truncate">{PERMISSION_LABEL[p]}</span>
-                      {!has && need && <span className="flex-shrink-0 text-[10.5px]">{ROLE_LABEL[need]}+</span>}
+                      <span className="min-w-0 flex-1 truncate">{permissionLabel(p, lang)}</span>
+                      {!has && need && <span className="flex-shrink-0 text-[10.5px]">{roleLabel(need, lang)}+</span>}
                     </div>
                   );
                 })}
@@ -135,14 +137,14 @@ export function Profile() {
           </Panel>
 
           <Panel>
-            <PanelHead title="Tercihler" hint="Yalnız sizin oturumunuzu etkiler." />
+            <PanelHead title={t("admin.profile.prefs")} hint={t("admin.profile.prefsHint")} />
             <PanelBody className="flex flex-wrap gap-2">
               <button
                 onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
                 className="inline-flex h-9 items-center gap-2 rounded-[10px] border border-line bg-surface px-3 text-[13px] text-ink transition-colors hover:bg-elev"
               >
                 {theme === "dark" ? <Sun size={15} strokeWidth={1.75} /> : <Moon size={15} strokeWidth={1.75} />}
-                {theme === "dark" ? "Açık tema" : "Koyu tema"}
+                {theme === "dark" ? t("admin.profile.lightTheme") : t("admin.profile.darkTheme")}
               </button>
               <button
                 onClick={() => setLang(lang === "tr" ? "en" : "tr")}
@@ -155,21 +157,21 @@ export function Profile() {
           </Panel>
 
           <Panel>
-            <PanelHead title="Son işlemlerim" hint="Denetim kaydından — bu istasyonda yaptığınız işlemler." />
+            <PanelHead title={t("admin.profile.recent")} hint={t("admin.profile.recentHint")} />
             <PanelBody className="pt-1">
               {myTx.length === 0 ? (
-                <Empty title="Kayıt yok" hint="Bu oturumda henüz bir işlem yapmadınız." />
-              ) : myTx.map((t) => (
-                <div key={t.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
-                  <span className="num w-36 flex-shrink-0 text-[11.5px] text-ink-3">{formatDateTime(t.occurredAt)}</span>
+                <Empty title={t("admin.profile.recentEmpty")} hint={t("admin.profile.recentEmptyHint")} />
+              ) : myTx.map((row) => (
+                <div key={row.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-2.5 last:border-0">
+                  <span className="num w-36 flex-shrink-0 text-[11.5px] text-ink-3">{formatDateTime(row.occurredAt)}</span>
                   <Link
-                    to="/tickets/$ticketNumber" params={{ ticketNumber: t.ticketNumber }}
+                    to="/tickets/$ticketNumber" params={{ ticketNumber: row.ticketNumber }}
                     className="num text-[12.5px] font-medium text-brand hover:underline"
                   >
-                    {t.ticketNumber}
+                    {row.ticketNumber}
                   </Link>
-                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{t.detail ?? t.type}</span>
-                  {t.status && <StatusPill status={t.status} />}
+                  <span className="min-w-0 flex-1 truncate text-[12.5px] text-ink-2">{row.detail ?? row.type}</span>
+                  {row.status && <StatusPill status={row.status} />}
                 </div>
               ))}
             </PanelBody>

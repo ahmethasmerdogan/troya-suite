@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Banner } from "@/components/ui/banner";
 import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { iataDate } from "@/components/domain/document/kit";
+import { useT } from "@/i18n";
 
 /**
  * Passenger Itinerary / Receipt — yolcuya verilen belge (Handbook App B).
@@ -22,6 +23,7 @@ import { iataDate } from "@/components/domain/document/kit";
  * bunu yönetir; varsayılan arayüz dilidir.
  */
 export function Itinerary() {
+  const t = useT();
   const { ticketNumber } = useParams({ from: "/itinerary/$ticketNumber" });
   const navigate = useNavigate();
   const uiLang = useUI((s) => s.lang);
@@ -32,7 +34,7 @@ export function Itinerary() {
   if (!ticket) {
     return (
       <Banner kind="warning">
-        Bilet bulunamadı: <span className="num">{ticketNumber}</span>
+        {t("misc.itinerary.notFound")} <span className="num">{ticketNumber}</span>
       </Banner>
     );
   }
@@ -45,7 +47,7 @@ export function Itinerary() {
       <div data-print-hide className="mb-4 flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber } })}
-          aria-label="Bilet kaydına dön"
+          aria-label={t("misc.itinerary.back")}
           className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface text-ink-2 transition-colors hover:bg-elev hover:text-ink"
         >
           <ArrowLeft size={16} strokeWidth={1.75} />

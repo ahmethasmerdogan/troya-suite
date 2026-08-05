@@ -32,7 +32,7 @@ import type { Money, TaxFeeCharge, Ticket } from "./types";
 import { isTfcRefundable } from "./taxCodes";
 import { computePenalty, fareRuleFor, isFareRefundable, waives, type WaiverCode } from "./fareRules";
 import { fareTypeByCoupon } from "./fareTypes";
-import { couponUsed } from "./refundRules";
+import { couponUsed, penaltyHowEn } from "./refundRules";
 import { classifyChange, pricingBasis, type ChangeAnalysis } from "./changeRules";
 
 export type TfcDisposition =
@@ -65,6 +65,8 @@ export interface ResidualValue {
   /** Cezanın bakiyeden düşülen kısmı. */
   penaltyDeducted: number;
   note: string;
+  /** `note`'un İngilizcesi — aynı karar, yalnız dil farkı. */
+  noteEn: string;
 }
 
 export interface ReissueQuote {
@@ -82,6 +84,8 @@ export interface ReissueQuote {
   tfcForfeited: number;
   penalty: number;
   penaltyExplain?: string;
+  /** `penaltyExplain`'in İngilizcesi. */
+  penaltyExplainEn?: string;
   penaltyWaived?: WaiverCode;
   /** Yolcudan tahsil edilecek toplam. Bakiye buraya NETLENMEZ. */
   adc: number;
@@ -92,6 +96,8 @@ export interface ReissueQuote {
   /** Yeni biletin son geçerlilik tarihi (12.4.1 vs 12.9.1). */
   validUntil: string;
   notes: string[];
+  /** `notes` ile aynı sırada, aynı sayıda — yalnız dil farkı. */
+  notesEn: string[];
 }
 
 export interface ReissueQuoteInput {
@@ -107,6 +113,8 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
   const { ticket } = input;
   const currency = ticket.fare.total.currency;
   const notes: string[] = [];
+  // EN karşılıkları TR ile AYNI SIRADA doldurulur; hesaba girmez, yalnız gösterilir.
+  const notesEn: string[] = [];
 
   const analysis = classifyChange(ticket, input.newSegments);
   const basis = pricingBasis(analysis);
@@ -114,6 +122,11 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
     basis === "original_issue_date"
       ? "12.1.1 REISSUE: bilet kısmen kullanılmış — ücret ORİJİNAL KESİM TARİHİNDEKİ tarife ve kurallarla hesaplanır."
       : "12.1.1 EXCHANGE: bilet hiç kullanılmamış — ücret GÜNCEL tarife ve kurallarla hesaplanır.",
+  );
+  notesEn.push(
+    basis === "original_issue_date"
+      ? "12.1.1 REISSUE: the ticket is partially used — the fare is calculated with the tariffs and rules in force on the ORIGINAL DATE OF ISSUE."
+      : "12.1.1 EXCHANGE: the ticket is completely unused — the fare is calculated with CURRENT tariffs and rules.",
   );
 
   const oldFare = ticket.fare.baseFare.amount;
@@ -174,26 +187,29 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
   );
   if (tfcForfeited > 0) {
     notes.push("12.5(c)(ii): azalan vergi iade edilebilir nitelikte değil — orijinal tutar bilette aynen taşınır.");
+    notesEn.push("12.5(c)(ii): the decreased tax is not refundable in nature — the original amount is carried forward on the ticket unchanged.");
   }
 
   // --- ceza (Cat 31) ---
   let penalty = 0;
   let penaltyExplain: string | undefined;
+  let penaltyExplainEn: string | undefined;
   let penaltyWaived: WaiverCode | undefined;
   const waiverApplies = waives(rule, input.waiver);
   if (waiverApplies) {
     penaltyWaived = input.waiver;
     notes.push(`Muafiyet (${input.waiver}) — tarife kuralı değişiklik ücretini kaldırıyor.`);
+    notesEn.push(`Waiver (${input.waiver}) — the fare rule removes the change fee.`);
   } else {
     const after = anyFlown || new Date(ticket.coupons[0]?.segment.departure ?? 0).getTime() < Date.now();
-    const p = computePenalty(
-      after ? rule?.change?.afterDeparture ?? rule?.change?.beforeDeparture : rule?.change?.beforeDeparture,
-      oldFare,
-    );
+    const applicable = after ? rule?.change?.afterDeparture ?? rule?.change?.beforeDeparture : rule?.change?.beforeDeparture;
+    const p = computePenalty(applicable, oldFare);
     if (p) {
       penalty = p.amount;
       penaltyExplain = `${after ? "Kalkıştan sonra" : "Kalkıştan önce"} değişiklik ücreti — ${p.explain}`;
+      penaltyExplainEn = `${after ? "After departure" : "Before departure"} change fee — ${penaltyHowEn(applicable, oldFare)}`;
       notes.push("Değişiklik ücreti handbook'tan değil TARİFE KURALINDAN gelir (Cat 31) ve ADC'ye ayrı kalem olarak eklenir.");
+      notesEn.push("The change fee comes from the FARE RULE (Cat 31), not from the handbook, and is added to the ADC as a separate item.");
     }
   }
 
@@ -218,20 +234,28 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
         note: fareRefundable
           ? "Orijinal bilet iade edilebilir — bakiye nakden iade edilebilir (MCO / For Refund Only)."
           : "Orijinal bilet iade edilemez — bakiye nakde çevrilemez; yalnız gelecekteki seyahat için EMD-S olarak verilir.",
+        noteEn: fareRefundable
+          ? "The original ticket is refundable — the residual may be refunded in cash (MCO / For Refund Only)."
+          : "The original ticket is non-refundable — the residual cannot be converted to cash; it is issued as an EMD-S for future travel only.",
       };
       // Bakiye ADC ile netlenmez; yalnız artan vergi tahsil edilir.
       adc = tfcAdditional;
       notes.push("12.11.2.1: bakiye Total kutusuna netlenmez; ayrı belgeyle (MCO / EMD-S) verilir.");
+      notesEn.push("12.11.2.1: the residual is not netted into the Total box; it is issued on a separate document (MCO / EMD-S).");
     } else {
       // Bakiye cezayı karşılamıyor → fark yolcudan tahsil edilir.
       adc = round2(-afterPenalty + tfcAdditional);
       notes.push("Bakiye değişiklik ücretini karşılamıyor — aradaki fark yolcudan tahsil edilir.");
+      notesEn.push("The residual does not cover the change fee — the difference is collected from the passenger.");
     }
   }
 
   const noAdc = adc <= 0;
   const totalBoxText = noAdc ? "NO ADC" : `${currency} ${adc.toLocaleString("tr-TR", { minimumFractionDigits: 2 })}A`;
-  if (noAdc) notes.push('12.5(d): "NO ADC" yalnız YOLCUDAN EK TAHSİLAT YOK demektir — bakiye belgesi ayrıca kesilebilir.');
+  if (noAdc) {
+    notes.push('12.5(d): "NO ADC" yalnız YOLCUDAN EK TAHSİLAT YOK demektir — bakiye belgesi ayrıca kesilebilir.');
+    notesEn.push('12.5(d): "NO ADC" only means NO ADDITIONAL COLLECTION FROM THE PASSENGER — a residual document may still be issued.');
+  }
 
   // --- geçerlilik (12.4.1 vs 12.9.1) ---
   const validUntil = basis === "original_issue_date"
@@ -242,14 +266,19 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
       ? "12.4.1: reissue taze bir yıl kazandırmaz — geçerlilik ORİJİNAL SATIŞ TARİHİNE göre hesaplanır."
       : "12.9.1: hiç kullanılmamış biletin exchange'inde geçerlilik seyahat başlangıcından itibaren bir yıldır.",
   );
+  notesEn.push(
+    basis === "original_issue_date"
+      ? "12.4.1: a reissue does not grant a fresh year — validity is computed from the ORIGINAL DATE OF SALE."
+      : "12.9.1: on the exchange of a completely unused ticket, validity runs one year from the commencement of travel.",
+  );
 
   return {
     analysis, basis, currency,
     oldFare, newFare, fareDiff,
     tfcLines, tfcAdditional, tfcRefunded, tfcForfeited,
-    penalty, penaltyExplain, penaltyWaived,
+    penalty, penaltyExplain, penaltyExplainEn, penaltyWaived,
     adc: Math.max(0, adc), noAdc, totalBoxText,
-    residual, validUntil, notes,
+    residual, validUntil, notes, notesEn,
   };
 }
 

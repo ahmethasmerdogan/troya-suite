@@ -3,14 +3,26 @@ import { Baby, Plane, ShieldCheck } from "lucide-react";
 import type { Ticket } from "@/domain/types";
 import { airportByCode } from "@/domain/airports";
 import { STATUS_META } from "@/domain/couponStatus";
-import { ssrByCode } from "@/domain/ssr";
+import { ssrLabel } from "@/domain/ssr";
 import { Money } from "@/components/domain/Money";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import {
   DocSheet, DocBand, DocBox, DocSection, DocLine, DocNotice, DocFoot, DocBarcode,
   DocPerforation, cabinOf, iataDate, iataTime,
 } from "./kit";
+import { DICT, type Key } from "@/i18n/dict";
 import { cn, flightCode } from "@/lib/utils";
+
+/**
+ * Belge sözlüğü — `useT()` ARAYÜZ dilinden okur, bu belge ise kendi `lang`
+ * prop'undan. Yolcuya İngilizce belge verilirken personelin arayüzü Türkçe
+ * kalabilir; bu yüzden lookup arayüz store'una değil prop'a bağlıdır.
+ */
+type DocParams = Record<string, string | number>;
+function docT(lang: "tr" | "en", key: Key, params?: DocParams): string {
+  const s = DICT[lang][key];
+  return params ? s.replace(/\{(\w+)\}/g, (m, k) => (k in params ? String(params[k]) : m)) : s;
+}
 
 /* ====================================================================
    Elektronik bilet belgesi.
@@ -43,6 +55,7 @@ export function TicketDocument({
   className?: string;
 }) {
   const tr = lang === "tr";
+  const d = (key: Key, params?: DocParams) => docT(lang, key, params);
   const now = useNow();
   const p = ticket.passenger;
   const active = ticket.coupons.find((c) => c.status === "O") ?? ticket.coupons[0];
@@ -74,7 +87,7 @@ export function TicketDocument({
                   </span>
                 )}
                 {p.ssr?.map((code) => (
-                  <span key={code} className="num rounded-md bg-inset px-2 py-1 text-[11px] text-ink-2" title={ssrByCode(code)?.label}>
+                  <span key={code} className="num rounded-md bg-inset px-2 py-1 text-[11px] text-ink-2" title={ssrLabel(code, lang)}>
                     {code}
                   </span>
                 ))}
@@ -128,7 +141,7 @@ export function TicketDocument({
               )}
               {seg && active?.status === "O" && (
                 <span className={cn("num font-medium", mins < 0 ? "text-ink-3" : mins <= 180 ? "text-[var(--t-amber-i)]" : "text-ink-2")}>
-                  {mins < 0 ? "kalkış geçti" : `kalkışa ${fmtLeft(mins)}`}
+                  {mins < 0 ? d("ticket.doc.departed") : d("ticket.doc.timeLeft", { v: fmtLeft(mins, lang) })}
                 </span>
               )}
               <span className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
@@ -146,8 +159,8 @@ export function TicketDocument({
             <div className="microlabel">Toplam · Total</div>
             <Money value={ticket.fare.total} size="md" className="mt-1" />
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <MiniBox label="Kupon" value={String(ticket.coupons.length)} />
-              <MiniBox label="Açık" value={String(ticket.coupons.filter((c) => c.status === "O").length)} />
+              <MiniBox label={d("ticket.doc.mini.coupons")} value={String(ticket.coupons.length)} />
+              <MiniBox label={d("ticket.doc.mini.open")} value={String(ticket.coupons.filter((c) => c.status === "O").length)} />
             </div>
           </div>
           <DocBarcode seed={ticket.ticketNumber} className="mt-4" />
@@ -162,7 +175,9 @@ export function TicketDocument({
               <table className="w-full min-w-[640px] text-left">
                 <thead>
                   <tr className="border-b border-line">
-                    {["#", "Uçuş", "Güzergâh", "Tarih", "Kalkış", "Sınıf", "Ücret Kodu", "NVB / NVA", "Bagaj", "Statü"].map((h) => (
+                    {["#", d("ticket.doc.th.flight"), d("ticket.doc.th.route"), d("ticket.doc.th.date"),
+                      d("ticket.doc.th.departure"), d("ticket.doc.th.class"), d("ticket.doc.th.fareBasis"),
+                      "NVB / NVA", d("ticket.doc.th.baggage"), d("ticket.doc.th.status")].map((h) => (
                       <th key={h} className="microlabel py-1.5 pr-3">{h}</th>
                     ))}
                   </tr>
@@ -199,32 +214,32 @@ export function TicketDocument({
           <DocSection title="Ücret dökümü · Fare details">
             <div className="grid gap-x-10 sm:grid-cols-2">
               <div>
-                <DocLine label="Çıplak ücret (Base fare)" value={<Money value={ticket.fare.baseFare} size="sm" />} />
+                <DocLine label={d("ticket.doc.baseFare")} value={<Money value={ticket.fare.baseFare} size="sm" />} />
                 {ticket.fare.tfcs?.map((t) => (
-                  <DocLine key={t.code} label={`Vergi / harç ${t.code}`} value={<Money value={t.amount} size="sm" />} />
+                  <DocLine key={t.code} label={d("ticket.doc.tfc", { code: t.code })} value={<Money value={t.amount} size="sm" />} />
                 ))}
-                <DocLine label="Toplam vergi (TFC)" value={<Money value={ticket.fare.totalTfc} size="sm" />} />
+                <DocLine label={d("ticket.doc.totalTax")} value={<Money value={ticket.fare.totalTfc} size="sm" />} />
                 <DocLine label="Toplam · Total" strong value={<Money value={ticket.fare.total} size="sm" />} />
               </div>
               <div>
                 {ticket.fare.vat && (
                   <DocLine
-                    label={`KDV %${Math.round(ticket.fare.vat.rate * 100)} (toplama dâhil)`}
+                    label={d("ticket.doc.vat", { r: Math.round(ticket.fare.vat.rate * 100) })}
                     value={<Money value={{ amount: ticket.fare.vat.amount, currency: ticket.fare.total.currency }} size="sm" />}
                   />
                 )}
                 {ticket.fare.equivFarePaid && (
-                  <DocLine label="Eşdeğer ödenen ücret" value={<Money value={ticket.fare.equivFarePaid} size="sm" />} />
+                  <DocLine label={d("ticket.doc.equivPaid")} value={<Money value={ticket.fare.equivFarePaid} size="sm" />} />
                 )}
                 {ticket.fare.fareCalcString && (
                   <DocLine label="Fare calculation" value={<span className="text-[11px]">{ticket.fare.fareCalcString}</span>} />
                 )}
-                {ticket.fare.nuc != null && <DocLine label="NUC toplam" value={ticket.fare.nuc.toFixed(2)} />}
+                {ticket.fare.nuc != null && <DocLine label={d("ticket.doc.nuc")} value={ticket.fare.nuc.toFixed(2)} />}
                 {ticket.fare.roe != null && <DocLine label="ROE" value={ticket.fare.roe.toFixed(6)} />}
                 {ticket.tourCode && <DocLine label="Tour code" value={ticket.tourCode} />}
                 <DocLine
                   label="Ödeme şekli · Form of payment"
-                  value={`${fopLabel(ticket.formOfPayment.type)}${ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}`}
+                  value={`${fopLabel(ticket.formOfPayment.type, lang)}${ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}`}
                 />
               </div>
             </div>
@@ -234,14 +249,14 @@ export function TicketDocument({
           <DocSection title="Belge bilgileri · Document details">
             <div className="grid gap-x-10 sm:grid-cols-2">
               <div>
-                <DocLine label="Doküman numarası" value={ticket.ticketNumber} />
-                <DocLine label="Kesim tarihi" value={iataDate(ticket.issuedAt)} />
-                <DocLine label="Kesen taşıyıcı (Validating carrier)" value={ticket.validatingCarrier} />
-                <DocLine label="Kimlik belgesi (FOID)" value={p.foid ?? "—"} />
+                <DocLine label={d("ticket.doc.docNumber")} value={ticket.ticketNumber} />
+                <DocLine label={d("ticket.doc.issuedDate")} value={iataDate(ticket.issuedAt)} />
+                <DocLine label={d("ticket.doc.validatingCarrier")} value={ticket.validatingCarrier} />
+                <DocLine label={d("ticket.doc.foid")} value={p.foid ?? "—"} />
               </div>
               <div>
                 <DocLine
-                  label="Kupon kontrolü"
+                  label={d("ticket.doc.control")}
                   value={
                     <span className="inline-flex items-center gap-1.5">
                       <ShieldCheck size={12} strokeWidth={1.75} className="text-ink-3" />
@@ -254,11 +269,11 @@ export function TicketDocument({
                 ) : null}
                 {ticket.paperDocuments?.length ? (
                   <DocLine
-                    label="Kağıt belge"
-                    value={ticket.paperDocuments.map((d) => `#${d.couponSeq} ${d.documentNumber}`).join(", ")}
+                    label={d("ticket.doc.paperDoc")}
+                    value={ticket.paperDocuments.map((x) => `#${x.couponSeq} ${x.documentNumber}`).join(", ")}
                   />
                 ) : null}
-                <DocLine label="Ciro / kısıtlamalar" value={ticket.endorsement ?? "—"} />
+                <DocLine label={d("ticket.doc.endorsement")} value={ticket.endorsement ?? "—"} />
               </div>
             </div>
           </DocSection>
@@ -327,15 +342,20 @@ function baggageOf(a?: { type: "piece" | "weight"; value: number; unit?: "K" | "
   return a.type === "piece" ? `${a.value} PC` : `${a.value}${a.unit ?? "K"}`;
 }
 
-function fopLabel(t: string): string {
-  return { cash: "Nakit", credit: "Kredi Kartı", uatp: "UATP", voucher: "Voucher", other: "Diğer" }[t] ?? t;
+const FOP_KEY: Record<string, Key> = {
+  cash: "ticket.fop.cash", credit: "ticket.fop.credit", uatp: "ticket.fop.uatp",
+  voucher: "ticket.fop.voucher", other: "ticket.fop.other",
+};
+
+function fopLabel(t: string, lang: "tr" | "en"): string {
+  return FOP_KEY[t] ? docT(lang, FOP_KEY[t]) : t;
 }
 
-function fmtLeft(mins: number): string {
-  if (mins < 60) return `${mins} dk`;
+function fmtLeft(mins: number, lang: "tr" | "en"): string {
+  if (mins < 60) return docT(lang, "ticket.doc.min", { n: mins });
   const h = Math.floor(mins / 60);
-  if (h < 48) return `${h} sa ${mins % 60} dk`;
-  return `${Math.floor(h / 24)} gün`;
+  if (h < 48) return docT(lang, "ticket.doc.hourMin", { h, m: mins % 60 });
+  return docT(lang, "ticket.doc.days", { n: Math.floor(h / 24) });
 }
 
 /** Saniyede bir tik — geri sayımın canlı kalması için. */

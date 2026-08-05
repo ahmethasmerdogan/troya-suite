@@ -13,10 +13,12 @@ import { Panel, PanelHead, PanelBody, Meta, MetaGrid, Line } from "@/components/
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Banner } from "@/components/ui/banner";
+import { useT } from "@/i18n";
 import { formatDate } from "@/lib/utils";
 
 // EMD detay — belge, kuponları ve bağlı bilet linkage'ı.
 export function EmdDetail() {
+  const t = useT();
   const { emdNumber } = useParams({ from: "/emds/$emdNumber" });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -30,13 +32,13 @@ export function EmdDetail() {
   };
   const voidOp = useMutation({
     mutationFn: () => voidEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("EMD void edildi"); refresh(); },
-    onError: (e: Error) => toast.danger("Void yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("misc.emd.voidOk")); refresh(); },
+    onError: (e: Error) => toast.danger(t("misc.emd.voidFail"), e.message),
   });
   const refundOp = useMutation({
     mutationFn: () => refundEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: () => { toast.success("EMD iade edildi"); refresh(); },
-    onError: (e: Error) => toast.danger("İade yapılamadı", e.message),
+    onSuccess: () => { toast.success(t("misc.emd.refundOk")); refresh(); },
+    onError: (e: Error) => toast.danger(t("misc.emd.refundFail"), e.message),
   });
 
   const withList = (detail: React.ReactNode) => (
@@ -47,7 +49,7 @@ export function EmdDetail() {
   if (!emd)
     return withList(
       <DetailBody>
-        <Banner kind="warning"><b className="num">{emdNumber}</b> numaralı EMD bulunamadı.</Banner>
+        <Banner kind="warning">{t("misc.emd.notFound", { n: emdNumber })}</Banner>
       </DetailBody>,
     );
 
@@ -57,7 +59,7 @@ export function EmdDetail() {
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{emd.emdNumber}</span>
-            <Pill tone="gray">EMD-{emd.type} {emd.type === "A" ? "· Bağlı" : "· Standalone"}</Pill>
+            <Pill tone="gray">EMD-{emd.type} {emd.type === "A" ? t("misc.emd.linked") : t("misc.emd.standalone")}</Pill>
             {emd.forRefundOnly && <Pill tone="violet">For Refund Only</Pill>}
           </>
         }
@@ -65,11 +67,11 @@ export function EmdDetail() {
           <>
             <Button variant="secondary" size="sm"
               onClick={() => navigate({ to: "/emds/$emdNumber/receipt", params: { emdNumber } })}>
-              <FileText size={15} strokeWidth={1.75} /> Makbuz
+              <FileText size={15} strokeWidth={1.75} /> {t("misc.emd.receiptBtn")}
             </Button>
             <Button variant="secondary" size="sm" disabled={!can("ticket.refund") || refundOp.isPending}
               title={lockHint("ticket.refund")} onClick={() => refundOp.mutate()}>
-              <Undo2 size={15} strokeWidth={1.75} /> İade
+              <Undo2 size={15} strokeWidth={1.75} /> {t("misc.emd.refund")}
             </Button>
             <Button variant="danger" size="sm" disabled={!can("ticket.void") || voidOp.isPending}
               title={lockHint("ticket.void")} onClick={() => voidOp.mutate()}>
@@ -80,13 +82,13 @@ export function EmdDetail() {
       />
       <DetailBody>
         <Panel>
-          <PanelHead title="Belge Bilgisi" />
+          <PanelHead title={t("misc.emd.docInfo")} />
           <PanelBody>
             <MetaGrid>
-              <Meta label="Yolcu" value={`${emd.passenger.surname}/${emd.passenger.givenName}`} />
-              <Meta label="Kesen Taşıyıcı" value={emd.issuingCarrier} mono />
-              <Meta label="Kesim" value={formatDate(emd.issuedAt)} mono />
-              <Meta label="Tutar" value={<Money value={emd.total} size="sm" />} />
+              <Meta label={t("common.passenger")} value={`${emd.passenger.surname}/${emd.passenger.givenName}`} />
+              <Meta label={t("misc.emd.issuingCarrier")} value={emd.issuingCarrier} mono />
+              <Meta label={t("misc.emd.issuedAt")} value={formatDate(emd.issuedAt)} mono />
+              <Meta label={t("misc.emd.amount")} value={<Money value={emd.total} size="sm" />} />
             </MetaGrid>
             {emd.associatedTicket && (
               <div className="mt-4 border-t border-line pt-3.5">
@@ -96,8 +98,8 @@ export function EmdDetail() {
                   className="inline-flex items-center gap-2 rounded-md bg-brand-wash px-3 py-2 text-[13px] font-medium text-brand transition-opacity hover:opacity-80"
                 >
                   <TicketIcon size={15} strokeWidth={1.75} />
-                  Bağlı bilet: <span className="num">{emd.associatedTicket}</span>
-                  {emd.associatedCouponSeq != null && <span className="num opacity-70">· kupon #{emd.associatedCouponSeq}</span>}
+                  {t("misc.emd.linkedTicket")} <span className="num">{emd.associatedTicket}</span>
+                  {emd.associatedCouponSeq != null && <span className="num opacity-70">{t("misc.emd.couponSeq", { n: emd.associatedCouponSeq })}</span>}
                 </Link>
               </div>
             )}
@@ -105,7 +107,7 @@ export function EmdDetail() {
         </Panel>
 
         <Panel>
-          <PanelHead title="Kuponlar" hint="EMD kendi yaşam döngüsünü taşır." />
+          <PanelHead title={t("misc.emd.coupons")} hint={t("misc.emd.couponsHint")} />
           <PanelBody className="pt-1">
             {emd.coupons.map((c) => (
               <div key={c.seq} className="flex items-center gap-3 border-b border-hair py-3 last:border-0">
@@ -118,13 +120,13 @@ export function EmdDetail() {
                 <Money value={c.value} size="sm" />
               </div>
             ))}
-            <Line className="mt-2 border-t border-line pt-3" label="Toplam" strong value={<Money value={emd.total} size="sm" />} />
+            <Line className="mt-2 border-t border-line pt-3" label={t("common.total")} strong value={<Money value={emd.total} size="sm" />} />
           </PanelBody>
         </Panel>
 
         {!!emd.history?.length && (
           <Panel>
-            <PanelHead title="Yaşam döngüsü" hint="Belge üzerindeki işlemler (5.5)." />
+            <PanelHead title={t("misc.emd.lifecycle")} hint={t("misc.emd.lifecycleHint")} />
             <PanelBody className="pt-1">
               {emd.history.map((h) => (
                 <div key={h.id} className="flex flex-wrap items-center gap-2 border-b border-hair py-2.5 last:border-0">

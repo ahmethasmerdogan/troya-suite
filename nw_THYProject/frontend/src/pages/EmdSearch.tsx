@@ -17,8 +17,8 @@ export function EmdSearch() {
             <p className="mt-0.5 text-[13px] text-ink-2">{t("emd.search.desc")}</p>
           </div>
           <div className="grid flex-1 place-items-center">
-            <Empty icon={<Package size={22} strokeWidth={1.5} />} title="Bir EMD seçin"
-              hint="Soldaki listeden bir belgeye tıklayın; kuponları ve bağlı bileti burada açılır." />
+            <Empty icon={<Package size={22} strokeWidth={1.5} />} title={t("misc.emds.empty")}
+              hint={t("misc.emds.emptyHint")} />
           </div>
         </div>
       }

@@ -10,6 +10,7 @@ import { Money } from "@/components/domain/Money";
 import { Panel, PanelHead, PanelBody, Meta, MetaGrid, Line } from "@/components/ui/surface";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useT } from "@/i18n";
 import { formatDateTime, cn } from "@/lib/utils";
 
 // Order detay — kalemleri (ET/EMD) ve yaşam çizgisi.
@@ -19,6 +20,7 @@ const TONE: Record<Order["status"], Tone> = {
 const FLOW: Order["status"][] = ["Created", "Confirmed", "Fulfilled", "Closed"];
 
 export function OrderDetail() {
+  const t = useT();
   const { orderId } = useParams({ from: "/orders/$orderId" });
   const { data: order, isLoading } = useQuery({ queryKey: ["order", orderId], queryFn: () => getOrder(orderId) });
 
@@ -27,7 +29,7 @@ export function OrderDetail() {
   );
 
   if (isLoading) return withList(<DetailBody><Skeleton className="h-64 w-full" /></DetailBody>);
-  if (!order) return withList(<DetailBody><p className="text-sm text-ink-2">Order bulunamadı.</p></DetailBody>);
+  if (!order) return withList(<DetailBody><p className="text-sm text-ink-2">{t("misc.order.notFound")}</p></DetailBody>);
 
   const cancelled = order.status === "Cancelled";
   const at = FLOW.indexOf(order.status);
@@ -44,13 +46,13 @@ export function OrderDetail() {
       />
       <DetailBody>
         <Panel>
-          <PanelHead title="Order" hint="ONE Order — biletler ve EMD'ler tek kaydın parçalarıdır." />
+          <PanelHead title="Order" hint={t("misc.order.hint")} />
           <PanelBody>
             <MetaGrid>
-              <Meta label="Yolcu" value={`${order.passenger.surname}/${order.passenger.givenName}`} />
-              <Meta label="Sahip Taşıyıcı" value={order.owningCarrier} mono />
-              <Meta label="Oluşturma" value={formatDateTime(order.createdAt)} mono />
-              <Meta label="Toplam" value={<Money value={order.total} size="sm" />} />
+              <Meta label={t("common.passenger")} value={`${order.passenger.surname}/${order.passenger.givenName}`} />
+              <Meta label={t("misc.order.owningCarrier")} value={order.owningCarrier} mono />
+              <Meta label={t("misc.order.createdAt")} value={formatDateTime(order.createdAt)} mono />
+              <Meta label={t("common.total")} value={<Money value={order.total} size="sm" />} />
             </MetaGrid>
 
             {/* Yaşam çizgisi — hangi aşamada olduğu tek bakışta */}
@@ -68,7 +70,7 @@ export function OrderDetail() {
         </Panel>
 
         <Panel>
-          <PanelHead title="Kalemler" hint={`${order.items.length} hizmet`} />
+          <PanelHead title={t("misc.order.items")} hint={t("misc.order.itemCount", { n: order.items.length })} />
           <PanelBody className="pt-1">
             {order.items.map((it) => (
               <div key={it.reference} className="flex items-center gap-3 border-b border-hair py-3 last:border-0">
@@ -89,7 +91,7 @@ export function OrderDetail() {
                 <Money value={it.amount} size="sm" />
               </div>
             ))}
-            <Line className="mt-2 border-t border-line pt-3" label="Toplam" strong value={<Money value={order.total} size="sm" />} />
+            <Line className="mt-2 border-t border-line pt-3" label={t("common.total")} strong value={<Money value={order.total} size="sm" />} />
           </PanelBody>
         </Panel>
       </DetailBody>

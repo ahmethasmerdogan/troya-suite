@@ -5,7 +5,8 @@ import type { LifecycleEvent, Ticket } from "@/domain/types";
 import { STATUS_META } from "@/domain/couponStatus";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import { StatusPill } from "@/components/domain/StatusPill";
-import { formatDateTime, cn } from "@/lib/utils";
+import { translate, useT, type Key } from "@/i18n";
+import { formatDateTime, cn, locale } from "@/lib/utils";
 
 /* ====================================================================
    Yaşam döngüsü — belgenin denetim kaydı.
@@ -21,17 +22,20 @@ import { formatDateTime, cn } from "@/lib/utils";
    Her satır iki katmanlıdır — üstte NE OLDU, altta KANIT.
    ==================================================================== */
 
-const EVENT_LABEL: Record<string, string> = {
-  TicketIssued: "Bilet kesildi", CouponAdded: "Kupon eklendi", ControlGranted: "Kontrol devredildi",
-  ControlReturned: "Kontrol iade edildi", CouponCheckedIn: "Check-in yapıldı", CouponLifted: "Uçağa alındı",
-  CouponFlown: "Uçuş tamamlandı", TicketVoided: "Bilet void edildi", CouponExchanged: "Kupon değiştirildi",
-  TicketReissued: "Yeniden kesim", CouponRefunded: "İade edildi", CouponSuspended: "Askıya alındı",
-  IrregularOpsApplied: "Olağandışı operasyon (IRROP)", EndorsementApplied: "Ciro / kısıtlama",
-  PtaIssued: "PTA'ya karşı kesildi", EmdIssued: "EMD kesildi", NoShowRecorded: "No-show",
-  CouponRevalidated: "Revalidation", CouponPrinted: "Kağıda basıldı",
-  ControlRequested: "Kontrol talep edildi", CouponPrintExchanged: "Print exchange",
-  RefundCancelled: "İade geri alındı", EmdVoided: "EMD void edildi", EmdRefunded: "EMD iade edildi",
-  PtaAcknowledged: "PTA teslim alındı", PtaRefunded: "PTA iadesi",
+const EVENT_KEY: Record<string, Key> = {
+  TicketIssued: "ticket.event.TicketIssued", CouponAdded: "ticket.event.CouponAdded",
+  ControlGranted: "ticket.event.ControlGranted", ControlReturned: "ticket.event.ControlReturned",
+  CouponCheckedIn: "ticket.event.CouponCheckedIn", CouponLifted: "ticket.event.CouponLifted",
+  CouponFlown: "ticket.event.CouponFlown", TicketVoided: "ticket.event.TicketVoided",
+  CouponExchanged: "ticket.event.CouponExchanged", TicketReissued: "ticket.event.TicketReissued",
+  CouponRefunded: "ticket.event.CouponRefunded", CouponSuspended: "ticket.event.CouponSuspended",
+  IrregularOpsApplied: "ticket.event.IrregularOpsApplied", EndorsementApplied: "ticket.event.EndorsementApplied",
+  PtaIssued: "ticket.event.PtaIssued", EmdIssued: "ticket.event.EmdIssued",
+  NoShowRecorded: "ticket.event.NoShowRecorded", CouponRevalidated: "ticket.event.CouponRevalidated",
+  CouponPrinted: "ticket.event.CouponPrinted", ControlRequested: "ticket.event.ControlRequested",
+  CouponPrintExchanged: "ticket.event.CouponPrintExchanged", RefundCancelled: "ticket.event.RefundCancelled",
+  EmdVoided: "ticket.event.EmdVoided", EmdRefunded: "ticket.event.EmdRefunded",
+  PtaAcknowledged: "ticket.event.PtaAcknowledged", PtaRefunded: "ticket.event.PtaRefunded",
 };
 
 /** Olumsuz olaylar rayda kırmızı halka taşır — göz taramada önce bunları bulur. */
@@ -45,7 +49,8 @@ const BURST = new Set(["TicketIssued", "CouponAdded"]);
 
 interface Row {
   id: string;
-  label: string;
+  /** Olay tipi — etiketi RENDER anında çevrilir, satır dil değişiminde tazelensin. */
+  type: string;
   detail?: string;
   at: string;
   actor: string;
@@ -62,6 +67,7 @@ const INITIAL = 12;
 
 export function LifecycleTimeline({ ticket, className }: { ticket: Ticket; className?: string }) {
   const [all, setAll] = useState(false);
+  const t = useT();
 
   const rows = useMemo(() => build(ticket.history), [ticket.history]);
   const shown = all ? rows : rows.slice(0, INITIAL);
@@ -80,7 +86,7 @@ export function LifecycleTimeline({ ticket, className }: { ticket: Ticket; class
           className="mt-2 flex items-center gap-1.5 rounded-[10px] px-2 py-1.5 text-[12.5px] font-medium text-ink-2 transition-colors hover:bg-inset hover:text-ink"
         >
           <ChevronDown size={14} strokeWidth={2} className={cn("transition-transform", all && "rotate-180")} />
-          {all ? "Daha azını göster" : `${rows.length - INITIAL} olay daha`}
+          {all ? t("ticket.timeline.showLess") : t("ticket.timeline.more", { n: rows.length - INITIAL })}
         </button>
       )}
     </div>
@@ -88,6 +94,7 @@ export function LifecycleTimeline({ ticket, className }: { ticket: Ticket; class
 }
 
 function TimelineRow({ row, first, last }: { row: Row; first: boolean; last: boolean }) {
+  const t = useT();
   const tone = row.status ? STATUS_TONE[row.status] : null;
   const onCoupon = row.couponSeq != null;
 
@@ -117,16 +124,16 @@ function TimelineRow({ row, first, last }: { row: Row; first: boolean; last: boo
         {/* Katman 1 — ne oldu */}
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className={cn("text-[13.5px]", first ? "font-semibold text-ink" : "font-medium text-ink")}>
-            {row.label}
+            {eventLabel(row.type)}
           </span>
           {onCoupon && (
             <span className="num rounded-[5px] bg-inset px-1.5 py-px text-[11px] text-ink-2">
-              kupon #{row.couponSeq}
+              {t("ticket.timeline.coupon", { n: row.couponSeq! })}
             </span>
           )}
           {row.coupons != null && row.coupons > 0 && (
             <span className="num rounded-[5px] bg-inset px-1.5 py-px text-[11px] text-ink-2">
-              {row.coupons} kupon
+              {t("ticket.timeline.coupons", { n: row.coupons })}
             </span>
           )}
           {row.status && <StatusPill status={row.status} />}
@@ -157,17 +164,18 @@ function TimelineRow({ row, first, last }: { row: Row; first: boolean; last: boo
 
 /** Parasal döküm — olayın `money` alanından; metinden ayrıştırma YOK. */
 function MoneyLine({ money }: { money: NonNullable<LifecycleEvent["money"]> }) {
-  const n = (v?: number) => (v == null ? null : v.toLocaleString("tr-TR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  const t = useT();
+  const n = (v: number) => v.toLocaleString(locale(), { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const parts: string[] = [];
-  if (money.gross != null) parts.push(`Brüt ${n(money.gross)} ${money.currency}`);
-  if (money.penalty) parts.push(`ceza ${n(money.penalty)}`);
-  if (money.noShowFee) parts.push(`no-show ${n(money.noShowFee)}`);
-  if (money.serviceCharge) parts.push(`service charge ${n(money.serviceCharge)}`);
-  if (money.taxRefunded) parts.push(`iade edilen vergi ${n(money.taxRefunded)}`);
-  if (money.taxForfeited) parts.push(`yanan vergi ${n(money.taxForfeited)}`);
-  if (money.adc) parts.push(`ADC ${n(money.adc)}`);
-  if (money.residual) parts.push(`bakiye ${n(money.residual)}`);
-  if (money.vat != null) parts.push(`KDV ${n(money.vat)} (toplama dâhil)`);
+  if (money.gross != null) parts.push(t("ticket.timeline.gross", { v: n(money.gross), cur: money.currency }));
+  if (money.penalty) parts.push(t("ticket.timeline.penalty", { v: n(money.penalty) }));
+  if (money.noShowFee) parts.push(t("ticket.timeline.noShowFee", { v: n(money.noShowFee) }));
+  if (money.serviceCharge) parts.push(t("ticket.timeline.serviceCharge", { v: n(money.serviceCharge) }));
+  if (money.taxRefunded) parts.push(t("ticket.timeline.taxRefunded", { v: n(money.taxRefunded) }));
+  if (money.taxForfeited) parts.push(t("ticket.timeline.taxForfeited", { v: n(money.taxForfeited) }));
+  if (money.adc) parts.push(t("ticket.timeline.adc", { v: n(money.adc) }));
+  if (money.residual) parts.push(t("ticket.timeline.residual", { v: n(money.residual) }));
+  if (money.vat != null) parts.push(t("ticket.timeline.vat", { v: n(money.vat) }));
   if (!parts.length) return null;
   return (
     <p className="num mt-1 rounded-md bg-inset px-2 py-1 text-[11.5px] text-ink-2">{parts.join(" · ")}</p>
@@ -195,7 +203,7 @@ function build(history: LifecycleEvent[]): Row[] {
   for (const ev of sorted) {
     const base: Row = {
       id: ev.id,
-      label: EVENT_LABEL[ev.type] ?? ev.type,
+      type: ev.type,
       detail: ev.detail,
       at: ev.occurredAt,
       actor: ev.actor,
@@ -210,7 +218,7 @@ function build(history: LifecycleEvent[]): Row[] {
       if (ev.type === "CouponAdded") {
         // Kuponları biriktir; kesim satırı gelince oraya sayı olarak yazılır.
         if (pendingBurst) pendingBurst.coupons = (pendingBurst.coupons ?? 0) + 1;
-        else pendingBurst = { ...base, label: EVENT_LABEL.TicketIssued, couponSeq: undefined, detail: undefined, coupons: 1 };
+        else pendingBurst = { ...base, type: "TicketIssued", couponSeq: undefined, detail: undefined, coupons: 1 };
         continue;
       }
       // TicketIssued: birikmiş kuponları bu satıra topla.
@@ -227,5 +235,5 @@ function build(history: LifecycleEvent[]): Row[] {
 }
 
 /** Statü etiketini dışarıya da açıyoruz (aynı sözlük iki yerde yazılmasın). */
-export const eventLabel = (type: string) => EVENT_LABEL[type] ?? type;
+export const eventLabel = (type: string) => (EVENT_KEY[type] ? translate(EVENT_KEY[type]) : type);
 export const statusLabel = (s: keyof typeof STATUS_META) => STATUS_META[s].label;

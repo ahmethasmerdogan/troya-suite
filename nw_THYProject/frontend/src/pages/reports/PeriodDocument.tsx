@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/core";
 import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BrandMark } from "@/components/BrandMark";
-import { formatDateTime } from "@/lib/utils";
+import { useT, type Key } from "@/i18n";
+import { formatDateTime, locale } from "@/lib/utils";
 
 /* ====================================================================
    Dönem Kapanış Belgesi.
@@ -24,6 +25,7 @@ import { formatDateTime } from "@/lib/utils";
    ==================================================================== */
 
 export function PeriodDocument() {
+  const t = useT();
   const { periodId } = useParams({ from: "/report/period/$periodId" });
   const navigate = useNavigate();
   const user = useUI((s) => s.user);
@@ -44,7 +46,7 @@ export function PeriodDocument() {
   const fin = useMemo(() => financialReport(periodRows), [periodRows]);
 
   if (!can("revenue.view"))
-    return <Banner kind="warning" title="Bu belgeye erişim yetkiniz yok">Dönem kapanış belgesi gelir görüntüleme yetkisi gerektirir.</Banner>;
+    return <Banner kind="warning" title={t("report.doc.denied.title")}>{t("report.doc.denied.body")}</Banner>;
   if (isLoading) return <Skeleton className="h-96 w-full" />;
 
   return (
@@ -52,25 +54,25 @@ export function PeriodDocument() {
       <div data-print-hide className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate({ to: "/report/period" })}
-          aria-label="Dönem listesine dön"
+          aria-label={t("report.doc.back")}
           className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface text-ink-2 transition-colors hover:bg-elev hover:text-ink"
         >
           <ArrowLeft size={16} strokeWidth={1.75} />
         </button>
         <div className="min-w-0">
-          <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">Dönem Kapanış Belgesi</h1>
+          <h1 className="text-[20px] font-semibold tracking-[-0.02em] text-ink">{t("report.doc.title")}</h1>
           <p className="text-[12.5px] text-ink-3">
-            {periodId} · {closed ? "kapatılmış dönem" : "açık dönem — kalemler henüz settlement'a gitmedi"}
+            {periodId} · {closed ? t("report.doc.closedPeriod") : t("report.doc.openPeriod")}
           </p>
         </div>
         <Button className="ml-auto" variant="secondary" onClick={() => window.print()}>
-          <Printer size={15} strokeWidth={1.75} /> Yazdır
+          <Printer size={15} strokeWidth={1.75} /> {t("report.print")}
         </Button>
       </div>
 
       {periodRows.length === 0 ? (
-        <Banner kind="warning" title="Bu dönemde kayıt yok">
-          <span className="num">{periodId}</span> dönemine ait işlem bulunamadı.
+        <Banner kind="warning" title={t("report.doc.noRecords")}>
+          <span className="num">{periodId}</span> {t("report.doc.noRecordsBody")}
         </Banner>
       ) : (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
@@ -87,26 +89,26 @@ export function PeriodDocument() {
             {/* künye */}
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
               <Box label="Dönem · Period" value={periodId} />
-              <Box label="Durum · Status" value={closed ? "KAPALI" : "AÇIK"} />
+              <Box label="Durum · Status" value={closed ? t("report.doc.statusClosed") : t("report.doc.statusOpen")} />
               <Box label="İstasyon · Office" value={user?.location ?? "IST-CTR"} />
               <Box label="Taşıyıcı · Carrier" value={periodRows[0]?.carrier ?? "TK"} />
             </div>
 
             {/* hareket özeti */}
-            <Section title="Hareket özeti" />
+            <Section title={t("report.doc.movements")} />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-              <Box label="Kesim" value={String(summary.issues)} />
-              <Box label="İade" value={String(summary.refunds)} />
-              <Box label="İptal (Void)" value={String(summary.voids)} />
-              <Box label="Değişim" value={String(summary.exchanges)} />
+              <Box label={t("report.cat.issue")} value={String(summary.issues)} />
+              <Box label={t("report.cat.refund")} value={String(summary.refunds)} />
+              <Box label={t("report.cat.void")} value={String(summary.voids)} />
+              <Box label={t("report.exchange")} value={String(summary.exchanges)} />
             </div>
 
             {/* para birimi bazında kapanış */}
-            <Section title="Para birimi bazında kapanış" />
+            <Section title={t("report.doc.byCurrency")} />
             <table className="w-full text-[12.5px]">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <Th>Para birimi</Th><Th right>Brüt</Th><Th right>İade</Th><Th right>İptal</Th><Th right>Net</Th>
+                  <Th>{t("report.doc.currency")}</Th><Th right>{t("report.doc.gross")}</Th><Th right>{t("report.cat.refund")}</Th><Th right>{t("report.doc.void")}</Th><Th right>{t("report.net")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -116,7 +118,7 @@ export function PeriodDocument() {
                     <Td>{c.gross}</Td>
                     <Td>{c.refund}</Td>
                     <Td>{c.voided}</Td>
-                    <td className="num py-1.5 text-right font-semibold text-ink">{c.net.toLocaleString("tr-TR")}</td>
+                    <td className="num py-1.5 text-right font-semibold text-ink">{c.net.toLocaleString(locale())}</td>
                   </tr>
                 ))}
               </tbody>
@@ -125,29 +127,28 @@ export function PeriodDocument() {
             {/* mali döküm — hepsi sıfırsa bölümü hiç açma (boş tablo basma) */}
             {fin.byCurrency.length > 0 && fin.byCurrency.some(hasMoneyMovement) && (
               <>
-                <Section title="Mali döküm" />
+                <Section title={t("report.doc.financial")} />
                 <table className="w-full text-[12.5px]">
                   <thead>
                     <tr className="border-b border-line text-left">
-                      <Th>Kalem</Th>
-                      {fin.byCurrency.map((t) => <Th key={t.currency} right>{t.currency}</Th>)}
+                      <Th>{t("report.doc.item")}</Th>
+                      {fin.byCurrency.map((c) => <Th key={c.currency} right>{c.currency}</Th>)}
                     </tr>
                   </thead>
                   <tbody>
-                    <FinRow label="İptal / değişiklik cezası" pick={(t) => t.penalty} totals={fin.byCurrency} />
-                    <FinRow label="No-show ücreti" pick={(t) => t.noShowFee} totals={fin.byCurrency} />
-                    <FinRow label="Service charge / iletişim" pick={(t) => t.serviceCharge} totals={fin.byCurrency} />
-                    <FinRow label="Yolcuya iade edilen vergi" pick={(t) => t.taxRefunded} totals={fin.byCurrency} />
-                    <FinRow label="Taşıyıcıda kalan vergi" pick={(t) => t.taxForfeited} totals={fin.byCurrency} />
-                    <FinRow label="Reissue ek tahsilat (ADC)" pick={(t) => t.adc} totals={fin.byCurrency} />
-                    <FinRow label="Kesilen bakiye belgesi" pick={(t) => t.residual} totals={fin.byCurrency} />
-                    <FinRow label="Tahsil edilen KDV" pick={(t) => t.vatCollected} totals={fin.byCurrency} />
-                    <FinRow label="İade ile düzeltilen KDV" pick={(t) => t.vatRefunded} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.cancelChangePenalty")} pick={(c) => c.penalty} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.noShowFee")} pick={(c) => c.noShowFee} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.serviceCharge")} pick={(c) => c.serviceCharge} totals={fin.byCurrency} />
+                    <FinRow label={t("report.doc.taxToPassenger")} pick={(c) => c.taxRefunded} totals={fin.byCurrency} />
+                    <FinRow label={t("report.doc.taxRetained")} pick={(c) => c.taxForfeited} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.adc")} pick={(c) => c.adc} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.residual")} pick={(c) => c.residual} totals={fin.byCurrency} />
+                    <FinRow label={t("report.fin.vatCollected")} pick={(c) => c.vatCollected} totals={fin.byCurrency} />
+                    <FinRow label={t("report.doc.vatAdjusted")} pick={(c) => c.vatRefunded} totals={fin.byCurrency} />
                   </tbody>
                 </table>
                 <p className="mt-2 text-[11px] leading-snug text-ink-3">
-                  Ceza ve no-show ücreti tazminat niteliğindedir; KDV hesaplanmaz. KDV bilet bedelinin
-                  içindedir (md.20/4) ve iade düzeltmesi kesim tarihindeki oranla yapılır (md.35).
+                  {t("report.doc.note")}
                 </p>
               </>
             )}
@@ -155,20 +156,20 @@ export function PeriodDocument() {
             {/* settlement */}
             <Section title="Settlement" />
             <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-              <Box label="Settlement kalemi" value={String(summary.settlementItems)} />
-              <Box label="Void edilebilir" value={closed ? "0 (kapalı)" : String(summary.reversible.voidable)} />
-              <Box label="İadesi geri alınabilir" value={closed ? "0 (kapalı)" : String(summary.reversible.refundCancellable)} />
+              <Box label={t("report.close.settlementItems")} value={String(summary.settlementItems)} />
+              <Box label={t("report.close.voidable")} value={closed ? t("report.doc.zeroClosed") : String(summary.reversible.voidable)} />
+              <Box label={t("report.close.refundCancellable")} value={closed ? t("report.doc.zeroClosed") : String(summary.reversible.refundCancellable)} />
             </div>
 
             {/* imza */}
             <div className="mt-6 flex flex-wrap items-end gap-x-10 gap-y-4 border-t border-line pt-4">
-              <SignField label="Hazırlayan" value={user?.name ?? "—"} />
-              <SignField label="Tarih" value={formatDateTime(new Date().toISOString())} />
-              <SignField label="Onaylayan" value="" />
+              <SignField label={t("report.doc.preparedBy")} value={user?.name ?? "—"} />
+              <SignField label={t("report.doc.date")} value={formatDateTime(new Date().toISOString())} />
+              <SignField label={t("report.doc.approvedBy")} value="" />
               <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] text-ink-3">
                 {closed
-                  ? <><Lock size={13} strokeWidth={1.75} /> Dönem kapatıldı — geri alma hakkı düştü.</>
-                  : <><LockOpen size={13} strokeWidth={1.75} /> Dönem açık — belge taslaktır.</>}
+                  ? <><Lock size={13} strokeWidth={1.75} /> {t("report.doc.closedNote")}</>
+                  : <><LockOpen size={13} strokeWidth={1.75} /> {t("report.doc.openNote")}</>}
               </span>
             </div>
           </div>
@@ -179,13 +180,13 @@ export function PeriodDocument() {
       {periodRows.length > 0 && (
         <div className="overflow-hidden rounded-2xl border border-line bg-surface">
           <div className="border-b border-line px-5 py-3">
-            <span className="microlabel">Ek — dönem işlemleri ({periodRows.length})</span>
+            <span className="microlabel">{t("report.doc.annex", { n: periodRows.length })}</span>
           </div>
           <div className="max-h-[420px] overflow-y-auto px-5 py-3">
             <table className="w-full text-[12px]">
               <thead>
                 <tr className="border-b border-line text-left">
-                  <Th>Zaman</Th><Th>Belge</Th><Th>Yolcu</Th><Th>İşlem</Th><Th right>Tutar</Th>
+                  <Th>{t("report.col.time")}</Th><Th>{t("report.col.document")}</Th><Th>{t("report.col.passenger")}</Th><Th>{t("report.col.action")}</Th><Th right>{t("report.col.amount")}</Th>
                 </tr>
               </thead>
               <tbody>
@@ -194,7 +195,7 @@ export function PeriodDocument() {
                     <td className="num py-1.5 text-ink-3">{formatDateTime(r.occurredAt)}</td>
                     <td className="num py-1.5 text-ink">{r.ticketNumber}</td>
                     <td className="truncate py-1.5 text-ink-2">{r.passengerName}</td>
-                    <td className="py-1.5 text-ink-2">{CAT_LABEL[r.category] ?? r.category}</td>
+                    <td className="py-1.5 text-ink-2">{CAT_KEY[r.category] ? t(CAT_KEY[r.category]) : r.category}</td>
                     <td className="py-1.5 text-right">
                       {r.amount ? <Money value={r.amount} size="sm" /> : <span className="text-ink-3">—</span>}
                     </td>
@@ -209,9 +210,9 @@ export function PeriodDocument() {
   );
 }
 
-const CAT_LABEL: Record<TransactionRow["category"], string> = {
-  issue: "Kesim", void: "İptal (Void)", refund: "İade", exchange: "Değişim",
-  emd: "EMD", checkin: "Check-in", other: "Diğer",
+const CAT_KEY: Record<TransactionRow["category"], Key> = {
+  issue: "report.cat.issue", void: "report.cat.void", refund: "report.cat.refund", exchange: "report.exchange",
+  emd: "report.cat.emd", checkin: "report.cat.checkin", other: "report.cat.other",
 };
 
 /** Bölümü göstermeye değer bir hareket var mı? */
@@ -238,7 +239,7 @@ function Th({ children, right }: { children: React.ReactNode; right?: boolean })
 }
 
 function Td({ children }: { children: number }) {
-  return <td className="num py-1.5 text-right text-ink-2">{children.toLocaleString("tr-TR")}</td>;
+  return <td className="num py-1.5 text-right text-ink-2">{children.toLocaleString(locale())}</td>;
 }
 
 function FinRow({
@@ -251,7 +252,7 @@ function FinRow({
     <tr className="border-b border-hair last:border-0">
       <td className="py-1.5 text-ink-2">{label}</td>
       {values.map((v, i) => (
-        <td key={i} className="num py-1.5 text-right text-ink">{v.toLocaleString("tr-TR")}</td>
+        <td key={i} className="num py-1.5 text-right text-ink">{v.toLocaleString(locale())}</td>
       ))}
     </tr>
   );

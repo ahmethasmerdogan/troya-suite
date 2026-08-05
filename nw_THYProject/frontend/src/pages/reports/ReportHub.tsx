@@ -7,6 +7,7 @@ import { closingByCurrency, financialReport, periodsFrom } from "@/domain/report
 import { Money } from "@/components/domain/Money";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, InsetPanel, OutlineBadge, StatTile } from "@/ui";
+import { useT } from "@/i18n";
 import { ReportShell } from "./ReportShell";
 import { periodRange } from "./period";
 
@@ -19,6 +20,7 @@ import { periodRange } from "./period";
    ==================================================================== */
 
 export function ReportHub() {
+  const t = useT();
   const today = periodRange("day")!;
   const month = periodRange("month")!;
 
@@ -47,8 +49,8 @@ export function ReportHub() {
 
   return (
     <ReportShell
-      title="Raporlar"
-      hint="Üç rapor, üç soru: ne satıldı · para nereye gitti · dönem kapandı mı."
+      title={t("report.hub.title")}
+      hint={t("report.hub.hint")}
     >
 
       {/* --- bugünün durumu --- */}
@@ -56,26 +58,26 @@ export function ReportHub() {
         <StatTile
           icon={<ClipboardList size={16} strokeWidth={1.75} />}
           value={isLoading ? "—" : (todayRows?.length ?? 0)}
-          label="Bugünkü işlem" mono
+          label={t("report.hub.todayTx")} mono
         />
         <StatTile
           icon={<Coins size={16} strokeWidth={1.75} />}
           value={todayClosing[0]
             ? <Money value={{ amount: todayClosing[0].net, currency: todayClosing[0].currency }} size="sm" />
             : "—"}
-          label="Bugünkü net satış"
+          label={t("report.hub.todayNet")}
         />
         <StatTile
           icon={<Coins size={16} strokeWidth={1.75} />}
           value={mainFin
             ? <Money value={{ amount: mainFin.penaltyIncome, currency: mainFin.currency }} size="sm" />
             : "—"}
-          label="Bu ay ceza geliri"
+          label={t("report.hub.monthPenalty")}
         />
         <StatTile
           icon={<CalendarCheck size={16} strokeWidth={1.75} />}
           value={openPeriods.length}
-          label="Açık dönem" mono
+          label={t("report.hub.openPeriods")} mono
         />
       </div>
 
@@ -84,15 +86,15 @@ export function ReportHub() {
         <ReportCard
           to="/report"
           icon={<ClipboardList size={19} strokeWidth={1.75} />}
-          title="Satış / İşlem"
-          question="Ne satıldı, ne iade edildi, net ne kaldı?"
-          desc="Event store'dan türeyen çapraz-belge denetim kaydı. Gün, ay, yıl sonu ya da serbest aralık; para birimi bazında brüt − iade − iptal = net."
+          title={t("report.tab.sales")}
+          question={t("report.hub.sales.q")}
+          desc={t("report.hub.sales.desc")}
         >
           {todayClosing.length === 0 ? (
-            <Empty text="Bugün tutarlı işlem yok." />
+            <Empty text={t("report.hub.sales.empty")} />
           ) : (
             todayClosing.slice(0, 2).map((c) => (
-              <MiniRow key={c.currency} label={`${c.currency} · bugün net`} amount={c.net} cur={c.currency} />
+              <MiniRow key={c.currency} label={t("report.hub.todayNetRow", { cur: c.currency })} amount={c.net} cur={c.currency} />
             ))
           )}
         </ReportCard>
@@ -100,17 +102,17 @@ export function ReportHub() {
         <ReportCard
           to="/report/financial"
           icon={<Coins size={19} strokeWidth={1.75} />}
-          title="Mali Rapor"
-          question="Para nereye gitti?"
-          desc="Ceza ve ücretler, yolcuya iade edilen ile taşıyıcıda kalan vergi, iade türü kırılımı, reissue tahsilatı ve KDV dökümü."
+          title={t("report.hub.financial.title")}
+          question={t("report.hub.financial.q")}
+          desc={t("report.hub.financial.desc")}
         >
           {!mainFin ? (
-            <Empty text="Bu ay parasal döküm yok." />
+            <Empty text={t("report.hub.financial.empty")} />
           ) : (
             <>
-              <MiniRow label="Ceza geliri (ay)" amount={mainFin.penaltyIncome} cur={mainFin.currency} />
-              <MiniRow label="İade edilen vergi" amount={mainFin.taxRefunded} cur={mainFin.currency} />
-              <MiniRow label="Net KDV" amount={mainFin.vatCollected - mainFin.vatRefunded} cur={mainFin.currency} />
+              <MiniRow label={t("report.hub.penaltyMonth")} amount={mainFin.penaltyIncome} cur={mainFin.currency} />
+              <MiniRow label={t("report.hub.taxRefunded")} amount={mainFin.taxRefunded} cur={mainFin.currency} />
+              <MiniRow label={t("report.hub.netVat")} amount={mainFin.vatCollected - mainFin.vatRefunded} cur={mainFin.currency} />
             </>
           )}
         </ReportCard>
@@ -118,20 +120,20 @@ export function ReportHub() {
         <ReportCard
           to="/report/period"
           icon={<CalendarCheck size={19} strokeWidth={1.75} />}
-          title="Dönem Kapanışı"
-          question="Hangi dönem hâlâ geri alınabilir?"
-          desc="Dönem kapanınca void ve iade geri alma hakkı düşer, kalemler settlement'a gider. Kapanış geri alınamaz."
+          title={t("report.tab.period")}
+          question={t("report.hub.period.q")}
+          desc={t("report.hub.period.desc")}
         >
           {periods.length === 0 ? (
-            <Empty text="Kayıtlı dönem yok." />
+            <Empty text={t("report.hub.period.empty")} />
           ) : (
             <>
-              <MiniCount label="Açık dönem" n={openPeriods.length} />
-              <MiniCount label="Kapatılmış" n={periods.length - openPeriods.length} />
+              <MiniCount label={t("report.hub.openPeriods")} n={openPeriods.length} />
+              <MiniCount label={t("report.hub.closedCount")} n={periods.length - openPeriods.length} />
               {openPeriods[0] && (
                 <div className="mt-1 text-[11.5px] text-ink-3">
-                  En yeni açık dönem <span className="num text-ink-2">{openPeriods[0].periodId}</span> ·
-                  {" "}{openPeriods[0].reversible.voidable} void edilebilir
+                  {t("report.hub.latestOpen")} <span className="num text-ink-2">{openPeriods[0].periodId}</span> ·
+                  {" "}{t("report.hub.voidableN", { n: openPeriods[0].reversible.voidable })}
                 </div>
               )}
             </>
@@ -142,15 +144,15 @@ export function ReportHub() {
       {/* --- son dönemler --- */}
       <Card className="mt-4 p-5">
         <div className="mb-3 flex items-baseline justify-between">
-          <span className="microlabel">Son dönemler</span>
+          <span className="microlabel">{t("report.hub.recent")}</span>
           <Link to="/report/period" className="inline-flex items-center gap-1 text-[13px] font-medium text-brand">
-            Tümü <ArrowRight size={14} strokeWidth={2} />
+            {t("report.hub.all")} <ArrowRight size={14} strokeWidth={2} />
           </Link>
         </div>
         {!allRows ? (
           <Skeleton className="h-24 w-full" />
         ) : periods.length === 0 ? (
-          <p className="py-4 text-center text-[13px] text-ink-3">Kayıtlı dönem yok.</p>
+          <p className="py-4 text-center text-[13px] text-ink-3">{t("report.hub.period.empty")}</p>
         ) : (
           <div className="flex flex-col gap-1.5">
             {periods.slice(0, 6).map((p) => (
@@ -162,9 +164,9 @@ export function ReportHub() {
               >
                 <span className="num text-[13px] font-medium text-ink">{p.periodId}</span>
                 {p.closed
-                  ? <OutlineBadge tone="gray">Kapatıldı</OutlineBadge>
-                  : <OutlineBadge tone="green">Açık</OutlineBadge>}
-                <span className="num text-[12px] text-ink-3">{p.accountable} hareket</span>
+                  ? <OutlineBadge tone="gray">{t("report.close.closed")}</OutlineBadge>
+                  : <OutlineBadge tone="green">{t("report.close.open")}</OutlineBadge>}
+                <span className="num text-[12px] text-ink-3">{t("report.hub.movements", { n: p.accountable })}</span>
                 {p.closing[0] && (
                   <span className="ml-auto">
                     <Money value={{ amount: p.closing[0].net, currency: p.closing[0].currency }} size="sm" />
@@ -184,6 +186,7 @@ function ReportCard({
 }: {
   to: string; icon: React.ReactNode; title: string; question: string; desc: string; children: React.ReactNode;
 }) {
+  const t = useT();
   return (
     <Link to={to} className="group flex flex-col gap-3 rounded-lg border border-line bg-panel p-5 transition-colors hover:border-brand">
       <span className="grid h-10 w-10 place-items-center rounded-md border border-line bg-raised text-ink-2 transition-colors group-hover:bg-brand-wash group-hover:text-brand">
@@ -196,7 +199,7 @@ function ReportCard({
       </div>
       <InsetPanel className="mt-auto flex flex-col gap-1 p-3">{children}</InsetPanel>
       <span className="inline-flex items-center gap-1 text-[13px] font-medium text-brand">
-        Raporu aç <ArrowRight size={14} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
+        {t("report.hub.openReport")} <ArrowRight size={14} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
       </span>
     </Link>
   );

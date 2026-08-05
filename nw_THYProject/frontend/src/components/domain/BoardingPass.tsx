@@ -2,7 +2,8 @@ import { Plane } from "lucide-react";
 import type { CheckinPassenger, DepartureFlight } from "@/domain/checkin";
 import { airportByCode } from "@/domain/airports";
 import { BrandMark } from "@/components/BrandMark";
-import { cn, flightCode } from "@/lib/utils";
+import { useT } from "@/i18n";
+import { cn, flightCode, locale } from "@/lib/utils";
 
 /**
  * Biniş dokümanı (boarding pass).
@@ -24,11 +25,12 @@ export function BoardingPass({
   pax: CheckinPassenger;
   className?: string;
 }) {
+  const t = useT();
   const from = airportByCode(flight.origin);
   const to = airportByCode(flight.destination);
   const dep = new Date(flight.departure);
   const boarding = new Date(dep.getTime() - 40 * 60_000); // biniş kapısı kalkıştan 40 dk önce
-  const hhmm = (d: Date) => d.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+  const hhmm = (d: Date) => d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
   const etkt = pax.ticketNumber ? formatEtkt(pax.ticketNumber) : null;
 
   return (
@@ -65,7 +67,7 @@ export function BoardingPass({
                   <span className="h-1.5 w-1.5 rounded-full bg-line-strong" />
                 </span>
                 <span className="num mt-1 text-[11px] text-ink-3">
-                  {dep.toLocaleDateString("tr-TR", { day: "2-digit", month: "short" })}
+                  {dep.toLocaleDateString(locale(), { day: "2-digit", month: "short" })}
                 </span>
               </div>
               <div className="min-w-0 text-right">
@@ -91,7 +93,7 @@ export function BoardingPass({
                   {etkt}
                 </span>
               ) : (
-                <span className="text-[var(--t-amber-i)]">ET kaydı bağlanmadı</span>
+                <span className="text-[var(--t-amber-i)]">{t("ticket.bp.noEt")}</span>
               )}
               <span className="num">PNR {pax.pnr}</span>
               <span className="num">{pax.cabin === "Business" ? "BUSINESS" : "ECONOMY"}</span>
@@ -106,11 +108,11 @@ export function BoardingPass({
           <span aria-hidden className="absolute -left-1.5 -top-1.5 hidden h-3 w-3 rounded-full bg-canvas sm:block" />
           <span aria-hidden className="absolute -bottom-1.5 -left-1.5 hidden h-3 w-3 rounded-full bg-canvas sm:block" />
           <div>
-            <div className="microlabel">Kalkış</div>
+            <div className="microlabel">{t("ticket.bp.departure")}</div>
             <div className="num text-[26px] font-semibold leading-none tracking-tight text-ink">{hhmm(dep)}</div>
             <div className="mt-3 grid grid-cols-2 gap-2">
-              <MiniBox label="Koltuk" value={pax.seat ?? "—"} />
-              <MiniBox label="Bagaj" value={String(pax.bags)} />
+              <MiniBox label={t("ticket.bp.seat")} value={pax.seat ?? "—"} />
+              <MiniBox label={t("ticket.bp.baggage")} value={String(pax.bags)} />
             </div>
             <div className="num mt-3 text-[11px] text-ink-3">
               {flightCode(flight.carrier, flight.flightNumber)} · {flight.origin}→{flight.destination}

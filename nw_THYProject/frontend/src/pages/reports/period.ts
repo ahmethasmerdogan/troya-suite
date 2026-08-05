@@ -2,11 +2,17 @@
 
 export type PeriodId = "day" | "month" | "year" | "custom";
 
-export const PERIODS: { id: PeriodId; label: string; hint: string }[] = [
-  { id: "day", label: "Gün sonu", hint: "Bugünün kapanışı" },
-  { id: "month", label: "Ay sonu", hint: "İçinde bulunulan ay" },
-  { id: "year", label: "Yıl sonu", hint: "İçinde bulunulan yıl" },
-  { id: "custom", label: "Özel tarih", hint: "Serbest aralık" },
+/**
+ * Sıra burada durur, ETİKET durmaz: dönem adı ve ipucu dile bağlıdır ve
+ * `report.period.*` anahtarlarından okunur (bkz. çağrı yerlerindeki
+ * `PERIOD_KEY`). Sözlük dışında sabit metin tutmak, arayüz İngilizceye
+ * geçtiğinde çipleri Türkçe bırakıyordu.
+ */
+export const PERIODS: { id: PeriodId }[] = [
+  { id: "day" },
+  { id: "month" },
+  { id: "year" },
+  { id: "custom" },
 ];
 
 /**

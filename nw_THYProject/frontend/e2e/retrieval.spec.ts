@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 
 // EMD retrieval / Satış raporu / Order arama / ⌘K birleşik retrieval (2026-07-12 ek).
 test.beforeEach(async ({ page }) => {
-  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.user", "a.erdogan"); });
+  await page.addInitScript(() => { localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr"); localStorage.setItem("troya.user", "a.erdogan"); });
 });
 
 test.describe("EMD retrieval", () => {

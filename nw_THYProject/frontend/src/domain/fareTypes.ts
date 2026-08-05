@@ -12,19 +12,22 @@ export interface FareType {
   fareBasis: string; // önerilen fare basis kodu
   refundable: boolean;
   changeable: boolean;
-  note: string; // kısa kural özeti
+  note: string; // kısa kural özeti (TR)
+  noteEn: string; // aynı özetin İngilizcesi — ürün ve kuralları değişmez
 }
 
+// `label` (Business Flex…), `rbd` ve `fareBasis` sektör kodudur: iki dilde de aynı
+// yazılır, bu yüzden EN ikizi yoktur. Çevrilen tek serbest metin `note`'tur.
 export const FARE_TYPES: FareType[] = [
-  { id: "biz-flex", label: "Business Flex", cabin: "Business", rbd: "C", fareBasis: "CFLEX", refundable: true, changeable: true, note: "Tam esnek · iade & değişim serbest" },
-  { id: "biz-classic", label: "Business Classic", cabin: "Business", rbd: "J", fareBasis: "JCLASSIC", refundable: true, changeable: true, note: "Değişim ücretli · iade kısmi" },
-  { id: "biz-saver", label: "Business Saver", cabin: "Business", rbd: "D", fareBasis: "DSAVER", refundable: false, changeable: true, note: "İade yok · değişim ücretli" },
-  { id: "prem-flex", label: "Premium Economy Flex", cabin: "Premium", rbd: "W", fareBasis: "WFLEX", refundable: true, changeable: true, note: "Esnek premium ekonomi" },
-  { id: "prem-classic", label: "Premium Economy", cabin: "Premium", rbd: "P", fareBasis: "PCLASSIC", refundable: false, changeable: true, note: "Değişim ücretli" },
-  { id: "eco-flex", label: "Economy Flex", cabin: "Economy", rbd: "Y", fareBasis: "YFLEX", refundable: true, changeable: true, note: "Tam esnek ekonomi" },
-  { id: "eco-classic", label: "Economy Classic", cabin: "Economy", rbd: "M", fareBasis: "MCLASSIC", refundable: false, changeable: true, note: "Değişim ücretli · iade yok" },
-  { id: "eco-saver", label: "Economy Saver", cabin: "Economy", rbd: "V", fareBasis: "VSAVER", refundable: false, changeable: false, note: "En uygun · iade & değişim yok" },
-  { id: "eco-promo", label: "Economy Promo", cabin: "Economy", rbd: "L", fareBasis: "LPROMO", refundable: false, changeable: false, note: "Promosyon · kısıtlı" },
+  { id: "biz-flex", label: "Business Flex", cabin: "Business", rbd: "C", fareBasis: "CFLEX", refundable: true, changeable: true, note: "Tam esnek · iade & değişim serbest", noteEn: "Fully flexible · refund & change allowed" },
+  { id: "biz-classic", label: "Business Classic", cabin: "Business", rbd: "J", fareBasis: "JCLASSIC", refundable: true, changeable: true, note: "Değişim ücretli · iade kısmi", noteEn: "Change for a fee · partial refund" },
+  { id: "biz-saver", label: "Business Saver", cabin: "Business", rbd: "D", fareBasis: "DSAVER", refundable: false, changeable: true, note: "İade yok · değişim ücretli", noteEn: "Non-refundable · change for a fee" },
+  { id: "prem-flex", label: "Premium Economy Flex", cabin: "Premium", rbd: "W", fareBasis: "WFLEX", refundable: true, changeable: true, note: "Esnek premium ekonomi", noteEn: "Flexible premium economy" },
+  { id: "prem-classic", label: "Premium Economy", cabin: "Premium", rbd: "P", fareBasis: "PCLASSIC", refundable: false, changeable: true, note: "Değişim ücretli", noteEn: "Change for a fee" },
+  { id: "eco-flex", label: "Economy Flex", cabin: "Economy", rbd: "Y", fareBasis: "YFLEX", refundable: true, changeable: true, note: "Tam esnek ekonomi", noteEn: "Fully flexible economy" },
+  { id: "eco-classic", label: "Economy Classic", cabin: "Economy", rbd: "M", fareBasis: "MCLASSIC", refundable: false, changeable: true, note: "Değişim ücretli · iade yok", noteEn: "Change for a fee · non-refundable" },
+  { id: "eco-saver", label: "Economy Saver", cabin: "Economy", rbd: "V", fareBasis: "VSAVER", refundable: false, changeable: false, note: "En uygun · iade & değişim yok", noteEn: "Lowest price · no refund or change" },
+  { id: "eco-promo", label: "Economy Promo", cabin: "Economy", rbd: "L", fareBasis: "LPROMO", refundable: false, changeable: false, note: "Promosyon · kısıtlı", noteEn: "Promotional · restricted" },
 ];
 
 export function fareTypeById(id: string): FareType | undefined {

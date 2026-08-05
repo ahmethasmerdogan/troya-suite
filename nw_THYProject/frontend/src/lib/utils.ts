@@ -1,5 +1,17 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { useUI } from "@/store/ui";
+
+/**
+ * Biçimlendirme dili — TEK KAPI.
+ *
+ * Tarihler her yerde sabit "tr-TR", tutarlar ise sabit "en-US" ile
+ * basılıyordu: İngilizce arayüzde tarih Türkçe kalıyor, Türkçe arayüzde
+ * tutarın binlik ayracı yanlış oluyordu. İkisi de artık aktif dilden gelir.
+ */
+export function locale(): string {
+  return useUI.getState().lang === "en" ? "en-GB" : "tr-TR";
+}
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -8,13 +20,13 @@ export function cn(...inputs: ClassValue[]) {
 /** Para biçimlendir: big-number two-tone için int/dec/cur ayrı döner (DESIGN_SYSTEM §3). */
 export function splitAmount(value: number, currency: string) {
   const [int, dec = "00"] = value.toFixed(2).split(".");
-  const intGrouped = Number(int).toLocaleString("en-US");
+  const intGrouped = Number(int).toLocaleString(locale());
   return { int: intGrouped, dec, cur: currency };
 }
 
 export function formatDateTime(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleString("tr-TR", {
+  return d.toLocaleString(locale(), {
     day: "2-digit",
     month: "2-digit",
     year: "numeric",
@@ -25,7 +37,7 @@ export function formatDateTime(iso: string) {
 
 export function formatDate(iso: string) {
   const d = new Date(iso);
-  return d.toLocaleDateString("tr-TR", { day: "2-digit", month: "short", year: "numeric" });
+  return d.toLocaleDateString(locale(), { day: "2-digit", month: "short", year: "numeric" });
 }
 
 

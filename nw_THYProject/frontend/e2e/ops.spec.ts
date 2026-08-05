@@ -3,7 +3,7 @@ import { test, expect } from "@playwright/test";
 // HUB Kontrol / Operasyon paneli — board + KPI + drill-down.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.setItem("troya.onboarded", "1");
+    localStorage.setItem("troya.onboarded", "1"); localStorage.setItem("troya.lang", "tr");
     localStorage.setItem("troya.user", "a.erdogan"); // admin → ops.view var
   });
 });

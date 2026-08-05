@@ -17,8 +17,8 @@ export function Orders() {
             <p className="mt-0.5 text-[13px] text-ink-2">{t("orders.desc")}</p>
           </div>
           <div className="grid flex-1 place-items-center">
-            <Empty icon={<Ticket size={22} strokeWidth={1.5} />} title="Bir order seçin"
-              hint="Soldaki listeden bir order'a tıklayın; kalemleri ve bağlı belgeleri burada açılır." />
+            <Empty icon={<Ticket size={22} strokeWidth={1.5} />} title={t("misc.orders.empty")}
+              hint={t("misc.orders.emptyHint")} />
           </div>
         </div>
       }
