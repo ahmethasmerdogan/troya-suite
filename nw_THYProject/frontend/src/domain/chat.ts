@@ -52,6 +52,11 @@ export interface ChannelDef {
   id: string; // "ch:ops"
   name: string;
   desc: string;
+  /**
+   * Üye listesi. BOŞ/tanımsız = herkese açık kanal (tohum kanallar böyledir).
+   * Dolu ise yalnız üyeler görür ve yazabilir — "özel kanal".
+   */
+  memberIds?: string[];
   /** Tohum kanalların EN karşılığı; personelin AÇTIĞI kanallarda boştur. */
   nameEn?: string;
   descEn?: string;
@@ -116,13 +121,76 @@ export function channelIdFrom(name: string, existing: ChannelDef[]): string {
 /** Geriye dönük ad — eski çağrı yerleri kırılmasın. */
 export const CHANNELS = SEED_CHANNELS;
 
+/** Kanalı görebilenler — özel kanalda yalnız üyeler. */
+export function canSeeChannel(ch: ChannelDef, me: string): boolean {
+  return !ch.memberIds?.length || ch.memberIds.includes(me);
+}
+
 /** DM thread kimliği — iki taraf için de aynı (sıralı çift). */
 export function dmThreadId(a: string, b: string): string {
   return "dm:" + [a, b].sort().join("|");
 }
 
+/* --------------------------------------------------------------------
+   GRUP SOHBETİ
+
+   `dmThreadId` yalnız İKİLİ çift üretiyordu; üç kişilik bir konuşma
+   kurmanın yolu yoktu. Grup, kanaldan farklıdır: kanal istasyon geneline
+   açık bir başlıktır, grup ise seçilmiş birkaç kişinin özel konuşmasıdır.
+   -------------------------------------------------------------------- */
+export interface GroupDef {
+  id: string; // "gr:ab12cd34"
+  name: string;
+  memberIds: string[];
+  createdBy: string;
+  createdAt: string;
+}
+
 export function isChannel(threadId: string): boolean {
   return threadId.startsWith("ch:");
+}
+
+export function isGroup(threadId: string): boolean {
+  return threadId.startsWith("gr:");
+}
+
+export function isDm(threadId: string): boolean {
+  return threadId.startsWith("dm:");
+}
+
+/** Thread bana görünür mü? Kanal herkese, grup üyesine, DM taraflarına. */
+export function isVisibleTo(
+  threadId: string, me: string, groups: GroupDef[], channels: ChannelDef[] = [],
+): boolean {
+  if (isChannel(threadId)) {
+    const ch = channels.find((c) => c.id === threadId);
+    return !ch?.memberIds?.length || ch.memberIds.includes(me);
+  }
+  if (isGroup(threadId)) return !!groups.find((g) => g.id === threadId)?.memberIds.includes(me);
+  return threadId.includes(me);
+}
+
+const LS_GROUPS = "troya.chat.v1.groups";
+
+export function loadGroups(): GroupDef[] {
+  try {
+    const raw = localStorage.getItem(LS_GROUPS);
+    return raw ? (JSON.parse(raw) as GroupDef[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveGroups(list: GroupDef[]): void {
+  try { localStorage.setItem(LS_GROUPS, JSON.stringify(list)); } catch { /* depo kapalı */ }
+}
+
+/** Grup adı verilmediyse üyelerin adlarından türet: "Elif, Mert +2". */
+export function groupTitle(g: GroupDef, nameOf: (id: string) => string, me?: string): string {
+  if (g.name.trim()) return g.name;
+  const others = g.memberIds.filter((id) => id !== me).map(nameOf);
+  const head = others.slice(0, 2).map((n) => n.split(" ")[0]).join(", ");
+  return others.length > 2 ? `${head} +${others.length - 2}` : head || g.name;
 }
 
 const LS_MSGS = "troya.chat.v1.msgs";

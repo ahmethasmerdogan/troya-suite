@@ -1,9 +1,10 @@
 import { create } from "zustand";
 import {
   appendMessage, loadLastRead, loadMessages, saveLastRead, saveMessages,
-  seedIfEmpty, unreadCount, isChannel, dmThreadId,
+  seedIfEmpty, unreadCount, dmThreadId,
   loadChannels, saveChannels, channelIdFrom,
-  type ChatMessage, type ChatRef, type PresenceStatus, type ChannelDef,
+  loadGroups, saveGroups, isVisibleTo,
+  type ChatMessage, type ChatRef, type PresenceStatus, type ChannelDef, type GroupDef,
 } from "@/domain/chat";
 
 // Gerçek chat durumu — taşıma BroadcastChannel (+ storage event yedeği), kalıcılık localStorage.
@@ -18,7 +19,8 @@ type WireEvent =
   | { kind: "msg"; msg: ChatMessage }
   | { kind: "presence"; userId: string; at: number; status: PresenceStatus }
   | { kind: "typing"; threadId: string; userId: string; name: string }
-  | { kind: "channel"; channel: ChannelDef };
+  | { kind: "channel"; channel: ChannelDef }
+  | { kind: "group"; group: GroupDef };
 
 interface TypingInfo { userId: string; name: string; until: number }
 
@@ -37,10 +39,17 @@ interface ChatState {
   typing: Record<string, TypingInfo>;
   /** Açık kanallar — tohum + personelin açtıkları. */
   channels: ChannelDef[];
+  /** Grup sohbetleri — seçilmiş birkaç kişinin özel konuşması. */
+  groups: GroupDef[];
   /** Başka bir ekrandan istenen sohbet (kişi kartı → "Mesaj gönder"). */
   pendingThread: string | null;
   bind: (userId: string | null, name?: string) => void;
-  createChannel: (name: string, desc: string) => ChannelDef | null;
+  createChannel: (name: string, desc: string, memberIds?: string[]) => ChannelDef | null;
+  createGroup: (name: string, memberIds: string[]) => GroupDef | null;
+  /** Herkese açık kanala katıl / ayrıl (özel kanalda üye listesi yönetilir). */
+  toggleChannelMember: (channelId: string, userId: string) => void;
+  /** Gruba kişi ekle / gruptan çıkar. */
+  toggleGroupMember: (groupId: string, userId: string) => void;
   openThread: (threadId: string) => void;
   consumePendingThread: () => string | null;
   send: (threadId: string, text: string, ref?: ChatRef) => void;
@@ -58,7 +67,15 @@ export const useChat = create<ChatState>((set, get) => {
     if (ev.kind === "msg") {
       set((s) => ({ messages: appendMessage(s.messages, ev.msg) }));
     } else if (ev.kind === "channel") {
-      set((s) => (s.channels.some((c) => c.id === ev.channel.id) ? s : { channels: [...s.channels, ev.channel] }));
+      set((s) => {
+        const rest = s.channels.filter((c) => c.id !== ev.channel.id);
+        return { channels: [...rest, ev.channel] };
+      });
+    } else if (ev.kind === "group") {
+      set((s) => {
+        const rest = s.groups.filter((g) => g.id !== ev.group.id);
+        return { groups: [...rest, ev.group] };
+      });
     } else if (ev.kind === "presence") {
       set((s) => ({ presence: { ...s.presence, [ev.userId]: { at: ev.at, status: ev.status } } }));
     } else if (ev.kind === "typing") {
@@ -78,6 +95,7 @@ export const useChat = create<ChatState>((set, get) => {
     status: "available",
     typing: {},
     channels: [],
+    groups: [],
     pendingThread: null,
 
     bind: (userId, name = "") => {
@@ -88,7 +106,7 @@ export const useChat = create<ChatState>((set, get) => {
 
       set({
         myId: userId, myName: name, messages: seedIfEmpty(),
-        lastRead: loadLastRead(userId), channels: loadChannels(),
+        lastRead: loadLastRead(userId), channels: loadChannels(), groups: loadGroups(),
       });
 
       if (typeof BroadcastChannel !== "undefined") {
@@ -103,6 +121,7 @@ export const useChat = create<ChatState>((set, get) => {
         storageHandler = (e: StorageEvent) => {
           if (e.key === "troya.chat.v1.msgs") set({ messages: loadMessages() });
           if (e.key === "troya.chat.v1.channels") set({ channels: loadChannels() });
+          if (e.key === "troya.chat.v1.groups") set({ groups: loadGroups() });
         };
         window.addEventListener("storage", storageHandler);
       }
@@ -164,7 +183,7 @@ export const useChat = create<ChatState>((set, get) => {
     },
 
     /** Yeni kanal — anında diğer pencerelere de yayınlanır. */
-    createChannel: (name, desc) => {
+    createChannel: (name, desc, memberIds) => {
       const { myId, channels } = get();
       const trimmed = name.trim();
       if (!myId || !trimmed) return null;
@@ -172,6 +191,8 @@ export const useChat = create<ChatState>((set, get) => {
         id: channelIdFrom(trimmed, channels),
         name: trimmed,
         desc: desc.trim(),
+        // Üye verilmediyse kanal HERKESE AÇIK; verildiyse kurucu da üyedir.
+        ...(memberIds?.length ? { memberIds: [...new Set([myId, ...memberIds])] } : {}),
         createdBy: myId,
         createdAt: new Date().toISOString(),
       };
@@ -180,6 +201,55 @@ export const useChat = create<ChatState>((set, get) => {
       set({ channels: next, pendingThread: channel.id });
       broadcast({ kind: "channel", channel });
       return channel;
+    },
+
+    /** Yeni grup — kurucu her zaman üyedir. */
+    createGroup: (name, memberIds) => {
+      const { myId, groups } = get();
+      if (!myId || memberIds.length === 0) return null;
+      const group: GroupDef = {
+        id: "gr:" + crypto.randomUUID().slice(0, 8),
+        name: name.trim(),
+        memberIds: [...new Set([myId, ...memberIds])],
+        createdBy: myId,
+        createdAt: new Date().toISOString(),
+      };
+      const next = [...groups, group];
+      saveGroups(next);
+      set({ groups: next, pendingThread: group.id });
+      broadcast({ kind: "group", group });
+      return group;
+    },
+
+    toggleChannelMember: (channelId, userId) => {
+      const { channels } = get();
+      const ch = channels.find((c) => c.id === channelId);
+      if (!ch) return;
+      const cur = ch.memberIds ?? [];
+      const next: ChannelDef = {
+        ...ch,
+        memberIds: cur.includes(userId) ? cur.filter((x) => x !== userId) : [...cur, userId],
+      };
+      const list = channels.map((c) => (c.id === channelId ? next : c));
+      saveChannels(list);
+      set({ channels: list });
+      broadcast({ kind: "channel", channel: next });
+    },
+
+    toggleGroupMember: (groupId, userId) => {
+      const { groups } = get();
+      const g = groups.find((x) => x.id === groupId);
+      if (!g) return;
+      const next: GroupDef = {
+        ...g,
+        memberIds: g.memberIds.includes(userId)
+          ? g.memberIds.filter((x) => x !== userId)
+          : [...g.memberIds, userId],
+      };
+      const list = groups.map((x) => (x.id === groupId ? next : x));
+      saveGroups(list);
+      set({ groups: list });
+      broadcast({ kind: "group", group: next });
     },
 
     openThread: (threadId) => set({ pendingThread: threadId }),
@@ -221,8 +291,9 @@ export function useChatUnreadTotal(): number {
     if (!s.myId) return 0;
     let total = 0;
     for (const [threadId, msgs] of Object.entries(s.messages)) {
-      const mine = isChannel(threadId) || threadId.includes(s.myId);
-      if (mine) total += unreadCount(msgs, s.lastRead[threadId], s.myId);
+      if (isVisibleTo(threadId, s.myId, s.groups, s.channels)) {
+        total += unreadCount(msgs, s.lastRead[threadId], s.myId);
+      }
     }
     return total;
   });

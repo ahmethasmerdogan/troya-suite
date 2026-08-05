@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, X } from "lucide-react";
+import { ChevronDown, ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, UsersRound, X } from "lucide-react";
 import {
-  channelDesc, channelName, dmThreadId, isChannel, unreadCount, PRESENCE_META,
+  channelDesc, channelName, dmThreadId, isChannel, isDm, isVisibleTo, canSeeChannel,
+  groupTitle, unreadCount, PRESENCE_META,
   type ChatRef, type PresenceStatus,
 } from "@/domain/chat";
 import { useUsers } from "@/store/users";
@@ -15,7 +16,7 @@ import { isOnline, presenceOf, useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
 import { Button, Field, IconButton, Input, SearchInput } from "@/components/ui/core";
 import { Empty, Rule } from "@/components/ui/surface";
-import { Dot } from "@/components/ui/pill";
+import { Dot, Pill } from "@/components/ui/pill";
 import { Modal, useOutside } from "@/components/ui/overlay";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { Money } from "@/components/domain/Money";
@@ -46,14 +47,17 @@ export function Chat() {
   const t = useT();
   const { can } = usePerm();
   const {
-    messages, lastRead, presence, typing, status, channels,
-    send, setStatus, markRead, notifyTyping, createChannel, consumePendingThread,
+    messages, lastRead, presence, typing, status, channels, groups,
+    send, setStatus, markRead, notifyTyping, createChannel, createGroup, consumePendingThread,
   } = useChat();
   const users = useUsers((s) => s.users);
   const [thread, setThread] = useState<string>("");
   const [dirQ, setDirQ] = useState("");
   const [newChannel, setNewChannel] = useState(false);
   const [newChat, setNewChat] = useState(false);
+  const [newGroup, setNewGroup] = useState(false);
+  /** Açılan ama henüz mesaj yazılmamış sohbetler — listede hemen görünsünler. */
+  const [opened, setOpened] = useState<string[]>([]);
   const [text, setText] = useState("");
   const [attach, setAttach] = useState<ChatRef | null>(null);
   const [picker, setPicker] = useState(false);
@@ -61,6 +65,16 @@ export function Chat() {
   const endRef = useRef<HTMLDivElement>(null);
 
   const others = useMemo(() => users.filter((u) => u.id !== me?.id), [users, me]);
+  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? id;
+  // Özel kanal yalnız üyelerine görünür; herkese açık kanal herkese.
+  const myChannels = useMemo(
+    () => channels.filter((c) => canSeeChannel(c, me?.id ?? "")),
+    [channels, me],
+  );
+  const myGroups = useMemo(
+    () => groups.filter((g) => g.memberIds.includes(me?.id ?? "")),
+    [groups, me],
+  );
   const list = thread ? messages[thread] ?? [] : [];
   const onlineCount = others.filter((u) => isOnline(presence, u.id)).length;
 
@@ -74,24 +88,33 @@ export function Chat() {
   // Sohbet listesi: mesajı olan thread'ler, son mesaja göre; okunmamış üstte.
   const conversations = useMemo(() => {
     if (!me) return [];
-    return Object.entries(messages)
-      .filter(([id, msgs]) => msgs.length > 0 && (isChannel(id) ? true : id.includes(me.id)))
-      .map(([id, msgs]) => {
+    // Mesajı olan thread'ler + bu oturumda AÇILAN ama henüz yazılmamış olanlar
+    // (yeni sohbet açınca listede hiçbir şey görünmemesi "olmadı" hissi veriyordu).
+    const ids = new Set([
+      ...Object.keys(messages).filter((id) => (messages[id]?.length ?? 0) > 0),
+      ...opened,
+    ]);
+    return [...ids]
+      .filter((id) => isVisibleTo(id, me.id, groups, channels))
+      .map((id) => {
+        const msgs = messages[id] ?? [];
         const last = msgs[msgs.length - 1];
         const ch = channels.find((c) => c.id === id);
-        const otherId = isChannel(id) ? null : id.replace("dm:", "").split("|").find((x) => x !== me.id);
+        const gr = groups.find((g) => g.id === id);
+        const otherId = isDm(id) ? id.replace("dm:", "").split("|").find((x) => x !== me.id) ?? null : null;
         const person = otherId ? users.find((u) => u.id === otherId) : undefined;
         return {
           id,
-          title: (ch && channelName(ch, lang)) ?? person?.name ?? otherId ?? id,
-          preview: last.text || (last.ref ? `📄 ${last.ref.id}` : ""),
-          at: last.at,
+          title: ch ? channelName(ch, lang) : gr ? groupTitle(gr, nameOf, me.id) : person?.name ?? otherId ?? id,
+          preview: last ? last.text || (last.ref ? `📄 ${last.ref.id}` : "") : t("chat.startHint"),
+          at: last?.at ?? "",
           unread: unreadCount(msgs, lastRead[id], me.id),
-          channel: isChannel(id),
+          kind: ch ? ("channel" as const) : gr ? ("group" as const) : ("dm" as const),
+          otherId,
         };
       })
       .sort((a, b) => (b.unread > 0 ? 1 : 0) - (a.unread > 0 ? 1 : 0) || b.at.localeCompare(a.at));
-  }, [messages, lastRead, channels, users, me, lang]);
+  }, [messages, lastRead, channels, groups, users, me, lang, opened, t]);
 
   const dirMatch = (u: { name: string; title: string; unit: string; location: string }) => {
     const q = dirQ.trim().toLocaleLowerCase("tr-TR");
@@ -119,18 +142,35 @@ export function Chat() {
     <div className="flex min-h-0 flex-1 overflow-hidden bg-panel">
       <NewChannelModal
         open={newChannel}
+        users={others}
         onClose={() => setNewChannel(false)}
-        onCreate={(name, desc) => {
-          const c = createChannel(name, desc);
+        onCreate={(name, desc, memberIds) => {
+          const c = createChannel(name, desc, memberIds);
           setNewChannel(false);
-          if (c) setThread(c.id);
+          if (c) { setThread(c.id); setOpened((o) => [...o, c.id]); }
+        }}
+      />
+      <NewGroupModal
+        open={newGroup}
+        users={others}
+        onClose={() => setNewGroup(false)}
+        onCreate={(name, memberIds) => {
+          const g = createGroup(name, memberIds);
+          setNewGroup(false);
+          if (g) { setThread(g.id); setOpened((o) => [...o, g.id]); }
         }}
       />
       <NewChatModal
         open={newChat}
         users={others}
         onClose={() => setNewChat(false)}
-        onPick={(id) => { setThread(dmThreadId(me?.id ?? "", id)); setNewChat(false); }}
+        onPick={(id) => {
+          const tid = dmThreadId(me?.id ?? "", id);
+          setThread(tid);
+          // Mesaj yazılmadan da listede görünsün — yoksa "hiçbir şey olmadı" hissi.
+          setOpened((o) => (o.includes(tid) ? o : [...o, tid]));
+          setNewChat(false);
+        }}
       />
       {/* ---------- sol: kendi durumum, kanallar, kişiler ---------- */}
       <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-line md:flex">
@@ -164,8 +204,18 @@ export function Chat() {
           </div>
         </div>
 
+        {/* Yeni konuşma başlatmanın TEK ve görünür kapısı. Önceden bu iki
+            aksiyon bölüm başlıklarındaki küçük ikonlardı ve bulunamıyordu. */}
         <div className="border-b border-line p-2">
-          <SearchInput value={dirQ} onChange={setDirQ} placeholder={t("chat.dirSearchPlaceholder")} />
+          <NewMenu
+            canChannel={can("chat.channel.create")}
+            onChat={() => setNewChat(true)}
+            onGroup={() => setNewGroup(true)}
+            onChannel={() => setNewChannel(true)}
+          />
+          <div className="mt-2">
+            <SearchInput value={dirQ} onChange={setDirQ} placeholder={t("chat.dirSearchPlaceholder")} />
+          </div>
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -179,7 +229,11 @@ export function Chat() {
                     active={thread === c.id}
                     onClick={() => setThread(c.id)}
                     unread={c.unread}
-                    icon={c.channel ? <Hash size={14} strokeWidth={2} /> : <Dot tone={isOnline(presence, c.id.replace("dm:", "").split("|").find((x) => x !== me?.id) ?? "") ? "green" : "gray"} />}
+                    icon={
+                      c.kind === "channel" ? <Hash size={14} strokeWidth={2} />
+                        : c.kind === "group" ? <UsersRound size={14} strokeWidth={1.75} />
+                          : <Dot tone={isOnline(presence, c.otherId ?? "") ? "green" : "gray"} />
+                    }
                     label={c.title}
                     preview={c.preview}
                   />
@@ -188,16 +242,32 @@ export function Chat() {
             </>
           )}
 
+          {myGroups.length > 0 && (
+            <>
+              <div className="flex items-center justify-between border-y border-line px-3 py-2">
+                <span className="microlabel">{t("chat.groups")}</span>
+              </div>
+              <div className="flex flex-col p-1.5">
+                {myGroups
+                  .filter((g) => dirMatch({ name: groupTitle(g, nameOf, me?.id), title: "", unit: "", location: "" }))
+                  .map((g) => (
+                    <Row
+                      key={g.id} active={thread === g.id} onClick={() => setThread(g.id)}
+                      unread={unreadCount(messages[g.id], lastRead[g.id], me?.id ?? "")}
+                      icon={<UsersRound size={14} strokeWidth={1.75} />}
+                      label={groupTitle(g, nameOf, me?.id)}
+                      hint={t("chat.group.memberCount", { n: g.memberIds.length })}
+                    />
+                  ))}
+              </div>
+            </>
+          )}
+
           <div className="flex items-center justify-between border-y border-line px-3 py-2">
             <span className="microlabel">{t("chat.channels")}</span>
-            {can("chat.channel.create") && (
-              <IconButton label={t("chat.newChannel")} size="sm" onClick={() => setNewChannel(true)}>
-                <Plus size={14} strokeWidth={2} />
-              </IconButton>
-            )}
           </div>
           <div className="flex flex-col p-1.5">
-            {channels
+            {myChannels
               .filter((c) => dirMatch({ name: channelName(c, lang), title: channelDesc(c, lang), unit: "", location: "" }))
               .map((c) => {
                 const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
@@ -212,9 +282,6 @@ export function Chat() {
             <span className="microlabel">{t("chat.people")}</span>
             <span className="flex items-center gap-1.5">
               <span className="num text-[11px] text-ink-3">{t("chat.online", { n: onlineCount })}</span>
-              <IconButton label={t("chat.newChat")} size="sm" onClick={() => setNewChat(true)}>
-                <MessageSquarePlus size={14} strokeWidth={1.75} />
-              </IconButton>
             </span>
           </div>
           <div className="flex flex-col p-1.5">
@@ -331,18 +398,74 @@ function ThreadHead({
   const t = useT();
   const lang = useUI((s) => s.lang);
   const channels = useChat((s) => s.channels);
+  const groups = useChat((s) => s.groups);
+  const toggleChannelMember = useChat((s) => s.toggleChannelMember);
+  const toggleGroupMember = useChat((s) => s.toggleGroupMember);
   const users = useUsers((s) => s.users);
   const [card, setCard] = useState(false);
+  const [members, setMembers] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
   useOutside(cardRef, () => setCard(false));
+  const nameOf = (id: string) => users.find((u) => u.id === id)?.name ?? id;
+
+  // --- grup sohbeti ---
+  const group = groups.find((g) => g.id === thread);
+  if (group) {
+    return (
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+        <UsersRound size={15} strokeWidth={1.75} className="text-ink-3" />
+        <span className="text-[14px] font-semibold text-ink">{groupTitle(group, nameOf, me)}</span>
+        <span className="hidden text-[12px] text-ink-3 sm:block">
+          · {group.memberIds.map(nameOf).join(", ")}
+        </span>
+        <span className="ml-auto flex items-center gap-1.5">
+          {typers.length > 0 && <span className="text-[12px] text-ink-3">{t("chat.typing", { names: typers.join(", ") })}</span>}
+          <Button variant="secondary" size="sm" onClick={() => setMembers(true)}>
+            <UsersRound size={14} strokeWidth={1.75} /> {t("chat.group.memberCount", { n: group.memberIds.length })}
+          </Button>
+        </span>
+        <MembersModal
+          open={members} onClose={() => setMembers(false)}
+          title={t("chat.members")}
+          users={users.filter((u) => u.id !== me)}
+          selected={group.memberIds.filter((x) => x !== me)}
+          onToggle={(id) => toggleGroupMember(group.id, id)}
+        />
+      </div>
+    );
+  }
 
   if (isChannel(thread)) {
     const ch = channels.find((c) => c.id === thread);
+    const isPrivate = !!ch?.memberIds?.length;
+    const joined = !isPrivate || !!(me && ch?.memberIds?.includes(me));
     return (
       <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <Hash size={15} strokeWidth={2} className="text-ink-3" />
         <span className="text-[14px] font-semibold text-ink">{ch ? channelName(ch, lang) : thread}</span>
         <span className="hidden text-[12px] text-ink-3 sm:block">· {ch && channelDesc(ch, lang)}</span>
+        {isPrivate && <Pill tone="violet">{t("chat.channel.private")}</Pill>}
+        {ch && me && (
+          <span className="ml-auto flex items-center gap-1.5">
+            {typers.length > 0 && <span className="text-[12px] text-ink-3">{t("chat.typing", { names: typers.join(", ") })}</span>}
+            <Button variant="secondary" size="sm" onClick={() => setMembers(true)}>
+              <UsersRound size={14} strokeWidth={1.75} />
+              {isPrivate ? t("chat.group.memberCount", { n: ch.memberIds!.length }) : t("chat.channel.public")}
+            </Button>
+            {isPrivate && (
+              <Button variant="ghost" size="sm" onClick={() => toggleChannelMember(ch.id, me)}>
+                {joined ? t("chat.channel.leave") : t("chat.channel.join")}
+              </Button>
+            )}
+            <MembersModal
+              open={members} onClose={() => setMembers(false)}
+              title={t("chat.members")}
+              users={users.filter((u) => u.id !== me)}
+              selected={(ch.memberIds ?? []).filter((x) => x !== me)}
+              onToggle={(id) => toggleChannelMember(ch.id, id)}
+            />
+          </span>
+        )}
         {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{t("chat.typingBy", { names: typers.join(", ") })}</span>}
       </div>
     );
@@ -599,12 +722,18 @@ function PersonRow({
 
 /* --- yeni kanal ------------------------------------------------------- */
 function NewChannelModal({
-  open, onClose, onCreate,
-}: { open: boolean; onClose: () => void; onCreate: (name: string, desc: string) => void }) {
+  open, users, onClose, onCreate,
+}: {
+  open: boolean;
+  users: { id: string; name: string; title: string; unit: string; location: string; initials: string }[];
+  onClose: () => void;
+  onCreate: (name: string, desc: string, memberIds?: string[]) => void;
+}) {
   const t = useT();
   const [name, setName] = useState("");
   const [desc, setDesc] = useState("");
-  useEffect(() => { if (open) { setName(""); setDesc(""); } }, [open]);
+  const [sel, setSel] = useState<string[]>([]);
+  useEffect(() => { if (open) { setName(""); setDesc(""); setSel([]); } }, [open]);
 
   return (
     <Modal
@@ -612,7 +741,7 @@ function NewChannelModal({
       hint={t("chat.newChannel.hint")}
       width="sm"
       footer={
-        <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc)}>
+        <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc, sel)}>
           {t("chat.newChannel.submit")}
         </Button>
       }
@@ -623,6 +752,9 @@ function NewChannelModal({
         </Field>
         <Field label={t("chat.newChannel.desc")} hint={t("chat.newChannel.descHint")}>
           <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t("chat.newChannel.descPlaceholder")} maxLength={80} />
+        </Field>
+        <Field label={t("chat.channel.membersOptional")} hint={t("chat.channel.membersHint")}>
+          <MemberPicker users={users} selected={sel} onToggle={(id) => setSel((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))} />
         </Field>
       </div>
     </Modal>
@@ -670,6 +802,154 @@ function NewChatModal({
           ))}
         </div>
       </div>
+    </Modal>
+  );
+}
+
+/* --- "Yeni" menüsü: sohbet / grup / kanal ---------------------------- */
+function NewMenu({
+  canChannel, onChat, onGroup, onChannel,
+}: { canChannel: boolean; onChat: () => void; onGroup: () => void; onChannel: () => void }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutside(ref, () => setOpen(false));
+
+  const items: { icon: React.ReactNode; label: string; hint: string; run: () => void; show: boolean }[] = [
+    { icon: <MessageSquarePlus size={15} strokeWidth={1.75} />, label: t("chat.new.chat"), hint: t("chat.new.chatHint"), run: onChat, show: true },
+    { icon: <UsersRound size={15} strokeWidth={1.75} />, label: t("chat.new.group"), hint: t("chat.new.groupHint"), run: onGroup, show: true },
+    { icon: <Hash size={15} strokeWidth={2} />, label: t("chat.new.channel"), hint: t("chat.new.channelHint"), run: onChannel, show: canChannel },
+  ];
+
+  return (
+    <div ref={ref} className="relative">
+      <Button className="w-full" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <Plus size={15} strokeWidth={2} /> {t("chat.new")}
+        <ChevronDown size={13} strokeWidth={2} className="ml-auto" />
+      </Button>
+      {open && (
+        <div className="anim-pop absolute inset-x-0 top-[calc(100%+6px)] z-40 rounded-lg border border-line bg-panel p-1">
+          {items.filter((i) => i.show).map((i) => (
+            <button
+              key={i.label}
+              onClick={() => { setOpen(false); i.run(); }}
+              className="flex w-full items-start gap-2.5 rounded-[10px] px-2.5 py-2 text-left hover:bg-inset"
+            >
+              <span className="mt-0.5 text-ink-3">{i.icon}</span>
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium text-ink">{i.label}</span>
+                <span className="block text-[11.5px] text-ink-3">{i.hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Çoklu kişi seçici — grup ve özel kanal kurarken. */
+function MemberPicker({
+  users, selected, onToggle,
+}: {
+  users: { id: string; name: string; title: string; unit: string; location: string; initials: string }[];
+  selected: string[];
+  onToggle: (id: string) => void;
+}) {
+  const t = useT();
+  const [q, setQ] = useState("");
+  const hits = users.filter((u) => {
+    const s = q.trim().toLocaleLowerCase("tr-TR");
+    return !s || [u.name, u.title, u.unit, u.location].some((f) => f.toLocaleLowerCase("tr-TR").includes(s));
+  });
+  return (
+    <div className="flex flex-col gap-2">
+      <SearchInput value={q} onChange={setQ} placeholder={t("chat.newChat.placeholder")} />
+      <div className="flex max-h-56 flex-col gap-0.5 overflow-y-auto rounded-md border border-line p-1">
+        {hits.map((u) => {
+          const on = selected.includes(u.id);
+          return (
+            <button
+              key={u.id}
+              type="button"
+              onClick={() => onToggle(u.id)}
+              aria-pressed={on}
+              className={cn(
+                "flex items-center gap-2.5 rounded-[10px] px-2.5 py-1.5 text-left transition-colors",
+                on ? "bg-brand-wash" : "hover:bg-inset",
+              )}
+            >
+              <span className={cn(
+                "grid h-4 w-4 flex-shrink-0 place-items-center rounded-[5px] border",
+                on ? "border-[var(--brand)] bg-brand text-white" : "border-line-firm",
+              )}>
+                {on && <span className="text-[9px] leading-none">✓</span>}
+              </span>
+              <span className="grid h-7 w-7 flex-shrink-0 place-items-center rounded-full bg-inset text-[10.5px] font-semibold text-ink-2">
+                {u.initials}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] text-ink">{u.name}</span>
+                <span className="block truncate text-[11px] text-ink-3">{u.title} · {u.unit}</span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <span className="num text-[11.5px] text-ink-3">{t("chat.group.selected", { n: selected.length })}</span>
+    </div>
+  );
+}
+
+/* --- yeni grup -------------------------------------------------------- */
+function NewGroupModal({
+  open, users, onClose, onCreate,
+}: {
+  open: boolean;
+  users: { id: string; name: string; title: string; unit: string; location: string; initials: string }[];
+  onClose: () => void;
+  onCreate: (name: string, memberIds: string[]) => void;
+}) {
+  const t = useT();
+  const [name, setName] = useState("");
+  const [sel, setSel] = useState<string[]>([]);
+  useEffect(() => { if (open) { setName(""); setSel([]); } }, [open]);
+
+  return (
+    <Modal
+      open={open} onClose={onClose} title={t("chat.group.title")} hint={t("chat.group.hint")} width="sm"
+      footer={
+        <Button variant="success" disabled={sel.length === 0} onClick={() => onCreate(name, sel)}>
+          {t("chat.group.submit")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Field label={t("chat.group.name")} hint={t("chat.group.nameHint")}>
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("chat.group.namePlaceholder")} maxLength={40} />
+        </Field>
+        <Field label={t("chat.group.members")} required hint={t("chat.group.membersHint")}>
+          <MemberPicker users={users} selected={sel} onToggle={(id) => setSel((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id]))} />
+        </Field>
+      </div>
+    </Modal>
+  );
+}
+
+/** Üye yönetimi — grup ve özel kanalda aynı ekran. */
+function MembersModal({
+  open, title, users, selected, onClose, onToggle,
+}: {
+  open: boolean;
+  title: string;
+  users: { id: string; name: string; title: string; unit: string; location: string; initials: string }[];
+  selected: string[];
+  onClose: () => void;
+  onToggle: (id: string) => void;
+}) {
+  return (
+    <Modal open={open} onClose={onClose} title={title} width="sm">
+      <MemberPicker users={users} selected={selected} onToggle={onToggle} />
     </Modal>
   );
 }
