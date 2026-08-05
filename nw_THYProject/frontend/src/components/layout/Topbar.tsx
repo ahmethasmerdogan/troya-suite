@@ -49,7 +49,7 @@ export function Topbar() {
       : pathname === to || pathname.startsWith(to + "/");
 
   return (
-    <header className="z-30 flex-shrink-0 border-b border-line bg-surface">
+    <header data-print-hide className="z-30 flex-shrink-0 border-b border-line bg-surface">
       {/* --- 1. kat --- */}
       <div className="flex h-14 items-center gap-3 px-3 sm:px-4">
         <button onClick={() => setMobileNav(true)} className={cn(ICON_BTN, "lg:hidden")} aria-label="Menü">

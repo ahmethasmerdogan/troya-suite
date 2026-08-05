@@ -381,3 +381,32 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+
+/* ====================================================================
+   YAZDIRMA — belge basılır, uygulama basılmaz.
+
+   Sistemde dört basılabilir belge var (bilet/itinerary, biniş kartı,
+   EMD makbuzu, dönem kapanış belgesi). Yazdır dendiğinde topbar, duyuru
+   şeridi, navigasyon ve butonların da kâğıda gitmesi belgeyi kullanılmaz
+   kılıyordu. `data-print-hide` taşıyan her şey basımdan düşer.
+   ==================================================================== */
+@media print {
+  [data-print-hide] { display: none !important; }
+
+  /* Kâğıt beyazdır: koyu tema ve yüzey rampası basımda anlamsız. */
+  :root, :root[data-theme="dark"], .dark {
+    --canvas: #fff; --panel: #fff; --raised: #fff; --elev: #fff; --inset: #fff;
+    --ink: #000; --ink-2: #222; --ink-3: #444;
+  }
+  html, body { background: #fff !important; }
+
+  /* Kaydırma kutuları basımda içeriğini kesmesin. */
+  * { overflow: visible !important; }
+  main { display: block !important; height: auto !important; }
+
+  /* Belge kutuları sayfa ortasında bölünmesin. */
+  .rounded-2xl, table, tr { break-inside: avoid; }
+
+  @page { margin: 12mm; }
+}

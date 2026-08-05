@@ -2,6 +2,8 @@ import type { ReactNode } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { Printer } from "lucide-react";
 import { Button } from "@/components/ui/core";
+import { usePerm } from "@/lib/usePerm";
+import { Alert } from "@/ui";
 import { PageTitle } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +28,20 @@ export function ReportShell({ title, hint, action, children }: {
   title: string; hint: string; action?: ReactNode; children: ReactNode;
 }) {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const { can, lockHint } = usePerm();
+
+  // Nav öğesini gizlemek yetmez: rotayı bilen personel doğrudan açabiliyordu.
+  // Rapor ekranları ciro, ceza ve KDV rakamlarını gösterir — kapı burada.
+  if (!can("revenue.view")) {
+    return (
+      <>
+        <PageTitle title={title} hint={hint} />
+        <Alert tone="warning" title="Bu rapora erişim yetkiniz yok">
+          {lockHint("revenue.view") ?? "Raporlar gelir görüntüleme yetkisi gerektirir."}
+        </Alert>
+      </>
+    );
+  }
 
   return (
     <>

@@ -29,7 +29,7 @@ export function MobileNav() {
   if (!mobileNav) return null;
 
   return (
-    <div className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Menü">
+    <div data-print-hide className="fixed inset-0 z-[60] lg:hidden" role="dialog" aria-modal="true" aria-label="Menü">
       <div className="anim-fade absolute inset-0 bg-[rgba(26,26,23,0.45)] backdrop-blur-[3px]" onClick={() => setMobileNav(false)} />
       <div className="anim-slide-l absolute inset-y-0 left-0 flex w-72 flex-col border-r border-line bg-panel">
         <div className="flex h-14 items-center justify-between border-b border-line px-4">

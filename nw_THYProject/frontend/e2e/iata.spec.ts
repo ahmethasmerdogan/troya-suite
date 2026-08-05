@@ -91,3 +91,12 @@ test("Rapor merkezi — hub ve dönem belgesi", async ({ page }) => {
   await expect(page.getByText("Hareket özeti")).toBeVisible();
   await expect(page.getByText("Settlement", { exact: true })).toBeVisible();
 });
+
+test("rapor rotaları yetkisiz rolde kapalı", async ({ page }) => {
+  // Personel rolünde gelir görüntüleme yetkisi yok; nav gizli ama rotayı
+  // doğrudan açmak da engellenmeli.
+  // Rol kullanıcıdan gelir; personel rolündeki demo kullanıcıyla giriş yap.
+  await page.addInitScript(() => localStorage.setItem("troya.user", "e.demir"));
+  await page.goto("/report/financial");
+  await expect(page.getByText(/erişim yetkiniz yok/i)).toBeVisible();
+});

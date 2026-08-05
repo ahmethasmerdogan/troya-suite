@@ -5,6 +5,7 @@ import { ArrowLeft, Lock, LockOpen, Printer } from "lucide-react";
 import { listClosedPeriods, queryTransactions, type TransactionRow } from "@/domain/api";
 import { financialReport, summarizePeriod, type FinancialTotals } from "@/domain/reports";
 import { useUI } from "@/store/ui";
+import { usePerm } from "@/lib/usePerm";
 import { Money } from "@/components/domain/Money";
 import { Button } from "@/components/ui/core";
 import { Banner } from "@/components/ui/banner";
@@ -26,6 +27,7 @@ export function PeriodDocument() {
   const { periodId } = useParams({ from: "/report/period/$periodId" });
   const navigate = useNavigate();
   const user = useUI((s) => s.user);
+  const { can } = usePerm();
 
   const { data: rows, isLoading } = useQuery({ queryKey: ["txAll"], queryFn: () => queryTransactions({}) });
   const { data: closedIds = [] } = useQuery({ queryKey: ["closedPeriods"], queryFn: listClosedPeriods });
@@ -41,11 +43,13 @@ export function PeriodDocument() {
   );
   const fin = useMemo(() => financialReport(periodRows), [periodRows]);
 
+  if (!can("revenue.view"))
+    return <Banner kind="warning" title="Bu belgeye erişim yetkiniz yok">Dönem kapanış belgesi gelir görüntüleme yetkisi gerektirir.</Banner>;
   if (isLoading) return <Skeleton className="h-96 w-full" />;
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+      <div data-print-hide className="flex flex-wrap items-center gap-3">
         <button
           onClick={() => navigate({ to: "/report/period" })}
           aria-label="Dönem listesine dön"

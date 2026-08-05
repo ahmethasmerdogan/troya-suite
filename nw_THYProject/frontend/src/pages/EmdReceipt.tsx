@@ -37,7 +37,7 @@ export function EmdReceipt() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
+      <div data-print-hide className="flex flex-wrap items-center gap-3">
         <button onClick={() => navigate({ to: "/emds/$emdNumber", params: { emdNumber } })} aria-label="EMD'ye dön"
           className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface text-ink-2 transition-colors hover:bg-elev hover:text-ink">
           <ArrowLeft size={16} strokeWidth={1.75} />

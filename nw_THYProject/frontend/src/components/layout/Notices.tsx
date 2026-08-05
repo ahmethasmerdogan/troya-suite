@@ -93,6 +93,7 @@ export function AnnouncementBar() {
   return (
     <div
       role="status"
+      data-print-hide
       className="anim-rise flex items-center gap-2.5 border-b border-line px-3 py-2 sm:px-4"
       style={{ background: TONE_WASH[tone], color: TONE_INK[tone] }}
     >
