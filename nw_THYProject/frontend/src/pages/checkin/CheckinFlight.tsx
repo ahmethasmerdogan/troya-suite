@@ -20,6 +20,16 @@ import { toast } from "@/components/ui/toast";
 import { formatDateTime, flightCode } from "@/lib/utils";
 
 // Uçuş detayı — yolcu kabul (check-in) ve biniş (boarding).
+const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 100) : 0);
+
+/** Kalkışa kalan — gişede en çok bakılan sayı. */
+function countdown(iso: string): string {
+  const m = Math.round((new Date(iso).getTime() - Date.now()) / 60000);
+  if (m < 0) return `${formatDateTime(iso)} · kalkış geçti`;
+  if (m < 60) return `${m} dk kaldı`;
+  return `${Math.floor(m / 60)} sa ${m % 60} dk kaldı`;
+}
+
 const PAX_TONE: Record<string, Tone> = { not_checked: "gray", checked_in: "blue", boarded: "green" };
 const PAX_LABEL: Record<string, string> = { not_checked: "Kabul bekliyor", checked_in: "Check-in", boarded: "Bindi" };
 
@@ -153,6 +163,7 @@ export function CheckinFlight() {
 
   const intl = isInternational(flight);
   const accepted = (pax ?? []).filter((p) => p.status !== "not_checked").length;
+  const waiting = (pax ?? []).filter((p) => p.status === "not_checked").length;
   const boarded = (pax ?? []).filter((p) => p.status === "boarded").length;
 
   return withList(
@@ -204,10 +215,25 @@ export function CheckinFlight() {
       />
       <DetailBody>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Kalkış" value={new Date(flight.departure).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })} hint={formatDateTime(flight.departure)} />
-          <Stat label="Kapasite" value={flight.capacity} />
-          <Stat label="Kabul" value={accepted} unit={`/ ${flight.capacity}`} />
-          <Stat label="Bindi" value={boarded} tone="var(--t-green-d)" />
+          <Stat
+            label="Kalkış"
+            value={new Date(flight.departure).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+            hint={countdown(flight.departure)}
+          />
+          <Stat label="Kapasite" value={flight.capacity} hint={`${flight.aircraft.config}${intl ? " · dış hat" : " · iç hat"}`} />
+          <Stat label="Kabul" value={accepted} unit={`/ ${flight.capacity}`} hint={`%${pct(accepted, flight.capacity)} doluluk`} />
+          <Stat label="Bindi" value={boarded} unit={accepted ? `/ ${accepted}` : undefined} tone="var(--t-green-d)"
+            hint={accepted ? `%${pct(boarded, accepted)} biniş` : undefined} />
+        </div>
+
+        {/* Kabul → biniş ilerlemesi tek çubukta: gişe bir bakışta nerede olduğunu görür. */}
+        <div className="flex items-center gap-3">
+          <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
+            <div className="h-full bg-[var(--t-green-d)] transition-[width]" style={{ width: `${pct(boarded, flight.capacity)}%` }} />
+          </div>
+          <span className="num text-[11.5px] text-ink-3">
+            {waiting} bekliyor · {accepted - boarded} kapıda · {boarded} uçakta
+          </span>
         </div>
 
         <Panel>

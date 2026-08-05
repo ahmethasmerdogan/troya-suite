@@ -1,16 +1,17 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams } from "@tanstack/react-router";
 import { checkInPassenger, getFlight, getSeatMap, listPassengers, type Seat } from "@/domain/checkin";
 import { advanceCouponStatus, newIdempotencyKey, recordBaggage } from "@/domain/api";
 import { paxSeatNotes, seatDenial } from "@/domain/seatRules";
+import { layoutFor } from "@/domain/aircraftLayout";
+import { CabinMap, CabinLegend, blockedSummary } from "@/components/checkin/CabinMap";
 import { Button, Field, Input } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Meta, MetaGrid } from "@/components/ui/surface";
 import { Banner } from "@/components/ui/banner";
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
-import { cn } from "@/lib/utils";
 
 /**
  * Koltuk seçimi — her koltuk her yolcuya verilmez.
@@ -64,7 +65,10 @@ export function SeatSelection() {
       toast.success("Yolcu kabul edildi", `${p.surname}/${p.givenName} · koltuk ${p.seat}`);
       if (couponWarning) toast.warning("Kupon ilerletilemedi", couponWarning);
       qc.invalidateQueries({ queryKey: ["pax", flightId] });
+      qc.invalidateQueries({ queryKey: ["seatmap", flightId] });
+      qc.invalidateQueries({ queryKey: ["flight", flightId] });
       qc.invalidateQueries({ queryKey: ["flights"] });
+      qc.invalidateQueries({ queryKey: ["opsBoard"] });
       qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
       navigate({ to: "/checkin/$flightId", params: { flightId } });
@@ -72,18 +76,12 @@ export function SeatSelection() {
     onError: (e: Error) => toast.danger("Kabul edilemedi", e.message),
   });
 
-  const rows = useMemo(() => {
-    const m = new Map<number, Seat[]>();
-    for (const s of seats ?? []) {
-      if (!m.has(s.row)) m.set(s.row, []);
-      m.get(s.row)!.push(s);
-    }
-    return [...m.entries()].sort((a, b) => a[0] - b[0]);
-  }, [seats]);
-
   if (isLoading || !person || !flight) return <Skeleton className="h-96 w-full" />;
 
+  const layout = layoutFor(flight.aircraft.type);
   const notes = paxSeatNotes(person);
+  const blocked = blockedSummary(seats ?? [], person);
+  const free = (seats ?? []).filter((s) => !s.occupied && !seatDenial(person, s));
   const trySelect = (s: Seat) => {
     const denial = seatDenial(person, s);
     if (denial) { toast.warning("Bu koltuk verilemez", denial.reason); return; }
@@ -95,55 +93,32 @@ export function SeatSelection() {
       <PageTitle
         title="Koltuk Seçimi"
         hint={`${person.surname}/${person.givenName} · ${flight.carrier}${flight.flightNumber} · ${flight.origin} → ${flight.destination}`}
-        action={
-          <>
-            <Button variant="ghost" onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId } })}>Vazgeç</Button>
-            <Button variant="success" disabled={!seat || accept.isPending} onClick={() => accept.mutate()}>
-              {accept.isPending ? "Kabul ediliyor…" : "Kabul et"}
-            </Button>
-          </>
-        }
       />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[1fr_320px]">
+      <div className="grid grid-cols-1 gap-4 pb-24 lg:grid-cols-[1fr_340px]">
         <Panel>
-          <PanelHead title="Kabin" hint={`${flight.aircraft.type} · ${flight.aircraft.config}`} />
+          <PanelHead
+            title="Kabin"
+            hint={`${flight.aircraft.type} · ${flight.aircraft.config} · ${flight.capacity} koltuk`}
+            action={
+              <span className="num text-[12px] text-ink-3">
+                {free.length} uygun koltuk
+              </span>
+            }
+          />
           <PanelBody>
-            <div className="flex flex-col items-center gap-1.5">
-              {rows.map(([row, list]) => (
-                <div key={row} className="flex items-center gap-1.5">
-                  <span className="num w-6 text-right text-[11px] text-ink-3">{row}</span>
-                  {list.sort((a, b) => a.col.localeCompare(b.col)).map((s) => {
-                    const denial = seatDenial(person, s);
-                    const on = seat === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => trySelect(s)}
-                        disabled={s.occupied}
-                        title={denial ? denial.reason : `${s.id} · ${s.cabin}${s.exit ? " · çıkış sırası" : ""}`}
-                        aria-label={`${s.id} ${s.cabin}${denial ? " — kapalı" : ""}`}
-                        className={cn(
-                          "num grid h-7 w-7 place-items-center rounded-sm border text-[10px] transition-colors",
-                          on ? "border-brand bg-brand text-white"
-                            : s.occupied ? "cursor-not-allowed border-line bg-sunken text-ink-4"
-                              : denial ? "border-[var(--t-amber-d)] bg-[var(--t-amber-w)] text-[var(--t-amber-i)]"
-                                : "border-line bg-panel text-ink-2 hover:border-brand hover:text-brand",
-                        )}
-                      >
-                        {denial && !s.occupied ? "⊘" : s.col}
-                      </button>
-                    );
-                  })}
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <CabinMap
+                seats={seats ?? []}
+                aircraftType={flight.aircraft.type}
+                passenger={person}
+                selected={seat}
+                ownSeat={person.seat}
+                onSelect={trySelect}
+              />
             </div>
-
-            <div className="mt-5 flex flex-wrap items-center justify-center gap-4 border-t border-line pt-4 text-[11.5px] text-ink-3">
-              <Legend className="border-line bg-panel" label="Boş" />
-              <Legend className="border-brand bg-brand" label="Seçili" />
-              <Legend className="border-line bg-sunken" label="Dolu" />
-              <Legend className="border-[var(--t-amber-d)] bg-[var(--t-amber-w)]" label="Bu yolcuya kapalı" />
+            <div className="mt-5 border-t border-line pt-4">
+              <CabinLegend layout={layout} />
             </div>
           </PanelBody>
         </Panel>
@@ -173,26 +148,67 @@ export function SeatSelection() {
             </PanelBody>
           </Panel>
 
+          {/* Kapalı koltukların NEDENİ kalıcı yüzeyde — hover'a bakmak gerekmesin. */}
+          {blocked.length > 0 && (
+            <Panel>
+              <PanelHead title="Kapalı koltuklar" hint="Bu yolcuya verilemeyecek koltuklar ve gerekçesi." />
+              <PanelBody className="flex flex-col gap-2.5 pt-1">
+                {blocked.map((b) => (
+                  <div key={b.reason} className="rounded-md border border-line bg-inset px-3 py-2">
+                    <div className="text-[12.5px] text-ink">{b.reason}</div>
+                    <div className="num mt-1 text-[11px] text-ink-3">
+                      {b.seats.length} koltuk · {b.seats.slice(0, 8).join(", ")}{b.seats.length > 8 ? " …" : ""}
+                    </div>
+                  </div>
+                ))}
+              </PanelBody>
+            </Panel>
+          )}
+
           <Panel>
             <PanelHead title="Kabul bilgileri" />
             <PanelBody className="flex flex-col gap-3">
-              <Meta label="Seçili koltuk" value={seat ?? "—"} mono />
-              <Field label="Bagaj (adet)">
+              <Field label="Bagaj (adet)" hint="Teslim alınan parça sayısı kupona yazılır (14.4).">
                 <Input type="number" min={0} max={5} value={bags} onChange={(e) => setBags(Number(e.target.value))} className="num" />
               </Field>
             </PanelBody>
           </Panel>
         </div>
       </div>
+
+      {/* Uzun kabinde başa dönmek zorunda kalmamak için aksiyon alta yapışır. */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur-sm">
+        <div className="mx-auto flex max-w-content flex-wrap items-center gap-3 px-5 py-3 sm:px-6 lg:px-8">
+          <span className="flex items-baseline gap-2">
+            <span className="microlabel">Seçili koltuk</span>
+            <span className="num text-[17px] font-semibold text-ink">{seat ?? "—"}</span>
+          </span>
+          {seat && seatInfo(seats, seat) && (
+            <span className="text-[12px] text-ink-3">{seatDescription(seatInfo(seats, seat)!)}</span>
+          )}
+          <span className="num text-[12px] text-ink-3">Bagaj {bags}</span>
+          <span className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId } })}>Vazgeç</Button>
+            <Button variant="success" disabled={!seat || accept.isPending} onClick={() => accept.mutate()}>
+              {accept.isPending ? "Kabul ediliyor…" : "Kabul et"}
+            </Button>
+          </span>
+        </div>
+      </div>
     </>
   );
 }
 
-function Legend({ className, label }: { className: string; label: string }) {
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span className={cn("h-4 w-4 rounded-sm border", className)} />
-      {label}
-    </span>
-  );
+const seatInfo = (seats: Seat[] | undefined, id: string) => (seats ?? []).find((s) => s.id === id);
+
+/** Seçilen koltuğun insan-okur tarifi — operatör ne verdiğini görsün. */
+function seatDescription(s: Seat): string {
+  return [
+    s.cabin,
+    s.position === "window" ? "pencere kenarı" : s.position === "aisle" ? "koridor" : "orta koltuk",
+    s.exit ? "çıkış sırası" : null,
+    s.bulkhead ? "bölme başı (ekstra diz mesafesi)" : null,
+    s.overWing ? "kanat hizası" : null,
+    s.nearLavatory ? "lavabo yakını" : null,
+  ].filter(Boolean).join(" · ");
 }

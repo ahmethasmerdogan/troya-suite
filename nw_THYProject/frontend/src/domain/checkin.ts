@@ -3,6 +3,10 @@
 
 import { seatDenial } from "./seatRules";
 import { airportByCode } from "./airports";
+import {
+  layoutFor, zoneOfRow, seatPosition, seatCount, configString, lastRow, type AircraftLayout,
+  type CabinZone, type CabinClass,
+} from "./aircraftLayout";
 import { MOCK_TICKETS } from "./mockData";
 import { generateTickets } from "./genTickets";
 
@@ -76,14 +80,23 @@ export interface CheckinPassenger {
   child?: boolean;
 }
 
-export type Cabin = "Business" | "Premium" | "Economy";
+export type Cabin = CabinClass;
 export interface Seat {
   id: string; // "12A"
   row: number;
   col: string;
   occupied: boolean;
   cabin: Cabin;
+  /** Acil çıkış sırası — kısıtlı yolcu oturamaz (EASA/DOT). */
   exit?: boolean;
+  /** Kabin bölmesinin ilk sırası — önünde koltuk yok (PETC kafesi sığmaz). */
+  bulkhead?: boolean;
+  /** Pencere / koridor / orta — kural motoru ve arayüz okur. */
+  position?: "window" | "aisle" | "middle";
+  /** Kanat hizası — pencereden manzara kapalı. */
+  overWing?: boolean;
+  /** Yakınında lavabo var. */
+  nearLavatory?: boolean;
 }
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -104,6 +117,22 @@ export const FLIGHTS: DepartureFlight[] = [
   { flightId: "TK712-D", carrier: "TK", flightNumber: "TK712", origin: "IST", destination: "DXB", departure: inMin(6), gate: "C14", status: "boarding", capacity: 300, checkedIn: 289, aircraft: { type: "Boeing 777-300ER", registration: "TC-JJU", config: "C28 / Y272", rows: 50, seatsPerRow: 6 } },
   { flightId: "TK16-D", carrier: "TK", flightNumber: "TK16", origin: "IST", destination: "LAX", departure: inMin(-9), gate: "G03", status: "departed", capacity: 350, checkedIn: 338, aircraft: { type: "Airbus A350-900", registration: "TC-LGC", config: "C32 / Y283", rows: 55, seatsPerRow: 6 } },
 ];
+/**
+ * Kapasite ve kabin metni artık elle yazılmıyor: uçak tipinin düzeninden
+ * türetilir. Önceden `capacity`, `config` metni ve haritadaki koltuk sayısı
+ * üç ayrı sayı söylüyordu; check-in "168/180" derken harita 252 koltuk
+ * çiziyordu.
+ */
+for (const f of FLIGHTS) {
+  const layout = layoutFor(f.aircraft.type);
+  f.capacity = seatCount(layout);
+  f.aircraft.config = configString(layout);
+  f.aircraft.rows = lastRow(layout);
+  f.aircraft.seatsPerRow = Math.max(...layout.zones.map((z) => z.columns.filter(Boolean).length));
+  // Kabul sayısı kapasiteyi aşmasın (elle yazılmış demo sayıları kırpılır).
+  f.checkedIn = Math.min(f.checkedIn, f.capacity);
+}
+
 const PASSENGERS: Record<string, CheckinPassenger[]> = {
   "TK198-D": [
     { id: "p1", surname: "ERDOGAN", givenName: "AHMET", pnr: "XQ7T2M", ticketNumber: "2351234567890", couponSeq: 1, cabin: "Business", status: "not_checked", bags: 1, ff: "TK 233 445 566", nationalId: "12345678901", passport: "U07654321", nationality: "TR", apis: true },
@@ -161,6 +190,7 @@ function digits(rng: () => number, n: number) {
 
 function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinPassenger[] {
   const rng = mkRng(flight.flightId);
+  const layout = layoutFor(flight.aircraft.type);
   const target = 10 + Math.floor(rng() * 8); // 10–17 yolcu
   const out = [...existing];
   let n = existing.length;
@@ -175,7 +205,12 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
     else if (flight.status === "boarding") status = rng() < 0.6 ? "boarded" : rng() < 0.8 ? "checked_in" : "not_checked";
     else if (flight.status === "checkin_open") status = rng() < 0.45 ? "checked_in" : "not_checked";
     const seated = status !== "not_checked";
-    const row = biz ? 1 + Math.floor(rng() * 5) : 15 + Math.floor(rng() * 27);
+    // Koltuk uçağın GERÇEK düzeninden seçilir; sabit "1-5 / 15-42" aralığı
+    // dar gövdede olmayan sıralar üretiyor ve koltuk haritada bulunamıyordu.
+    const zone = layout.zones.find((z) => z.cabin === (biz ? "Business" : "Economy")) ?? layout.zones[0];
+    const zoneCols = zone.columns.filter(Boolean) as string[];
+    const row = zone.fromRow + Math.floor(rng() * (zone.toRow - zone.fromRow + 1));
+    const col = zoneCols[Math.floor(rng() * zoneCols.length)];
     const hasTicket = rng() < 0.5;
     out.push({
       id: `${flight.flightId}-g${n}`,
@@ -187,7 +222,7 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
       ...pickRealTicket(rng, hasTicket),
       cabin: biz ? "Business" : "Economy",
       status,
-      seat: seated ? `${row}${"ABCDEF"[Math.floor(rng() * 6)]}` : undefined,
+      seat: seated ? `${row}${col}` : undefined,
       bags: Math.floor(rng() * 3),
       sequenceNumber: status === "boarded" ? 1 + Math.floor(rng() * 200) : undefined,
       nationalId: tr ? digits(rng, 11) : undefined,
@@ -225,16 +260,36 @@ export async function listPassengers(flightId: string): Promise<CheckinPassenger
 
 let seqCounter = 200;
 
-// ===== Koltuk düzeni sabitleri (getSeatMap + uygunluk doğrulaması aynı kaynağı kullanır) =====
-const EXIT_ROWS = new Set([15, 16, 30, 31]);
-const cabinForRow = (r: number): Cabin => (r <= 5 ? "Business" : r <= 14 ? "Premium" : "Economy");
-
-/** Koltuk id'sinden ("23C") deterministik koltuk bilgisi — uygunluk kontrolü için. */
-export function seatFromId(id: string): Seat | null {
-  const m = id.toUpperCase().match(/^(\d{1,2})([A-F])$/);
+/**
+ * Koltuk id'sinden ("23C") koltuk bilgisi — uygunluk kontrolü için.
+ *
+ * Kabin, çıkış ve bulkhead artık SABİT sıra numarasından değil, uçuşun
+ * uçak tipinden gelir; aynı koltuk numarası 737'de Economy, A350'de
+ * Business olabilir. Uçuş verilmezse dar gövde varsayılanı kullanılır.
+ */
+export function seatFromId(id: string, flightId?: string): Seat | null {
+  const m = id.toUpperCase().match(/^(\d{1,2})([A-K])$/);
   if (!m) return null;
   const row = Number(m[1]);
-  return { id: id.toUpperCase(), row, col: m[2], occupied: false, cabin: cabinForRow(row), exit: EXIT_ROWS.has(row) };
+  const col = m[2];
+  const flight = flightId ? FLIGHTS.find((f) => f.flightId === flightId) : undefined;
+  const layout = layoutFor(flight?.aircraft.type ?? "");
+  const zone = zoneOfRow(layout, row);
+  if (!zone || !zone.columns.includes(col)) return null;
+  return buildSeat(layout, zone, row, col, false);
+}
+
+/** Tek koltuk — düzenden türetilen tüm nitelikleriyle. */
+function buildSeat(layout: AircraftLayout, zone: CabinZone, row: number, col: string, occupied: boolean): Seat {
+  return {
+    id: `${row}${col}`, row, col, occupied,
+    cabin: zone.cabin,
+    exit: layout.exitRows.includes(row),
+    bulkhead: layout.bulkheadRows.includes(row),
+    position: seatPosition(zone.columns, col),
+    overWing: row >= layout.wingRows[0] && row <= layout.wingRows[1],
+    nearLavatory: layout.lavatoryRows.includes(row),
+  };
 }
 
 export interface CheckInInput { flightId: string; passengerId: string; seat: string; bags: number; idempotencyKey: string; }
@@ -286,16 +341,26 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
     if (gaps.length) throw new Error(`APIS eksik (${gaps.join(", ")}) — uluslararası uçuşta kabul yapılamaz.`);
   }
   // Koltuk uygunluğu — backend otorite ilkesinin mock karşılığı: UI atlatılsa bile burada reddedilir.
-  const seatInfo = seatFromId(input.seat);
-  if (!seatInfo) throw new Error(`Geçersiz koltuk: ${input.seat}`);
+  const seatInfo = seatFromId(input.seat, input.flightId);
+  if (!seatInfo) throw new Error(`Geçersiz koltuk: ${input.seat} — bu uçak tipinde böyle bir koltuk yok.`);
   const denial = seatDenial(pax, seatInfo);
   if (denial) throw new Error(`Koltuk ${seatInfo.id} bu yolcuya verilemez — ${denial.reason}`);
+
+  // Doluluk da sunucuda zorlanır: aynı koltuk iki yolcuya verilemez.
+  // (Yolcunun KENDİ koltuğunu koruması serbest — koltuk değiştirme akışı.)
+  const other = (PASSENGERS[input.flightId] ?? []).find(
+    (x) => x.id !== pax.id && x.seat?.toUpperCase() === seatInfo.id,
+  );
+  if (other) throw new Error(`Koltuk ${seatInfo.id} dolu — ${other.surname}/${other.givenName}.`);
+
+  // Koltuk DEĞİŞTİRME kabul sayacını şişirmemeli; yalnız ilk kabul sayılır.
+  const firstAccept = pax.status === "not_checked";
   pax.status = "checked_in";
-  pax.seat = input.seat;
+  pax.seat = input.seat.toUpperCase();
   pax.bags = input.bags;
-  pax.sequenceNumber = ++seqCounter;
+  if (pax.sequenceNumber == null) pax.sequenceNumber = ++seqCounter;
   const flight = FLIGHTS.find((f) => f.flightId === input.flightId);
-  if (flight) flight.checkedIn += 1;
+  if (flight && firstAccept) flight.checkedIn += 1;
   return pax;
 }
 
@@ -394,39 +459,48 @@ export async function searchPassengers(query: string): Promise<PaxHit[]> {
   return hits;
 }
 
-// Koltuk haritası — deterministik üret (Math.random yok).
+/**
+ * Koltuk haritası — uçuşun UÇAK TİPİNDEN üretilir.
+ *
+ * Doluluk artık uydurma bir hash değil: uçuşun `checkedIn` sayısı kadar
+ * koltuk deterministik olarak doldurulur, üstüne fiilen atanmış koltuklar
+ * eklenir. Böylece panodaki "168/180" ile haritadaki dolu koltuk sayısı
+ * birbirini tutar. (Önce hash ile doluluk üretiliyordu ve iki sayı
+ * birbirinden bağımsızdı.)
+ */
 export async function getSeatMap(flightId: string): Promise<Seat[]> {
   await delay(260);
+  const flight = FLIGHTS.find((f) => f.flightId === flightId);
+  const layout = layoutFor(flight?.aircraft.type ?? "");
+
   // Fiilen atanmış koltuklar — harita bunları dolu göstermezse aynı koltuk
   // iki yolcuya verilebiliyordu.
   const taken = new Set(
     (PASSENGERS[flightId] ?? []).filter((p) => p.seat).map((p) => p.seat!.toUpperCase()),
   );
-  const seats: Seat[] = [];
-  const cols = ["A", "B", "C", "D", "E", "F"];
-  const occupied = new Set<string>();
-  // bazı koltukları seed'le dolu işaretle
-  const seedStr = flightId;
+
+  const all: { zone: CabinZone; row: number; col: string }[] = [];
+  for (const zone of layout.zones) {
+    for (let r = zone.fromRow; r <= zone.toRow; r++) {
+      for (const c of zone.columns) if (c) all.push({ zone, row: r, col: c });
+    }
+  }
+
+  // Panoyla hizalı doluluk: checkedIn kadar koltuk, deterministik sırayla.
+  const target = Math.max(0, Math.min((flight?.checkedIn ?? 0) - taken.size, all.length - taken.size));
   let h = 0;
-  for (const ch of seedStr) h = (h * 31 + ch.charCodeAt(0)) % 9973;
-  const ROWS = 42; // büyük gövde
-  for (let r = 1; r <= ROWS; r++) {
-    for (const c of cols) {
-      const code = `${r}${c}`;
-      h = (h * 17 + r * 7 + c.charCodeAt(0)) % 9973;
-      if (h % 3 === 0) occupied.add(code);
-    }
+  for (const ch of flightId) h = (h * 31 + ch.charCodeAt(0)) % 9973;
+  const order = all.map((_, i) => ({ i, k: (h + i * 7919) % all.length }))
+    .sort((a, b) => a.k - b.k).map((x) => x.i);
+  const filled = new Set<number>();
+  for (const idx of order) {
+    if (filled.size >= target) break;
+    const s = all[idx];
+    if (taken.has(`${s.row}${s.col}`)) continue;
+    filled.add(idx);
   }
-  // 3 bölge: Business (1-5) · Premium (6-14) · Economy (15-42) — cabinForRow/EXIT_ROWS tek kaynak.
-  for (let r = 1; r <= ROWS; r++) {
-    for (const c of cols) {
-      seats.push({
-        id: `${r}${c}`, row: r, col: c,
-        occupied: occupied.has(`${r}${c}`) || taken.has(`${r}${c}`),
-        cabin: cabinForRow(r),
-        exit: EXIT_ROWS.has(r),
-      });
-    }
-  }
-  return seats;
+
+  return all.map((s, i) =>
+    buildSeat(layout, s.zone, s.row, s.col, filled.has(i) || taken.has(`${s.row}${s.col}`)),
+  );
 }

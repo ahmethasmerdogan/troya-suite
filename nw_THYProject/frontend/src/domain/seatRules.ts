@@ -19,8 +19,6 @@ export const EXIT_FORBIDDEN_SSR = [
 /** Yalnızca pencere kenarına (A/F) oturabilecekler — koridoru/tahliyeyi kapatmasın. */
 const WINDOW_ONLY_SSR = ["WCHC", "STCR"] as const;
 
-/** Bulkhead (kabin ilk sırası) — önünde koltuk altı yok; PETC kafesi sığmaz. */
-const BULKHEAD_ROWS = new Set([1, 6, 15]);
 
 export interface SeatDenial {
   /** Kısa kural kodu (test/log için). */
@@ -54,12 +52,15 @@ export function seatDenial(pax: CheckinPassenger, seat: Seat): SeatDenial | null
   }
 
   // 3) WCHC/STCR: yalnız pencere kenarı — koridor ve tahliye yolunu kapatmasın.
-  if (has(pax, WINDOW_ONLY_SSR) && !(seat.col === "A" || seat.col === "F")) {
-    return { code: "WINDOW_ONLY", reason: "WCHC/STCR — yalnızca pencere kenarına (A/F) yer verilebilir." };
+  //    Kenar sütun uçak tipine göre değişir (dar gövdede F, 777'de K), bu
+  //    yüzden harfe değil koltuğun KONUMUNA bakılır.
+  if (has(pax, WINDOW_ONLY_SSR) && seat.position !== "window") {
+    return { code: "WINDOW_ONLY", reason: "WCHC/STCR — yalnızca pencere kenarına yer verilebilir." };
   }
 
   // 4) PETC: bulkhead yasak — kafes ön koltuğun altına konur, bulkhead'de yer yok.
-  if (has(pax, ["PETC"]) && BULKHEAD_ROWS.has(seat.row)) {
+  //    Bulkhead sırası da uçak düzeninden gelir, sabit sayıdan değil.
+  if (has(pax, ["PETC"]) && seat.bulkhead) {
     return { code: "BULKHEAD", reason: "PETC — bulkhead (kabin ilk sırası) verilemez; kafes ön koltuk altına sığmalı." };
   }
 
