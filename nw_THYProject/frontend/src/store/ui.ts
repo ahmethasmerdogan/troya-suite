@@ -15,10 +15,29 @@ const THEME_KEY = "troya.theme";
 const ROLE_KEY = "troya.role";
 const USER_KEY = "troya.user"; // giriş yapan kullanıcının id'si
 
-function initialUser(): DemoUser | null {
+/**
+ * Oturumu geri yükle.
+ *
+ * Önceden yalnız TOHUM kadroya (`userById`) bakıyordu: yönetim panelinden
+ * eklenen bir personel giriş yapıyor, ama sayfa yenilenince login ekranına
+ * düşüyordu — çünkü kimliği tohum listede yok. Canlı kadro `store/users`
+ * içinde ve aynı depoda duruyor; önce oraya bakılır.
+ *
+ * Depodan doğrudan okuyoruz (store'u import etmek döngüsel bağımlılık olurdu).
+ */
+export function initialUser(): DemoUser | null {
   if (typeof localStorage === "undefined") return null;
   const id = localStorage.getItem(USER_KEY);
-  return id ? userById(id) ?? null : null;
+  if (!id) return null;
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem("troya.users.v1") ?? "[]");
+    if (Array.isArray(saved)) {
+      const hit = (saved as DemoUser[]).find((u) => u?.id === id);
+      // Devre dışı bırakılan personel oturumunu sürdüremez.
+      if (hit) return hit.status === "suspended" ? null : hit;
+    }
+  } catch { /* bozuk kayıt — tohuma düş */ }
+  return userById(id) ?? null;
 }
 
 function initialRole(): Role {
@@ -118,8 +137,22 @@ export const useUI = create<UIState>((set) => ({
     }
     set({ user, role: user.role });
   },
+  /**
+   * Çıkış — ortak gişe terminali varsayımıyla KİŞİSEL veriyi de temizler.
+   *
+   * Önceden yalnız kullanıcı kimliği siliniyordu; sohbet geçmişi ve okundu
+   * bilgisi tarayıcıda kalıyordu. Arayüz başka kullanıcıya göstermiyordu ama
+   * kayıt DevTools'tan okunabiliyordu — paylaşılan bir terminalde bu sızıntıdır.
+   * Kadro, kapatılan dönem ve tema/dil gibi CİHAZ ayarları korunur.
+   */
   logout: () => {
-    if (typeof localStorage !== "undefined") localStorage.removeItem(USER_KEY);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem(USER_KEY);
+      localStorage.removeItem("troya.chat.v1.msgs");
+      for (const k of Object.keys(localStorage)) {
+        if (k.startsWith("troya.chat.v1.read.")) localStorage.removeItem(k);
+      }
+    }
     set({ user: null });
   },
   chatOpen: false,
