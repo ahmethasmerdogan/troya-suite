@@ -1,5 +1,24 @@
 # IATA Kapsam Denetimi — v2
 
+> **GÜNCELLEME (2026-09-27):** Araştırma turuyla (Handbook + EU261/SHY-YOLCU/UK261, Amadeus/Sabre
+> kuyrukları, THY/LH tarife değişikliği ve ad düzeltme kuralları, IATA RP 1726) aşağıdakiler kapatıldı.
+
+| Madde | Ne yapıldı |
+| --- | --- |
+| **2.8 / 12.4.1 / 12.9.1 · Geçerlilik** | `domain/validity.ts`: kullanılmamış bilet kesimden, kısmen kullanılmış bilet ilk uçuştan 1 yıl; ücret NVA'sı kuponu sınırlar; süresi dolan bilette exchange/revalidation reddedilir (yalnız iade); yolculuk başladıysa reissue orijinal sonu aşamaz. Bilet kaydında Geçerlilik kartı. |
+| **13.10 · Hastalık uzatması** | `extendValidity`: yolculuk başladıktan sonra, raporla, bir kez; normal ücret elverişlilik gününe (rapordan ≤3 ay), özel ücret elverişlilik +7 gün; uzatmayan talep reddedilir. |
+| **2.3 · Ad ve yolcu başı bilet** | Rezervasyondan kesimde ad PNR ile birebir; her yolcu ayrı ET, PNR ancak tüm yolcular biletlenince "ticketed"; mükerrer kesim engeli. |
+| **Giriş 10 · Devir yasağı / ad düzeltme** | `nameCorrection.ts` + `correctName`: yazım (≤3 karakter), yer değiştirme, unvan, belgeli resmî değişiklik düzeltilir (eşit reissue, NAME CORRECTION, PNR güncellenir); ötesi devir olarak reddedilir. |
+| **15.1.1.1 · Tarife değişikliği (involuntary)** | `scheduleChange.ts` + `/schedule-change`: toplu uygulama, HK→TK, INVOL SKCHG cirosu, sınıf (küçük/zorunlu/önemli — DOT 2024 eşikleri), Q7 kuyruğu, "yolcu bilgilendirildi" TK→HK. |
+| **Yolcu hakları** | `passengerRights.ts` + `geo.ts`: EU261 / SHY-YOLCU (2024 değişikliği) / UK261 kapsam, büyük daire bandı, tutar, iptal bildirimi muafiyetleri, %50 indirim, olağanüstü hâl, bakım hakları; bilet kaydında hesap + kayıt, HUB rötar maruziyeti. |
+| **Kuyruklar** | `/queues`: kayıttan türeyen iş listesi (Q8 TTL, Q7 IRROP/SKCHG, Q20 geçerlilik, Q21 uçulmamış kupon, Q30 kontrol, Q40 gelir koruma, Q50 interline). |
+| **CO₂ (RP 1726)** | `co2.ts`: yakıt × 3,16, ICAO mesafe düzeltmesi, kabin katsayısı; sefer listesi, teklifler, kuponlar. |
+
+**Test:** 442 vitest · 62 e2e. **Açık kalan:** grup/çok yolculu tek işlem kesim, seyahat belgesi kontrolü
+(Timatic benzeri), ADM/ACM, check-in kapanışı sonrası geç kabul kuralı.
+
+---
+
 > **GÜNCELLEME (2026-08-03):** Aşağıdaki maddelerin bir bölümü **kapatıldı**. Kapatılanlar bu
 > bölümde listelidir; alt bölümlerdeki asıl bulgular tarihsel kayıt olarak duruyor.
 
