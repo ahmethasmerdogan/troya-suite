@@ -12,7 +12,9 @@ package com.troya.domain.coupon
  *  (2) işlem için statü uygun olmalı (void/exchange/refund → kaynak O);
  *  (3) kuponlar sırayla honor edilir (aggregate düzeyinde).
  *
- * Frontend aynası: frontend/src/domain/couponStatusMachine.ts — aynı geçiş tablosu.
+ * Frontend aynası: nw_THYProject/frontend/src/domain/couponStatusMachine.ts — aynı geçiş tablosu.
+ * Refund-Cancel (R→O, aynı raporlama dönemi) bilinçli olarak tabloda DEĞİLDİR: R terminal
+ * kalır; geri dönüş yalnız o komutun kendi kapısından yapılır (frontend `applyRefundCancel`).
  */
 enum class CouponStatus(val code: Char, val isFinal: Boolean) {
     // ----- interim (kupon hayatta) -----
@@ -58,7 +60,11 @@ enum class CouponStatus(val code: Char, val isFinal: Boolean) {
         // İzin verilen geçişler. Final statülerin çıkışı yok (terminal).
         private val TRANSITIONS: Map<CouponStatus, Set<CouponStatus>> = mapOf(
             // Y (REFUND_TFC): yalnız-vergi iadesi işareti (1.3.5) — O'dan girilir.
-            OPEN_FOR_USE to setOf(AIRPORT_CONTROL, CHECKED_IN, SUSPENDED, UNAVAILABLE, NOTIFICATION, IRREGULAR_OPS, VOID, EXCHANGED, REFUNDED, FLOWN, PRINTED, REFUND_TFC),
+            // X (PRINT_EXCHANGE): kağıt stoğun numarası ET'den farklıysa (1.3.4) — O'dan girilir.
+            OPEN_FOR_USE to setOf(
+                AIRPORT_CONTROL, CHECKED_IN, SUSPENDED, UNAVAILABLE, NOTIFICATION, IRREGULAR_OPS,
+                VOID, EXCHANGED, REFUNDED, FLOWN, PRINTED, PRINT_EXCHANGE, REFUND_TFC,
+            ),
             // İade uygunluğu O/A/Y (1.3.5) → A'dan R var; print-to-paper YALNIZ O'dan (1.3.3) → A'dan P YOK.
             AIRPORT_CONTROL to setOf(CHECKED_IN, LIFTED, IRREGULAR_OPS, SUSPENDED, FLOWN, REFUNDED),
             CHECKED_IN to setOf(LIFTED, IRREGULAR_OPS, AIRPORT_CONTROL),

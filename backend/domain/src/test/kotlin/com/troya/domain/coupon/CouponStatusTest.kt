@@ -52,6 +52,12 @@ class CouponStatusTest {
         CouponStatus.LIFTED.canTransitionTo(CouponStatus.CHECKED_IN).shouldBeFalse() // geri gidiş yok
         CouponStatus.AIRPORT_CONTROL.canTransitionTo(CouponStatus.PRINTED).shouldBeFalse() // print yalnız O'dan (1.3.3)
         CouponStatus.SUSPENDED.canTransitionTo(CouponStatus.REFUNDED).shouldBeFalse() // iade uygunluğu O/A/Y (1.3.5)
+        CouponStatus.AIRPORT_CONTROL.canTransitionTo(CouponStatus.PRINT_EXCHANGE).shouldBeFalse() // print exchange yalnız O'dan (1.3.4)
+    }
+
+    @Test
+    fun `print exchange yalnız O'dan (Handbook 1_3_4)`() {
+        CouponStatus.OPEN_FOR_USE.transitionTo(CouponStatus.PRINT_EXCHANGE) shouldBe CouponStatus.PRINT_EXCHANGE
     }
 
     @Test
