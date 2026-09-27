@@ -1,10 +1,17 @@
 // QuickRes — Rezervasyon domaini (PNR + availability). Mock; backend gelince REST'e bağlanır.
 // PNR (Passenger Name Record) → Troya'da bilet kesimine kaynak olur (PNR→ticket linkage).
 import { shiftFixture } from "./demoClock";
+import { searchFlights } from "./flights";
+import { computeFareOffers } from "./pricing";
+import type { CabinName } from "./fareTypes";
 import type { Passenger } from "./types";
 
 export type PnrStatus = "active" | "ticketed" | "cancelled";
-export type ReservationStatus = "HK" | "HL" | "TK" | "HN" | "UN"; // booking status (HK=confirmed)
+/**
+ * Segment durum kodu (booking status): HK onaylı · HL bekleme listesi ·
+ * TK tarife değişikliği onayı · HN talep · UN uçuş yok · XX iptal edildi.
+ */
+export type ReservationStatus = "HK" | "HL" | "TK" | "HN" | "UN" | "XX";
 
 export interface ReservationSegment {
   origin: string;
@@ -29,6 +36,27 @@ export interface Pnr {
   ticketedPax?: string[];
   /** Ticketing Time Limit (SSR ADTK) — bu tarihe kadar bilet kesilmezse rezervasyon düşer. */
   ttl?: string;
+  /** Serbest notlar: RM (iç not) ve OSI (havayoluna bilgi). */
+  remarks?: PnrRemark[];
+  /** Rezervasyon geçmişi (RH) — her değişiklik kim/ne zaman ile. */
+  history?: PnrHistoryEntry[];
+}
+
+export interface PnrRemark {
+  kind: "RM" | "OSI";
+  text: string;
+  by: string;
+  at: string;
+}
+
+export type PnrAction = "created" | "ticketed" | "renamed" | "ttl_extended" | "segment_cancelled" | "cancelled" | "remark";
+export interface PnrHistoryEntry {
+  at: string;
+  by: string;
+  action: PnrAction;
+  /** İnsan-okur özet — kayıt dilinde kalır (event store ilkesi), EN ikizi yanında. */
+  text: string;
+  textEn: string;
 }
 
 export interface PnrSummary {
@@ -60,9 +88,12 @@ export function ttlState(p: { status: PnrStatus; ttl?: string }, nowMs: number =
 // Availability — bir O/D/tarih için uçuş seçenekleri (shopping/inventory mock; kapsam dışı motor).
 export interface FareClass {
   rbd: string;
-  available: number; // koltuk
+  /** Satılabilir koltuk, 0–9 (rezervasyon ekranları 9'dan fazlasını "9" gösterir). */
+  available: number;
   fareFrom: { amount: number; currency: string };
-  cabin: "Economy" | "Business";
+  cabin: CabinName;
+  /** Ücret ailesi — "Economy Flex" gibi. */
+  family: string;
 }
 export interface FlightOption {
   carrier: string;
@@ -72,6 +103,7 @@ export interface FlightOption {
   departure: string;
   arrival: string;
   durationMin: number;
+  aircraft: string;
   classes: FareClass[];
 }
 
@@ -128,6 +160,15 @@ const MOCK_PNRS: Pnr[] = [
 
 // Demo saati: oluşturma ve sefer tarihleri bugüne kayar; TTL zaten şimdiye göre yazıldı.
 shiftFixture(MOCK_PNRS, ["ttl"]);
+
+// Geçmiş tohumu — her PNR oluşturulma kaydıyla, biletlenmişler kesim kaydıyla başlar.
+for (const p of MOCK_PNRS) {
+  p.history = [{ at: p.createdAt, by: "QuickRes", action: "created", text: "Rezervasyon oluşturuldu", textEn: "Reservation created" }];
+  for (const tn of p.ticketNumbers) {
+    p.history.push({ at: p.createdAt, by: "Troya", action: "ticketed", text: `Bilet kesildi · ${tn}`, textEn: `Ticket issued · ${tn}` });
+  }
+}
+MOCK_PNRS[2].remarks = [{ kind: "RM", text: "Yolcu ödemeyi akşam şubede yapacak.", by: "Elif Demir", at: MOCK_PNRS[2].createdAt }];
 
 let rlCounter = 0;
 const RL_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -226,7 +267,14 @@ export function attachTicketToPnr(
     p.status = "ticketed";
     p.ttl = undefined; // biletlendi → kesim süre limiti anlamsız
   }
+  log(p, "Troya", "ticketed",
+    `Bilet kesildi · ${ticketNumber}${pax ? ` · ${paxKey(pax)}` : ""}`,
+    `Ticket issued · ${ticketNumber}${pax ? ` · ${paxKey(pax)}` : ""}`);
   return p;
+}
+
+function log(p: Pnr, by: string, action: PnrAction, text: string, textEn: string) {
+  (p.history ??= []).push({ at: new Date().toISOString(), by, action, text, textEn });
 }
 
 /**
@@ -241,12 +289,82 @@ export function renamePnrPassenger(recordLocator: string, from: Passenger, to: P
   if (i < 0) return;
   p.passengers[i] = { ...p.passengers[i], surname: to.surname, givenName: to.givenName, title: to.title ?? p.passengers[i].title };
   if (p.ticketedPax) p.ticketedPax = p.ticketedPax.map((x) => (x === k ? paxKey(to) : x));
+  log(p, "Troya", "renamed", `Ad düzeltildi · ${k} → ${paxKey(to)}`, `Name corrected · ${k} → ${paxKey(to)}`);
+}
+
+/* ===================================================================
+   PNR işlemleri — gişenin rezervasyon üzerindeki günlük komutları.
+   Her biri geçmişe (RH) yazılır; biletlenmiş yolcu varken rezervasyonu
+   bozan işlem reddedilir (önce bilet void/iade edilir — Troya tarafı).
+   =================================================================== */
+
+const activeSegments = (p: Pnr) => p.segments.filter((s) => s.status !== "XX");
+
+/** PNR iptali (XI). Kesilmiş bilet varken yapılamaz. */
+export async function cancelPnr(recordLocator: string, by: string, reason?: string): Promise<Pnr> {
+  await delay(420);
+  const p = pnrByLocator(recordLocator);
+  if (!p) throw new Error("PNR bulunamadı");
+  if (p.status === "cancelled") throw new Error("PNR zaten iptal edilmiş.");
+  if ((p.ticketedPax?.length ?? 0) > 0 || p.ticketNumbers.length > 0)
+    throw new Error("Kesilmiş bilet var — önce biletleri void ya da iade edin, sonra rezervasyonu iptal edin.");
+  p.status = "cancelled";
+  p.ttl = undefined;
+  for (const s of p.segments) s.status = "XX";
+  log(p, by, "cancelled", `Rezervasyon iptal edildi${reason ? ` · ${reason}` : ""}`, `Reservation cancelled${reason ? ` · ${reason}` : ""}`);
+  return p;
+}
+
+/** Tek segment iptali (XE). Son aktif segment iptal edilemez — PNR iptal edilir. */
+export async function cancelSegment(recordLocator: string, index: number, by: string): Promise<Pnr> {
+  await delay(380);
+  const p = pnrByLocator(recordLocator);
+  if (!p) throw new Error("PNR bulunamadı");
+  if (p.status !== "active") throw new Error("Yalnız biletlenmemiş, aktif rezervasyonda segment iptal edilir.");
+  const seg = p.segments[index];
+  if (!seg || seg.status === "XX") throw new Error("Segment bulunamadı ya da zaten iptal.");
+  if (activeSegments(p).length <= 1) throw new Error("Son segment iptal edilemez — rezervasyonu iptal edin.");
+  seg.status = "XX";
+  const code = `${seg.carrier}${seg.flightNumber.replace(/^[A-Z]{2}/, "")}`;
+  log(p, by, "segment_cancelled", `Segment iptal · ${code} ${seg.origin}-${seg.destination}`, `Segment cancelled · ${code} ${seg.origin}-${seg.destination}`);
+  return p;
+}
+
+/** Bilet kesim süre limiti uzatma — en çok ilk kalkıştan 2 saat öncesine kadar. */
+export const TTL_EXTEND_HOURS = 24;
+export async function extendTtl(recordLocator: string, by: string, nowMs = Date.now()): Promise<Pnr> {
+  await delay(300);
+  const p = pnrByLocator(recordLocator);
+  if (!p) throw new Error("PNR bulunamadı");
+  if (p.status !== "active") throw new Error("Yalnız biletlenmemiş rezervasyonun süresi uzatılır.");
+  const firstDep = Math.min(...activeSegments(p).map((s) => Date.parse(s.departure)));
+  const cap = firstDep - 2 * 3_600_000;
+  const from = Math.max(nowMs, p.ttl ? Date.parse(p.ttl) : nowMs);
+  const next = Math.min(from + TTL_EXTEND_HOURS * 3_600_000, cap);
+  if (next <= from) throw new Error("Uçuşa çok az kaldı — süre uzatılamaz, bilet şimdi kesilmeli.");
+  p.ttl = new Date(next).toISOString();
+  log(p, by, "ttl_extended", `Bilet kesim süresi uzatıldı · ${p.ttl.slice(0, 16).replace("T", " ")}Z`, `Ticketing time limit extended · ${p.ttl.slice(0, 16).replace("T", " ")}Z`);
+  return p;
+}
+
+/** Not ekle — RM iç nottur, OSI havayoluna bilgi mesajıdır. */
+export async function addRemark(recordLocator: string, kind: PnrRemark["kind"], text: string, by: string): Promise<Pnr> {
+  await delay(240);
+  const p = pnrByLocator(recordLocator);
+  if (!p) throw new Error("PNR bulunamadı");
+  const clean = text.trim();
+  if (clean.length < 3) throw new Error("Not en az 3 karakter olmalı.");
+  if (clean.length > 200) throw new Error("Not 200 karakteri geçemez.");
+  (p.remarks ??= []).push({ kind, text: clean, by, at: new Date().toISOString() });
+  log(p, by, "remark", `${kind} eklendi · ${clean}`, `${kind} added · ${clean}`);
+  return p;
 }
 
 export interface CreatePnrInput {
   passengers: Passenger[];
   segments: ReservationSegment[];
   contact?: string;
+  by?: string;
 }
 export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
   await delay(600);
@@ -260,31 +378,56 @@ export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
     ticketNumbers: [],
     // Standart TTL: rezervasyondan 72 saat (SSR ADTK) — süresinde kesilmezse uyarı → iptal.
     ttl: new Date(Date.now() + 72 * 3_600_000).toISOString(),
+    history: [],
   };
+  log(pnr, input.by ?? "QuickRes", "created", "Rezervasyon oluşturuldu", "Reservation created");
   MOCK_PNRS.unshift(pnr);
   return pnr;
 }
 
-// Availability mock — O/D/tarih için sabit üretilmiş uçuş listesi.
-export async function getAvailability(origin: string, destination: string, _date: string): Promise<FlightOption[]> {
+/**
+ * Uygunluk (availability) — bir O/D/gün için seferler ve sınıf bazında
+ * satılabilir koltuk.
+ *
+ * Önce güzergâhtan bağımsız sabit üç uçuş (TK198, TK1991, TK2024) dönüyordu:
+ * IST→LHR sorgusu Tokyo seferini gösteriyordu. Artık Bilet Kes sihirbazının
+ * kullandığı AYNI sefer programından (`searchFlights`) ve AYNI ücret
+ * motorundan (`computeFareOffers`) türer — iki ekran aynı uçuşu, aynı
+ * "…'den başlayan" fiyatla söyler. Koltuk sayısı RBD başına 0–9'dur
+ * (rezervasyon ekranı geleneği); ucuz sınıflar daha çabuk kapanır.
+ */
+export async function getAvailability(origin: string, destination: string, date: string): Promise<FlightOption[]> {
   await delay(360);
-  const o = origin.toUpperCase(), d = destination.toUpperCase();
-  const base = [
-    { fn: "TK198", dep: "08:05", arr: "10:40", dur: 155 },
-    { fn: "TK1991", dep: "13:20", arr: "15:55", dur: 155 },
-    { fn: "TK2024", dep: "19:45", arr: "22:20", dur: 155 },
-  ];
-  return base.map((b, i) => ({
-    carrier: "TK",
-    flightNumber: b.fn,
-    origin: o,
-    destination: d,
-    departure: `${_date}T${b.dep}:00`,
-    arrival: `${_date}T${b.arr}:00`,
-    durationMin: b.dur,
-    classes: [
-      { rbd: "Y", available: 9 - i, fareFrom: { amount: 4200 + i * 350, currency: "TRY" }, cabin: "Economy" as const },
-      { rbd: "C", available: 4 - i, fareFrom: { amount: 12800 + i * 600, currency: "TRY" }, cabin: "Business" as const },
-    ],
-  }));
+  const day = date || new Date().toISOString().slice(0, 10);
+  return searchFlights(origin, destination, day, 1).map((f) => {
+    const offers = computeFareOffers([{ origin: f.origin, destination: f.destination }], f.demandFactor);
+    return {
+      carrier: f.carrier,
+      flightNumber: f.flightNumber,
+      origin: f.origin,
+      destination: f.destination,
+      departure: f.departure,
+      arrival: f.arrival,
+      durationMin: f.durationMin,
+      aircraft: f.aircraft,
+      classes: offers.map((o, i) => {
+        // Kapanma olasılığı ucuz sınıflarda (listenin sonu) daha yüksek.
+        const h = seatHash(`${f.id}-${o.rbd}`);
+        const closed = h % 100 < Math.min(70, i * 9);
+        return {
+          rbd: o.rbd,
+          available: closed ? 0 : 1 + (h % 9),
+          fareFrom: o.total,
+          cabin: o.cabin,
+          family: o.fareType.label,
+        };
+      }),
+    };
+  });
+}
+
+function seatHash(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return Math.abs(h);
 }

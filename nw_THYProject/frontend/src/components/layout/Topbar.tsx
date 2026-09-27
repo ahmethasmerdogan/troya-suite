@@ -43,10 +43,18 @@ export function Topbar() {
   const dark = theme === "dark";
   const unread = useChatUnreadTotal();
 
-  const isOn = (to: string) =>
+  const matchesPath = (to: string) =>
     to === "/search"
       ? /^\/(search|tickets|itinerary)(\/|$)/.test(pathname)
       : pathname === to || pathname.startsWith(to + "/");
+  // Aynı sayfaya birden çok öğe uyabilir (/res ve /res/availability): yalnız
+  // EN ÖZGÜL eşleşme aktiftir — iki sekme birden altı çizili görünmesin.
+  const bestTo = (def?.sections ?? [])
+    .flatMap((s) => s.items)
+    .filter((i) => !i.contextual && matchesPath(i.to))
+    .map((i) => i.to)
+    .sort((a, b) => b.length - a.length)[0];
+  const isOn = (to: string) => to === bestTo;
 
   return (
     <header data-print-hide className="z-30 flex-shrink-0 border-b border-line bg-surface">

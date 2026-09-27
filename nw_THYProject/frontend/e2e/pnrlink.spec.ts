@@ -31,12 +31,17 @@ test.describe("Rezervasyon → bilet", () => {
 
   test("uygunluk sorgusunda sınıfa tıklayınca rezervasyon formu o seferle açılır", async ({ page }) => {
     await page.goto("/res/availability");
-    await page.locator("input[type=date]").fill("2026-09-10");
+    // Tarih takvimden seçilir (tarayıcının "mm/dd/yyyy" kutusu değil).
+    await page.getByRole("button", { name: /Eyl|Eki|Kas|Ara|Oca|Şub|Mar|Nis|May|Haz|Tem|Ağu|Gün/ }).first().click();
+    await page.getByRole("button", { name: "Yarın", exact: true }).click();
     await page.getByRole("button", { name: "Ara", exact: true }).click();
 
-    await page.getByRole("button", { name: /Economy/ }).first().click();
+    // Seferler güzergâha özgüdür; ilk açık Economy sınıfının seferi forma taşınır.
+    const cls = page.getByRole("button", { name: /^Economy [A-Z] [1-9]$/ }).first();
+    const flightNo = await cls.locator("xpath=ancestor::div[contains(@class,'grid')][1]").locator("span.num").first().innerText();
+    await cls.click();
     await expect(page).toHaveURL(/\/res\/new\?/);
     await expect(page.getByText(/Uygunluk sorgusundan gelindi/)).toBeVisible();
-    await expect(page.getByRole("textbox", { name: /Uçuş No/ })).toHaveValue("198");
+    await expect(page.getByRole("textbox", { name: /Uçuş No/ })).toHaveValue(flightNo.replace(/^TK/, ""));
   });
 });
