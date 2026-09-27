@@ -40,6 +40,15 @@ export const tr = {
   "panel.work.hint": "Kuyruklarda {n} iş · {u} acil",
   "panel.work.empty": "Kuyruklar boş",
   "panel.work.clear": "Bekleyen iş yok — kuyruklar temiz.",
+  "queues.help.title": "Kuyruklar",
+  "queues.help.what": "Gişenin iş listesi. İşler kayıtların şu anki hâlinden türer: kayıt düzelince iş kendiliğinden düşer.",
+  "queues.help.s1": "Soldan bir kuyruk seçin ya da \"Tümü\" ile en acil işten başlayın.",
+  "queues.help.s2": "\"Kaydı aç\" ile PNR'a ya da bilete gidin ve gereğini yapın (biletle, iade et, kontrolü iste…).",
+  "queues.help.s3": "Hemen çözemediğiniz işi erteleyin; yolcuya ulaştıysanız ve dönüş bekliyorsanız \"Tamamlandı\" deyin.",
+  "queues.help.w1": "\"Tamamlandı\" kaydı değiştirmez — yalnız sizin listenizden kaldırır. Kayıt düzelmediyse iş yarın yeniden görünebilir.",
+  "queues.help.sc.open": "kaydı aç",
+  "queues.help.sc.done": "tamamlandı, sonraki",
+  "queues.help.sc.delay": "4 saat ertele",
 } as const;
 
 export const en: Record<keyof typeof tr, string> = {
@@ -83,4 +92,13 @@ export const en: Record<keyof typeof tr, string> = {
   "panel.work.hint": "{n} items in queues · {u} urgent",
   "panel.work.empty": "Queues are empty",
   "panel.work.clear": "Nothing pending — queues are clear.",
+  "queues.help.title": "Queues",
+  "queues.help.what": "The desk's work list. Items derive from the current state of records: fix the record and the item leaves on its own.",
+  "queues.help.s1": "Pick a queue on the left, or start from the most urgent item with \"All\".",
+  "queues.help.s2": "\"Open record\" takes you to the PNR or ticket; act on it (ticket, refund, request control…).",
+  "queues.help.s3": "Delay what you can't solve now; if you reached the passenger and await an answer, mark it done.",
+  "queues.help.w1": "\"Done\" doesn't change the record — it only removes it from your list. If the record isn't fixed the item may reappear.",
+  "queues.help.sc.open": "open record",
+  "queues.help.sc.done": "done, next",
+  "queues.help.sc.delay": "delay 4 hours",
 };

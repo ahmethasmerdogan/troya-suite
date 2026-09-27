@@ -27,6 +27,12 @@ export const tr = {
   "skchg.ack": "Yolcu bilgilendirildi",
   "skchg.ackHint": "Tarife değişikliği (TK) — yolcuya yeni saat bildirilmeli",
   "skchg.ackOk": "Kupon HK'ya döndü",
+  "skchg.help.title": "Tarife değişikliği",
+  "skchg.help.what": "Saati değişen bir seferi, o seferde açık kuponu olan tüm biletlere tek işlemde uygular.",
+  "skchg.help.s1": "Etkilenen seferi listeden seçin (en çok bileti etkileyen en üstte).",
+  "skchg.help.s2": "Yeni kalkışı girin; değişikliğin sınıfı (küçük / zorunlu / önemli) hesaplanır.",
+  "skchg.help.s3": "Uygulayın ve Q7 kuyruğundan yolcuları tek tek bilgilendirin; kabul edene \"Yolcu bilgilendirildi\" deyin.",
+  "skchg.help.w1": "Zorunlu ve önemli değişiklikte yolcu ücretsiz değişiklik ya da zorunlu iade hakkına sahiptir; ciro kutusuna INVOL SKCHG yazılır.",
 } as const;
 
 export const en: Record<keyof typeof tr, string> = {
@@ -57,4 +63,10 @@ export const en: Record<keyof typeof tr, string> = {
   "skchg.ack": "Passenger notified",
   "skchg.ackHint": "Schedule change (TK) — the passenger must be told the new time",
   "skchg.ackOk": "Coupon back to HK",
+  "skchg.help.title": "Schedule change",
+  "skchg.help.what": "Applies a retimed flight to every ticket with an open coupon on it, in one step.",
+  "skchg.help.s1": "Pick the affected flight from the list (most affected tickets first).",
+  "skchg.help.s2": "Enter the new departure; the class of change (minor / involuntary / significant) is computed.",
+  "skchg.help.s3": "Apply, then notify passengers one by one from queue Q7; mark \"Passenger notified\" for those who accept.",
+  "skchg.help.w1": "For involuntary and significant changes the passenger may take a free change or an involuntary refund; INVOL SKCHG goes in the endorsement box.",
 };

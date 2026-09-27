@@ -134,6 +134,25 @@ const GUIDES: { match: (path: string) => boolean; guide: ScreenGuide }[] = [
     },
   },
   {
+    match: (p) => p === "/queues",
+    guide: {
+      title: "queues.help.title",
+      what: "queues.help.what",
+      steps: ["queues.help.s1", "queues.help.s2", "queues.help.s3"],
+      watch: ["queues.help.w1"],
+      shortcuts: [["o", "queues.help.sc.open"], ["n", "queues.help.sc.done"], ["d", "queues.help.sc.delay"]],
+    },
+  },
+  {
+    match: (p) => p === "/schedule-change",
+    guide: {
+      title: "skchg.help.title",
+      what: "skchg.help.what",
+      steps: ["skchg.help.s1", "skchg.help.s2", "skchg.help.s3"],
+      watch: ["skchg.help.w1"],
+    },
+  },
+  {
     match: (p) => p === "/chat",
     guide: {
       title: "admin.help.chat.title",
