@@ -4,8 +4,8 @@ import { ArrowRight, ArrowUpRight, BookText, Search, TicketPlus } from "lucide-r
 import { getDashboardStats, listTickets } from "@/domain/api";
 import { STATUS_META } from "@/domain/couponStatus";
 import { STATUS_TONE } from "@/components/domain/statusTone";
-import { listFlights } from "@/domain/checkin";
-import { listPnrs } from "@/domain/reservation";
+import { checkinWindow, listFlights } from "@/domain/checkin";
+import { listPnrs, ttlState } from "@/domain/reservation";
 import { useUI } from "@/store/ui";
 import { useT, type Key } from "@/i18n";
 import { MODULES } from "@/modules";
@@ -19,10 +19,10 @@ import { DailyTip } from "@/components/tips/DailyTip";
 import { WorkSummary } from "@/components/domain/WorkSummary";
 import { formatDateTime, locale } from "@/lib/utils";
 
-/** Sparkline altındaki gün kısaltmaları — pazartesiden pazara. */
+/** Sparkline altındaki gün kısaltmaları — Date.getDay() sırasıyla (pazar = 0). */
 const DOW: Key[] = [
-  "search.panel.dow.mon", "search.panel.dow.tue", "search.panel.dow.wed", "search.panel.dow.thu",
-  "search.panel.dow.fri", "search.panel.dow.sat", "search.panel.dow.sun",
+  "search.panel.dow.sun", "search.panel.dow.mon", "search.panel.dow.tue", "search.panel.dow.wed",
+  "search.panel.dow.thu", "search.panel.dow.fri", "search.panel.dow.sat",
 ];
 
 /**
@@ -50,6 +50,9 @@ export function Panel() {
         : hour < 18 ? "search.panel.greeting.day"
           : "panel.greeting",
   );
+  const checkedIn = flights.data?.reduce((a, f) => a + f.checkedIn, 0);
+  const capacity = flights.data?.reduce((a, f) => a + f.capacity, 0);
+  const activePnrs = pnrs.data?.filter((p) => p.status === "active");
   const counts: Record<string, number> = {
     quickres: pnrs.data?.length ?? 0,
     troya: tickets.data?.length ?? 0,
@@ -70,17 +73,23 @@ export function Panel() {
       />
 
       <div data-tour="panel.kpis" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t("panel.kpi.flights")} value={flights.data?.length ?? "—"} />
-        <Stat label={t("panel.kpi.checkedin")} value={flights.data?.reduce((a, f) => a + f.checkedIn, 0) ?? "—"} />
-        <Stat label={t("panel.kpi.pnrs")} value={pnrs.data?.filter((p) => p.status === "active").length ?? "—"} />
-        <Stat label={t("panel.kpi.tickets")} value={tickets.data?.length ?? "—"} />
+        <Stat label={t("panel.kpi.flights")} value={flights.data?.length ?? "—"}
+          hint={flights.data ? t("panel.kpi.flights.hint", { n: flights.data.filter((f) => checkinWindow(f).state === "open").length }) : undefined} />
+        <Stat label={t("panel.kpi.checkedin")} value={checkedIn ?? "—"}
+          hint={capacity ? t("panel.kpi.checkedin.hint", { n: Math.round(((checkedIn ?? 0) / capacity) * 100) }) : undefined} />
+        <Stat label={t("panel.kpi.pnrs")} value={activePnrs?.length ?? "—"}
+          hint={activePnrs ? t("panel.kpi.pnrs.hint", { n: activePnrs.filter((p) => ttlState(p).kind !== "ok").length }) : undefined} />
+        <Stat label={t("panel.kpi.tickets")} value={tickets.data?.length ?? "—"}
+          hint={stats.data ? t("panel.kpi.tickets.hint", { n: stats.data.issuedToday }) : undefined} />
       </div>
 
       <DailyTip />
 
-      <WorkSummary />
-
-      <StationNotices />
+      {/* İş listesi ve duyurular yan yana: ikisi de "şimdi ne yapmalıyım" sorusunun cevabı. */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <WorkSummary />
+        <StationNotices />
+      </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
@@ -108,7 +117,9 @@ export function Panel() {
                 </div>
                 <Sparkline points={stats.data.weekly} className="mt-3 w-full" />
                 <div className="mt-2 flex justify-between text-[11px] text-ink-3">
-                  {DOW.map((d) => <span key={d}>{t(d)}</span>)}
+                  {stats.data.weeklyDays.map((d, i) => (
+                    <span key={d} className={i === 6 ? "font-semibold text-ink" : undefined}>{t(DOW[new Date(`${d}T12:00:00Z`).getUTCDay()])}</span>
+                  ))}
                 </div>
               </>
             )}

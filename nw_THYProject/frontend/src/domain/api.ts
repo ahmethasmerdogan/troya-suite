@@ -246,7 +246,12 @@ export function newIdempotencyKey(): string {
 // ===== Panel dashboard istatistikleri (mock; store'dan türetilir) =====
 export interface DashboardStats {
   statusDist: { status: CouponStatus; count: number }[];
-  weekly: number[]; // son 7 gün kesilen bilet
+  /** Son 7 günde kesilen bilet sayısı — en eski günden bugüne. */
+  weekly: number[];
+  /** `weekly` ile aynı sırada günler (YYYY-MM-DD, demo saati). */
+  weeklyDays: string[];
+  /** Bugün kesilen bilet sayısı. */
+  issuedToday: number;
   activity: { id: string; type: LifecycleEvent["type"]; label: string; ref: string; occurredAt: string; status?: CouponStatus }[];
 }
 export async function getDashboardStats(): Promise<DashboardStats> {
@@ -260,7 +265,12 @@ export async function getDashboardStats(): Promise<DashboardStats> {
     .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
     .slice(0, 6);
 
-  return { statusDist, weekly: [4, 7, 5, 9, 6, 11, 8], activity };
+  // Haftalık kesim — kayıtlardan sayılır (önce sabit bir dizi çiziliyordu).
+  const DAY = 86_400_000;
+  const today = Math.floor(demoNow() / DAY) * DAY;
+  const weeklyDays = Array.from({ length: 7 }, (_, i) => new Date(today - (6 - i) * DAY).toISOString().slice(0, 10));
+  const weekly = weeklyDays.map((d) => store.filter((tk) => tk.issuedAt.slice(0, 10) === d).length);
+  return { statusDist, weekly, weeklyDays, issuedToday: weekly[6], activity };
 }
 
 // =====================================================================
