@@ -4,8 +4,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
 import {
   BookMarked, ClipboardList, FileText, LayoutDashboard, Package, PlaneTakeoff,
-  Search, Ticket, TicketPlus,
-} from "lucide-react";
+  Search, Ticket, TicketPlus, Inbox } from "lucide-react";
 import { searchEmds, searchTickets } from "@/domain/api";
 import { searchPnrs } from "@/domain/reservation";
 import type { Emd, TicketSummary } from "@/domain/types";
@@ -162,6 +161,7 @@ export function CommandPalette() {
           <Group heading={t("search.cmd.group.go")}>
             <Row icon={<TicketPlus size={15} strokeWidth={1.75} />} label={t("nav.issue")} onSelect={() => go(() => navigate({ to: "/issue" }))} />
             <Row icon={<Search size={15} strokeWidth={1.75} />} label={t("nav.search")} onSelect={() => go(() => navigate({ to: "/search" }))} />
+            <Row icon={<Inbox size={15} strokeWidth={1.75} />} label={t("nav.queues")} hint="Q8 · Q7 · QT" onSelect={() => go(() => navigate({ to: "/queues" }))} />
             <Row icon={<Package size={15} strokeWidth={1.75} />} label={t("nav.emd.search")} onSelect={() => go(() => navigate({ to: "/emds" }))} />
             <Row icon={<ClipboardList size={15} strokeWidth={1.75} />} label={t("nav.report")} onSelect={() => go(() => navigate({ to: "/report" }))} />
             <Row icon={<PlaneTakeoff size={15} strokeWidth={1.75} />} label={t("nav.section.checkin")} onSelect={() => go(() => navigate({ to: "/checkin" }))} />

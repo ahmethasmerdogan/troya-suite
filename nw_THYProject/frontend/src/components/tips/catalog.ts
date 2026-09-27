@@ -121,6 +121,16 @@ export const TOURS: Tour[] = [
     ],
   },
   {
+    id: "queues",
+    name: "tips.tour.queues",
+    match: (p) => p === "/queues",
+    home: "/queues",
+    steps: [
+      { target: "queues.list", title: "tips.queues.list.t", body: "tips.queues.list.b" },
+      { target: "queues.items", title: "tips.queues.items.t", body: "tips.queues.items.b" },
+    ],
+  },
+  {
     id: "reports",
     home: "/reports",
     perm: "revenue.view",
@@ -165,6 +175,7 @@ export const TIPS = {
   "reports.close": { title: "tips.b.close.t", body: "tips.b.close.b" },
   "res.ttl": { title: "tips.b.ttl.t", body: "tips.b.ttl.b" },
   "irrop.compensation": { title: "tips.b.comp.t", body: "tips.b.comp.b" },
+  "queues.work": { title: "tips.b.queue.t", body: "tips.b.queue.b" },
 } as const satisfies Record<string, TipDef>;
 
 export type TipId = keyof typeof TIPS;

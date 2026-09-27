@@ -14,7 +14,8 @@ import { quoteRefund, type InvoluntaryReason, type RefundType } from "./refundRu
 import type { WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
-import { attachTicketToPnr, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
+import { attachTicketToPnr, listPnrs, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
+import { buildQueueItems, type QueueItem } from "./queues";
 import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
 import { demoNow } from "./demoClock";
 import { assessRights, payableRegime, type DisruptionInput, type RightsAssessment } from "./passengerRights";
@@ -1647,6 +1648,15 @@ export async function extendValidity(input: ExtendValidityInput): Promise<Ticket
   }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
+}
+
+// =====================================================================
+// Kuyruklar — kayıtlardan türeyen iş listesi (okuma modeli)
+// =====================================================================
+export async function listQueueItems(): Promise<QueueItem[]> {
+  await delay(240);
+  const [pnrs, messages] = await Promise.all([listPnrs(), listMessages()]);
+  return buildQueueItems({ tickets: store, pnrs, messages, alerts: scanRevenueAlerts(store) }, demoNow());
 }
 
 // =====================================================================

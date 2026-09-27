@@ -55,6 +55,7 @@ const ticketDetailRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/TicketDetail"), "TicketDetail"),
   validateSearch: (s: Record<string, unknown>): { flow?: string } => ({ flow: typeof s.flow === "string" ? s.flow : undefined }),
 });
+const queuesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/queues", component: lazyRouteComponent(() => import("@/pages/Queues"), "Queues") });
 const itineraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/itinerary/$ticketNumber", component: lazyRouteComponent(() => import("@/pages/Itinerary"), "Itinerary") });
 const messagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/messages", component: lazyRouteComponent(() => import("@/pages/Messages"), "Messages") });
 const agreementsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/agreements", component: lazyRouteComponent(() => import("@/pages/Agreements"), "Agreements") });
@@ -97,7 +98,7 @@ const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   resSearchRoute, resNewRoute, resAvailRoute, resDetailRoute,
-  profileRoute, searchRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
+  profileRoute, searchRoute, queuesRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
   emdReceiptRoute, reportRoute, reportFinancialRoute, reportPeriodRoute, reportPeriodDocRoute, reportsHubRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
   adminRoute, guideRoute, docsRoute, chatRoute,

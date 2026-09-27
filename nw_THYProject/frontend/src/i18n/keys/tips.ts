@@ -53,6 +53,13 @@ export const tr = {
   "tips.tour.res": "Rezervasyon (PNR)",
   "tips.tour.ops": "HUB Kontrol",
   "tips.tour.reports": "Rapor merkezi",
+  "tips.tour.queues": "Kuyruklar",
+  "tips.queues.list.t": "Kuyruklar",
+  "tips.queues.list.b": "Her kuyruk bir iş türüdür: süresi dolan rezervasyon (Q8), düzensiz operasyon (Q7), geçerlilik, kontrol, gelir koruma, partner mesajı. Kırmızı sayı acil işleri gösterir.",
+  "tips.queues.items.t": "Sıradaki iş",
+  "tips.queues.items.b": "En acil ve son tarihi en yakın iş en üstte. Kaydı açıp gereğini yapın; kayıt düzelince iş kendiliğinden düşer. Hemen çözemiyorsanız erteleyin.",
+  "tips.b.queue.t": "Kuyrukla çalışmak",
+  "tips.b.queue.b": "o ile kaydı açın, n ile işi bitirip sonrakine geçin, d ile dört saat erteleyin. Kuyruk kayıtlardan türer: PNR biletlenince ya da kupon iade edilince iş kendiliğinden kaybolur.",
 
   // --- tur: panel ---
   "tips.panel.modules.t": "Modüller",
@@ -245,6 +252,13 @@ export const en: Record<keyof typeof tr, string> = {
   "tips.tour.res": "Reservation (PNR)",
   "tips.tour.ops": "HUB Control",
   "tips.tour.reports": "Report center",
+  "tips.tour.queues": "Queues",
+  "tips.queues.list.t": "Queues",
+  "tips.queues.list.b": "Each queue is a kind of work: expiring bookings (Q8), irregular operations (Q7), validity, control, revenue protection, partner messages. The red number shows urgent items.",
+  "tips.queues.items.t": "Next item",
+  "tips.queues.items.b": "The most urgent item with the nearest deadline is on top. Open the record and act; once the record is fixed the item leaves on its own. Delay it if you can't solve it now.",
+  "tips.b.queue.t": "Working a queue",
+  "tips.b.queue.b": "Press o to open the record, n to finish and move on, d to delay four hours. Queues derive from records: once the PNR is ticketed or the coupon refunded, the item disappears by itself.",
 
   "tips.panel.modules.t": "Modules",
   "tips.panel.modules.b": "QuickRes is reservations, Troya is ticketing, QuickCheck-in is departure control. The row below opens the screens of the module you are in.",

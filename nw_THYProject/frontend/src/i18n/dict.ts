@@ -12,6 +12,7 @@ import { tr as miscTr, en as miscEn } from "./keys/misc";
 import { tr as chatTr, en as chatEn } from "./keys/chat";
 import { tr as tipsTr, en as tipsEn } from "./keys/tips";
 import { tr as rightsTr, en as rightsEn } from "./keys/rights";
+import { tr as queuesTr, en as queuesEn } from "./keys/queues";
 
 import type { Lang } from "@/store/ui";
 
@@ -295,8 +296,8 @@ const en: Record<keyof typeof tr, string> = {
  * TR ve EN değerlerini YAN YANA tutar — 130 satır uzaklıktaki iki blok
  * arasında kayma riski kalmadı.
  */
-const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr };
-const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn };
+const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr };
+const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn };
 
 export type Key = keyof typeof TR;
 
