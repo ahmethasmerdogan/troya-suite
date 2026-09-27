@@ -1,0 +1,482 @@
+@import "tailwindcss";
+@config "../tailwind.config.ts";
+
+/* HashUI bileşen paketi — `src/ui/`. Token adları aşağıdaki köprüyle bizim
+   token'larımıza bağlanır; ikinci bir tasarım dili oluşmaz. */
+@import "./ui/hashui.css";
+
+/* =====================================================================
+   TROYA — Tasarım Sistemi
+   Tek doğruluk kaynağı: DESIGN_SYSTEM.md
+
+   Bu bir gişe konsolu: günde sekiz saat açık kalır, iş zaman baskısı
+   altında yapılır, ekran veri doludur. Sistem bu üç gerçekten türetildi.
+
+   1  YÜZEY   canvas › panel › raised › sunken. Dört kademe, ılık nötr.
+   2  YAPI    Kıl çizgi taşır. Drop shadow YOK — hiçbir yerde.
+              Tek istisna butonun İÇİNDEKİ hairline ışık (gölge değil).
+   3  RENK    Üç ayrı iş, üç ayrı katman:
+                · marka (THY kırmızısı) → aksiyon ve aktif konum
+                · statü (sekiz aile)    → kaydın durumu
+                · nötr                  → geri kalan her şey
+              Bu üç katman asla birbirinin işini yapmaz.
+   4  ÖLÇÜ    Köşe 10/12/16 · buton tam yuvarlak · gövde 14/1.55 · satır 40px
+   5  RAKAM   Her sayı, saat, belge no ve kod mono + tabular.
+   ===================================================================== */
+
+:root {
+  /* --- yüzey ------------------------------------------------------- */
+  --canvas: #f4f4f2;   /* uygulama zemini, panel araları */
+  --panel: #ffffff;    /* panel, kart, kabuk */
+  --raised: #f7f7f5;   /* tablo başlığı, panel içi bölüm */
+  --sunken: #f1f1ef;   /* gömülü alan, chip zemini */
+
+  /* --- çizgi (yapıyı bunlar taşır) --------------------------------- */
+  --hair: #eeede9;      /* hücre ayracı — en ince */
+  --line: #e6e5e1;      /* varsayılan yüzey kenarı */
+  --line-firm: #d5d4cf; /* etkileşimli alan kenarı: input, select */
+
+  /* --- mürekkep ---------------------------------------------------- */
+  --ink: #1c1b18;
+  --ink-2: #6b6862;
+  --ink-3: #a3a099;
+  --ink-4: #c6c3bb;    /* devre dışı */
+
+  /* buton yüzü — üstteki iç ışık; anatominin değişmeyen parçası */
+  --btn-hi: rgba(255, 255, 255, 0.25);
+
+  /* --- marka: THY kırmızısı ---------------------------------------- */
+  --brand: #c70a0c;
+  --brand-hover: #ab0709;
+  --brand-active: #8f0507;
+  --brand-wash: #fbecea;              /* seçili satır, aktif nav */
+  --brand-ring: rgba(199, 10, 12, 0.15);
+
+  /* --- ters yüzey (tooltip, tek koyu vurgu) ------------------------ */
+  --inverse: #1a1a17;
+  --inverse-2: #35342f;
+  --on-inverse: #ffffff;
+  --on-inverse-2: rgba(255, 255, 255, 0.66);
+
+  /* --- statü aileleri: wash / metin / nokta ------------------------ */
+  --t-green-w: rgba(5, 150, 105, 0.10);   --t-green-i: #04795c;  --t-green-d: #059669;
+  --t-blue-w: rgba(37, 99, 235, 0.10);    --t-blue-i: #1e4fc4;   --t-blue-d: #2563eb;
+  --t-amber-w: rgba(217, 119, 6, 0.13);   --t-amber-i: #a35c07;  --t-amber-d: #d97706;
+  --t-orange-w: rgba(234, 88, 12, 0.11);  --t-orange-i: #b8480e; --t-orange-d: #ea580c;
+  --t-violet-w: rgba(124, 58, 237, 0.10); --t-violet-i: #6427cc; --t-violet-d: #7c3aed;
+  --t-pink-w: rgba(219, 39, 119, 0.10);   --t-pink-i: #b31e64;   --t-pink-d: #db2777;
+  --t-red-w: rgba(220, 38, 38, 0.10);     --t-red-i: #b31d1d;    --t-red-d: #dc2626;
+  --t-gray-w: rgba(26, 26, 23, 0.055);    --t-gray-i: #63615b;   --t-gray-d: #9a978f;
+
+  /* --- statü NOKTASI: 17 kod, aile içinde de ayrışır ----------------
+     Aile rengi kimliği, adım tonu kodu anlatır. Grafik ve zaman çizgisi
+     düğümleri buradan okur; tema değişince ikisi birden döner. */
+  --st-O: #059669;  --st-F: #065f46;
+  --st-A: #3b82f6;  --st-C: #2563eb;  --st-L: #1d4ed8;
+  --st-I: #ea580c;
+  --st-S: #b45309;  --st-U: #d97706;  --st-Y: #f59e0b;
+  --st-E: #7c3aed;  --st-G: #a78bfa;
+  --st-R: #db2777;
+  --st-V: #dc2626;
+  --st-N: #78716c;  --st-P: #a8a29e;  --st-X: #8b8681;  --st-Z: #57534e;
+
+  /* --- ölçü -------------------------------------------------------- */
+  --r-sm: 10px;   /* chip, ikon karosu, menü satırı */
+  --r-md: 12px;   /* alan, panel içi bölüm */
+  --r-lg: 16px;   /* panel, kart, katman */
+  --row: 40px;         /* veri satırı */
+  --control: 36px;     /* buton, input, select */
+  --rail: 56px;
+  --topbar: 48px;
+  --pane: 380px;       /* bölünmüş konsol liste paneli */
+
+  /* --- HashUI köprüsü ---------------------------------------------
+     HashUI bileşenleri kendi token adlarını okur. Burada o adlar bizim
+     rampamıza bağlanır: paket markanın kimliğini devralır, kendi
+     zümrüt/nötr paletini getirmez. --canvas / --line / --ink / --brand
+     adları zaten ortak. */
+  --surface: var(--panel);
+  --elev: var(--raised);
+  --inset: var(--sunken);
+  --line-strong: var(--line-firm);
+  --ink2: var(--ink-2);
+  --ink3: var(--ink-3);
+  --brand-ink: var(--brand-hover);
+  --brand-soft: var(--brand-wash);
+  --dot: var(--line-firm);
+}
+
+.dark {
+  --canvas: #0e0e11;
+  --panel: #17171a;
+  --raised: #1e1e22;
+  --sunken: #131316;
+
+  --hair: rgba(255, 255, 255, 0.07);
+  --line: rgba(255, 255, 255, 0.10);
+  --line-firm: rgba(255, 255, 255, 0.18);
+
+  --ink: #f4f4f2;
+  --ink-2: #a3a3ab;
+  --ink-3: #6b6b74;
+  --ink-4: #4a4a52;
+
+  --btn-hi: rgba(255, 255, 255, 0.16);
+
+  --brand: #f1494b;
+  --brand-hover: #ff6062;
+  --brand-active: #d92f31;
+  --brand-wash: rgba(241, 73, 75, 0.14);
+  --brand-ring: rgba(241, 73, 75, 0.24);
+
+  --inverse: #f2f1ee;
+  --inverse-2: #d9d8d3;
+  --on-inverse: #1a1a17;
+  --on-inverse-2: #63615b;
+
+  --t-green-w: rgba(16, 185, 129, 0.14);  --t-green-i: #5fdcae;  --t-green-d: #10b981;
+  --t-blue-w: rgba(59, 130, 246, 0.15);   --t-blue-i: #8ab4fc;   --t-blue-d: #3b82f6;
+  --t-amber-w: rgba(245, 158, 11, 0.15);  --t-amber-i: #f5c445;  --t-amber-d: #f59e0b;
+  --t-orange-w: rgba(249, 115, 22, 0.15); --t-orange-i: #f8ad6b; --t-orange-d: #f97316;
+  --t-violet-w: rgba(139, 92, 246, 0.15); --t-violet-i: #bba6fb; --t-violet-d: #8b5cf6;
+  --t-pink-w: rgba(236, 72, 153, 0.15);   --t-pink-i: #f59fce;   --t-pink-d: #ec4899;
+  --t-red-w: rgba(220, 38, 38, 0.16);     --t-red-i: #f79b9b;    --t-red-d: #ef4444;
+  --t-gray-w: rgba(255, 255, 255, 0.07);  --t-gray-i: #a5a39d;   --t-gray-d: #6f6d67;
+
+  /* koyu zeminde aynı aileler, yükseltilmiş parlaklık */
+  --st-O: #34d399;  --st-F: #10b981;
+  --st-A: #93c5fd;  --st-C: #60a5fa;  --st-L: #3b82f6;
+  --st-I: #fb923c;
+  --st-S: #f59e0b;  --st-U: #fbbf24;  --st-Y: #fcd34d;
+  --st-E: #a78bfa;  --st-G: #c4b5fd;
+  --st-R: #f472b6;
+  --st-V: #f87171;
+  --st-N: #a8a29e;  --st-P: #d6d3d1;  --st-X: #b8b3ad;  --st-Z: #8b8681;
+
+  /* köprü — koyu temada da aynı bağlar */
+  --surface: var(--panel);
+  --elev: var(--raised);
+  --inset: var(--sunken);
+  --line-strong: var(--line-firm);
+  --ink2: var(--ink-2);
+  --ink3: var(--ink-3);
+  --brand-ink: var(--brand-hover);
+  --brand-soft: var(--brand-wash);
+  --dot: var(--line-firm);
+}
+
+@layer base {
+  * {
+    border-color: var(--line);
+  }
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+  body {
+    margin: 0;
+    background: var(--canvas);
+    color: var(--ink);
+    font-family: "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.55;
+  }
+  ::selection {
+    background: var(--brand-wash);
+  }
+  /* Klavye odağı — fare odağında görünmez. */
+  :where(a, button, [role="button"], [tabindex="0"], summary):focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+    border-radius: var(--r-sm);
+  }
+  :focus:not(:focus-visible) {
+    outline: none;
+  }
+}
+
+/* hashui.css katmansız kurallar taşır (`body`, `::selection`); @layer base
+   her zaman katmansızın altında kalır. Marka kararları burada geri alınır. */
+::selection {
+  background: var(--brand-wash);
+}
+body {
+  background: var(--canvas);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+/* --- kaydırma çubuğu: ince, sessiz ---------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-firm) transparent;
+}
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--line); border-radius: 99px; }
+::-webkit-scrollbar-thumb:hover { background: var(--line-firm); }
+
+@layer components {
+  /* microlabel — tablo başlığı, alan etiketi, bölüm başlığı */
+  .microlabel {
+    font-size: 10.5px;
+    font-weight: 600;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  /* ----------------------------------------------------------------
+     Tek buton anatomisi.
+
+     Sistemdeki HER buton aynı reçeteyi taşır: dikey gradyan yüz, aynı
+     tonun 1px ring'i ve üstte bir hairline iç ışık. `variant` yalnız
+     RENGİ değiştirir — biçimi, yüksekliği, ışığı değil. Bu bir drop
+     shadow değildir; ışık yüzeyin İÇİNDEDİR.
+     ---------------------------------------------------------------- */
+  .btn-face {
+    background-image: linear-gradient(180deg, var(--btn-a) 0%, var(--btn-b) 100%);
+    box-shadow:
+      inset 0 1px 0 var(--btn-hi),
+      0 0 0 1px var(--btn-ring);
+  }
+  .btn-face:hover:not(:disabled) {
+    background-image: linear-gradient(180deg, var(--btn-b) 0%, var(--btn-b) 100%);
+  }
+  .btn-face:active:not(:disabled) {
+    transform: scale(0.985);
+  }
+
+  /* Marka yüzü — THY kırmızısı. Sayfanın tek birincil aksiyonu. */
+  .btn-brand {
+    --btn-a: var(--brand);
+    --btn-b: var(--brand-hover);
+    --btn-ring: var(--brand-active);
+    color: #fff;
+  }
+  /* Açık yüz — ikincil aksiyon; panel yüzeyinden bir ton yükselir. */
+  .btn-plain {
+    --btn-a: var(--panel);
+    --btn-b: var(--raised);
+    --btn-ring: var(--line-firm);
+    color: var(--ink);
+  }
+  /* Yıkıcı yüz — yalnız geri alınamaz işlemlerde. */
+  .btn-danger {
+    --btn-a: color-mix(in srgb, var(--t-red-d) 88%, white);
+    --btn-b: var(--t-red-d);
+    --btn-ring: color-mix(in srgb, var(--t-red-d) 78%, black);
+    color: #fff;
+  }
+
+  /* Statü pill — wash zemin + ton metni + öncü nokta. Kenarlık yok. */
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    height: 22px;
+    padding: 0 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    white-space: nowrap;
+  }
+  .pill::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .pill-green  { background: var(--t-green-w);  color: var(--t-green-i); }
+  .pill-green::before  { background: var(--t-green-d); }
+  .pill-blue   { background: var(--t-blue-w);   color: var(--t-blue-i); }
+  .pill-blue::before   { background: var(--t-blue-d); }
+  .pill-amber  { background: var(--t-amber-w);  color: var(--t-amber-i); }
+  .pill-amber::before  { background: var(--t-amber-d); }
+  .pill-orange { background: var(--t-orange-w); color: var(--t-orange-i); }
+  .pill-orange::before { background: var(--t-orange-d); }
+  .pill-violet { background: var(--t-violet-w); color: var(--t-violet-i); }
+  .pill-violet::before { background: var(--t-violet-d); }
+  .pill-pink   { background: var(--t-pink-w);   color: var(--t-pink-i); }
+  .pill-pink::before   { background: var(--t-pink-d); }
+  .pill-red    { background: var(--t-red-w);    color: var(--t-red-i); }
+  .pill-red::before    { background: var(--t-red-d); }
+  .pill-gray   { background: var(--t-gray-w);   color: var(--t-gray-i); }
+  .pill-gray::before   { background: var(--t-gray-d); }
+
+  /* Tutar — iki tonlu: tam kısım koyu, kuruş + para birimi açık */
+  .amount {
+    font-family: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .amount .whole { color: var(--ink); font-weight: 600; letter-spacing: -0.01em; }
+  .amount .frac,
+  .amount .cur   { color: var(--ink-3); font-weight: 400; }
+
+  /* Veri hücresi — her sayı hizalı */
+  .num {
+    font-family: "Geist Mono Variable", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+
+/* --------------------------------------------------------------------
+   HashUI buton yüzleri → THY.
+
+   hashui.css bu sınıfları KATMANSIZ tanımlar; `@layer components` içinden
+   yazılan override her zaman katmansızın altında kalır. Bu yüzden bu blok
+   da katmansızdır ve dosyada ondan SONRA gelir.
+   -------------------------------------------------------------------- */
+  /* HashUI yüz adları — paketin kendi hue'ları markaya bağlanır. */
+.btn-green {
+  --btn-a: var(--brand);
+  --btn-b: var(--brand-hover);
+  --btn-ring: var(--brand-active);
+  color: #fff;
+}
+  /* İkinci bir accent yasak: paketin mavi yüzü nötre düşer. */
+.btn-success {
+  --btn-a: color-mix(in srgb, var(--t-green-d) 88%, white);
+  --btn-b: var(--t-green-d);
+  --btn-ring: color-mix(in srgb, var(--t-green-d) 78%, black);
+  color: #fff;
+}
+.btn-primary {
+  --btn-a: var(--panel);
+  --btn-b: var(--raised);
+  --btn-ring: var(--line-firm);
+  color: var(--ink);
+}
+.btn-white {
+  --btn-a: var(--panel);
+  --btn-b: var(--raised);
+  --btn-ring: var(--line-firm);
+  color: var(--ink);
+}
+.btn-dark {
+  --btn-a: var(--inverse-2);
+  --btn-b: var(--inverse);
+  --btn-ring: var(--inverse);
+  color: var(--on-inverse);
+}
+.btn-amber {
+  --btn-a: var(--t-amber-d);
+  --btn-b: var(--t-amber-d);
+  --btn-ring: var(--t-amber-i);
+  color: #fff;
+}
+
+
+/* --- hareket: kısa, tek eğri ---------------------------------------- */
+@keyframes t-fade    { from { opacity: 0 } to { opacity: 1 } }
+@keyframes t-rise    { from { opacity: 0; transform: translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes t-slide-r { from { transform: translateX(100%) } to { transform: none } }
+@keyframes t-slide-l { from { transform: translateX(-100%) } to { transform: none } }
+@keyframes t-pop     { from { opacity: 0; transform: scale(0.97) translateY(6px) } to { opacity: 1; transform: none } }
+@keyframes t-shimmer { from { background-position: 200% 0 } to { background-position: -200% 0 } }
+@keyframes t-spin    { to { transform: rotate(360deg) } }
+
+.anim-fade    { animation: t-fade 180ms ease-out }
+.anim-rise    { animation: t-rise 220ms cubic-bezier(0.16, 1, 0.3, 1) }
+.anim-slide-r { animation: t-slide-r 240ms cubic-bezier(0.16, 1, 0.3, 1) }
+.anim-slide-l { animation: t-slide-l 220ms cubic-bezier(0.16, 1, 0.3, 1) }
+.anim-pop     { animation: t-pop 200ms cubic-bezier(0.16, 1, 0.3, 1) }
+
+/* kademeli liste girişi */
+.anim-stagger > * { animation: t-rise 260ms cubic-bezier(0.16, 1, 0.3, 1) both }
+.anim-stagger > *:nth-child(1) { animation-delay: 0ms }
+.anim-stagger > *:nth-child(2) { animation-delay: 30ms }
+.anim-stagger > *:nth-child(3) { animation-delay: 60ms }
+.anim-stagger > *:nth-child(4) { animation-delay: 90ms }
+.anim-stagger > *:nth-child(5) { animation-delay: 120ms }
+.anim-stagger > *:nth-child(n + 6) { animation-delay: 150ms }
+
+
+/* --- ipucu katmanı: nabız gibi atan nokta + tur spot ışığı ----------
+   Nokta, okunmamış bir ipucunun işaretidir; halka yayılıp söner. Spot ışığı
+   hedefin çevresini karartan dev bir iç kenar gölgesidir — sistemde gölge
+   yoktur kuralının tek istisnası, çünkü gölge değil bir PERDEDİR. */
+@keyframes tip-pulse { 0% { transform: scale(0.55); opacity: 0.55 } 100% { transform: scale(2.1); opacity: 0 } }
+.tip-beacon { position: relative; display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 999px; vertical-align: middle; flex-shrink: 0 }
+.tip-beacon::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--brand); animation: tip-pulse 1.9s cubic-bezier(0.16, 1, 0.3, 1) infinite }
+.tip-beacon > span { position: relative; width: 8px; height: 8px; border-radius: 999px; background: var(--brand); box-shadow: 0 0 0 2px var(--panel) }
+.tip-beacon:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px }
+.tour-spot { position: fixed; border-radius: 12px; box-shadow: 0 0 0 9999px rgba(20, 19, 16, 0.58), 0 0 0 2px var(--brand); transition: top 220ms cubic-bezier(0.16, 1, 0.3, 1), left 220ms cubic-bezier(0.16, 1, 0.3, 1), width 220ms cubic-bezier(0.16, 1, 0.3, 1), height 220ms cubic-bezier(0.16, 1, 0.3, 1); pointer-events: none }
+.dark .tour-spot { box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.7), 0 0 0 2px var(--brand) }
+
+
+/* --- belge teatrali: kesim ve koparma -------------------------------
+   Bilet kesmek bu sistemde bir SATIŞ kaydıdır; ekranın bunu bir olay gibi
+   göstermesi personelin işlemin gerçekten tamamlandığını görmesini sağlar.
+   Makas perforasyon hattı boyunca iner, koçan kopar ve düşer. */
+@keyframes doc-in      { 0% { opacity: 0; transform: translateY(26px) scale(0.97) } 100% { opacity: 1; transform: none } }
+@keyframes doc-scissor { 0% { top: -10%; opacity: 0 } 10% { opacity: 1 } 90% { opacity: 1 } 100% { top: 104%; opacity: 0 } }
+@keyframes doc-tear    { 0% { transform: none; opacity: 1 } 100% { transform: translate(16px, 78px) rotate(7deg); opacity: 0 } }
+@keyframes doc-shake   { 0%, 100% { transform: none } 25% { transform: translateX(-2px) } 75% { transform: translateX(2px) } }
+@keyframes doc-ring    { 0% { transform: scale(0.7); opacity: 0.55 } 100% { transform: scale(1.9); opacity: 0 } }
+@keyframes doc-check   { to { stroke-dashoffset: 0 } }
+@keyframes doc-feed    { from { transform: translateY(-100%) } to { transform: none } }
+
+.anim-doc-in      { animation: doc-in 520ms cubic-bezier(0.16, 1, 0.3, 1) both }
+.anim-doc-scissor { animation: doc-scissor 1000ms cubic-bezier(0.5, 0, 0.5, 1) 220ms both }
+.anim-doc-tear    { animation: doc-tear 900ms cubic-bezier(0.4, 0, 0.7, 1) 1180ms both }
+.anim-doc-shake   { animation: doc-shake 260ms ease-in-out 1180ms }
+.anim-doc-ring    { animation: doc-ring 1500ms ease-out infinite }
+.anim-doc-check   { stroke-dasharray: 34; stroke-dashoffset: 34; animation: doc-check 420ms cubic-bezier(0.65, 0, 0.35, 1) 140ms both }
+.anim-doc-feed    { animation: doc-feed 900ms cubic-bezier(0.35, 0, 0.2, 1) both }
+
+/* Gecikmeli kademe — `both` şart, yoksa öğe bekleme süresince görünür kalır. */
+.anim-doc-rise    { animation: t-rise 460ms cubic-bezier(0.16, 1, 0.3, 1) both }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+
+/* ====================================================================
+   YAZDIRMA — belge basılır, uygulama basılmaz.
+
+   Sistemde dört basılabilir belge var (bilet/itinerary, biniş kartı,
+   EMD makbuzu, dönem kapanış belgesi). Yazdır dendiğinde topbar, duyuru
+   şeridi, navigasyon ve butonların da kâğıda gitmesi belgeyi kullanılmaz
+   kılıyordu. `data-print-hide` taşıyan her şey basımdan düşer.
+   ==================================================================== */
+@media print {
+  [data-print-hide] { display: none !important; }
+
+  /* Kâğıt beyazdır: koyu tema ve yüzey rampası basımda anlamsız. */
+  :root, :root[data-theme="dark"], .dark {
+    --canvas: #fff; --panel: #fff; --raised: #fff; --elev: #fff; --inset: #fff;
+    --ink: #000; --ink-2: #222; --ink-3: #444;
+  }
+  html, body { background: #fff !important; }
+
+  /* Marka bandı ve renkli yüzeyler kâğıda da bassın: aksi hâlde THY
+     kırmızısı beyaz-üstüne-beyaz kalıyor ve barkod tamamen kayboluyordu. */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+  /* Belge sayfayı kaplasın; kart kenarlığı kâğıtta çerçeve gibi durmasın. */
+  [data-print-sheet] {
+    border: 0 !important; border-radius: 0 !important;
+    box-shadow: none !important; margin: 0 !important; max-width: none !important;
+  }
+  [data-print-break] { break-before: page; }
+
+  /* Kaydırma kutuları basımda içeriğini kesmesin. */
+  * { overflow: visible !important; }
+  main { display: block !important; height: auto !important; }
+
+  /* Belge kutuları sayfa ortasında bölünmesin. */
+  .rounded-2xl, table, tr { break-inside: avoid; }
+
+  @page { size: A4; margin: 14mm 12mm; }
+}

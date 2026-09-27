@@ -1,0 +1,168 @@
+// Personel yetkilendirme — ROADMAP §7 "rol bazlı yetki" + Handbook 5.7 "display kısıtı".
+// 5 rol, kıdeme göre kümülatif yetki. Backend gelince Keycloak rolleri ile eşlenir.
+
+export type Role = "staff" | "supervisor" | "chief" | "manager" | "admin";
+
+/**
+ * Domain metinlerinin dili. `store/ui`'daki `Lang` ile aynı birleşim; domain
+ * katmanı store'a bağımlı olmasın diye burada ayrıca tanımlıdır (döngüsel import yok).
+ */
+export type DocLang = "tr" | "en";
+
+export const ROLE_ORDER: Role[] = ["staff", "supervisor", "chief", "manager", "admin"];
+
+export const ROLE_LABEL: Record<Role, string> = {
+  staff: "Personel",
+  supervisor: "Süpervizör",
+  chief: "Şef",
+  manager: "Müdür",
+  admin: "Admin",
+};
+export const ROLE_DESC: Record<Role, string> = {
+  staff: "Bilet kesme, EMD, check-in/biniş ve sorgulama.",
+  supervisor: "+ Para işlemleri: void, refund, exchange, endorsement; geç kabul ve belge istisnası.",
+  chief: "+ IRROP/FIM, gelir koruma görünürlüğü ve ADM/ACM.",
+  manager: "+ Kullanıcı yönetimi ve sistem ayarları.",
+  admin: "+ Rol & yetki yönetimi. Tam erişim.",
+};
+
+// EN karşılıklar — TR tablolar DEĞİŞMEDEN durur; sunum katmanı dile göre seçer.
+export const ROLE_LABEL_EN: Record<Role, string> = {
+  staff: "Staff",
+  supervisor: "Supervisor",
+  chief: "Chief",
+  manager: "Manager",
+  admin: "Admin",
+};
+export const ROLE_DESC_EN: Record<Role, string> = {
+  staff: "Ticket issuance, EMD, check-in/boarding and retrieval.",
+  supervisor: "+ Money transactions: void, refund, exchange, endorsement; late acceptance and document exceptions.",
+  chief: "+ IRROP/FIM, revenue protection visibility and ADM/ACM.",
+  manager: "+ User management and system settings.",
+  admin: "+ Role & permission management. Full access.",
+};
+
+export function roleLabel(role: Role, lang: DocLang = "tr"): string {
+  return lang === "en" ? ROLE_LABEL_EN[role] : ROLE_LABEL[role];
+}
+export function roleDesc(role: Role, lang: DocLang = "tr"): string {
+  return lang === "en" ? ROLE_DESC_EN[role] : ROLE_DESC[role];
+}
+
+export type Permission =
+  | "ticket.issue"
+  | "ticket.exchange"
+  | "ticket.refund"
+  | "ticket.void"
+  | "ticket.irrop"
+  | "ticket.endorse"
+  | "ticket.emd"
+  | "ticket.revalidate"
+  | "ticket.print"
+  | "ticket.suspend"
+  | "pta.manage"
+  | "checkin.accept"
+  | "checkin.board"
+  | "checkin.override"
+  | "adm.manage"
+  | "ops.view"
+  | "order.view"
+  | "messages.view"
+  | "revenue.view"
+  | "admin.users"
+  | "admin.users.write"
+  | "chat.channel.create"
+  | "admin.settings"
+  | "admin.roles";
+
+export const PERMISSION_LABEL: Record<Permission, string> = {
+  "ticket.issue": "Bilet kes",
+  "ticket.exchange": "Exchange / Reissue",
+  "ticket.refund": "Refund",
+  "ticket.void": "Void",
+  "ticket.irrop": "IRROP / FIM",
+  "ticket.endorse": "Endorsement",
+  "ticket.emd": "EMD / Fazla bagaj",
+  "ticket.revalidate": "Revalidation (uçuş/saat)",
+  "ticket.print": "Kağıda bas (P)",
+  "ticket.suspend": "Kuponu askıya al (S)",
+  "pta.manage": "PTA (Prepaid)",
+  "checkin.accept": "Check-in kabul",
+  "checkin.board": "Biniş (boarding)",
+  "checkin.override": "Geç kabul / belge istisnası (OK TO BOARD)",
+  "adm.manage": "ADM / ACM (acente borç-alacak dekontu)",
+  "ops.view": "HUB Kontrol / Operasyon",
+  "order.view": "Order görüntüle",
+  "messages.view": "Interline mesajları",
+  "revenue.view": "Gelir koruma",
+  "admin.users": "Kullanıcı listesi & denetim kaydı",
+  "admin.users.write": "Kullanıcı ekle / düzenle / devre dışı bırak",
+  "chat.channel.create": "Mesajlaşma kanalı aç",
+  "admin.settings": "Sistem ayarları",
+  "admin.roles": "Rol & yetki yönetimi",
+};
+
+export const PERMISSION_LABEL_EN: Record<Permission, string> = {
+  "ticket.issue": "Issue ticket",
+  "ticket.exchange": "Exchange / Reissue",
+  "ticket.refund": "Refund",
+  "ticket.void": "Void",
+  "ticket.irrop": "IRROP / FIM",
+  "ticket.endorse": "Endorsement",
+  "ticket.emd": "EMD / Excess baggage",
+  "ticket.revalidate": "Revalidation (flight/time)",
+  "ticket.print": "Print to paper (P)",
+  "ticket.suspend": "Suspend coupon (S)",
+  "pta.manage": "PTA (Prepaid)",
+  "checkin.accept": "Check-in acceptance",
+  "checkin.board": "Boarding",
+  "checkin.override": "Late acceptance / document exception (OK TO BOARD)",
+  "adm.manage": "ADM / ACM (agency debit/credit memo)",
+  "ops.view": "HUB Control / Operations",
+  "order.view": "View order",
+  "messages.view": "Interline messages",
+  "revenue.view": "Revenue protection",
+  "admin.users": "User list & audit trail",
+  "admin.users.write": "Add / edit / deactivate user",
+  "chat.channel.create": "Create message channel",
+  "admin.settings": "System settings",
+  "admin.roles": "Role & permission management",
+};
+
+export function permissionLabel(p: Permission, lang: DocLang = "tr"): string {
+  return lang === "en" ? PERMISSION_LABEL_EN[p] : PERMISSION_LABEL[p];
+}
+
+// Her rolün KENDİ getirdiği yetkiler; alt roller kümülatif eklenir.
+const INCREMENTAL: Record<Role, Permission[]> = {
+  staff: ["ticket.issue", "ticket.emd", "ticket.print", "pta.manage", "checkin.accept", "checkin.board", "order.view", "messages.view"],
+  supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate", "chat.channel.create", "checkin.override"],
+  chief: ["ticket.irrop", "ticket.suspend", "revenue.view", "ops.view", "adm.manage"],
+  manager: ["admin.users", "admin.users.write", "admin.settings"],
+  admin: ["admin.roles"],
+};
+
+/** Rolün (kümülatif) tüm yetkileri. */
+export function permissionsFor(role: Role): Permission[] {
+  const idx = ROLE_ORDER.indexOf(role);
+  const perms = new Set<Permission>();
+  for (let i = 0; i <= idx; i++) INCREMENTAL[ROLE_ORDER[i]].forEach((p) => perms.add(p));
+  return [...perms];
+}
+
+const CACHE = new Map<Role, Set<Permission>>();
+function setFor(role: Role): Set<Permission> {
+  let s = CACHE.get(role);
+  if (!s) { s = new Set(permissionsFor(role)); CACHE.set(role, s); }
+  return s;
+}
+
+export function can(role: Role, p: Permission): boolean {
+  return setFor(role).has(p);
+}
+
+/** Bu yetki için gereken minimum rol (matris/tooltip için). */
+export function minRoleFor(p: Permission): Role {
+  for (const r of ROLE_ORDER) if (INCREMENTAL[r].includes(p)) return r;
+  return "admin";
+}

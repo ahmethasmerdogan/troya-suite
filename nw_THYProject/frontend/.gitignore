@@ -1,0 +1,16 @@
+node_modules
+dist
+dist-ssr
+*.local
+.vite
+.DS_Store
+*.log
+tour/
+scripts/*.mjs
+
+# Playwright
+test-results/
+playwright-report/
+playwright/.cache/
+.vercel
+.env*

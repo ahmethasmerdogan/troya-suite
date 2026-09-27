@@ -1,0 +1,318 @@
+import { tr as searchTr, en as searchEn } from "./keys/search";
+import { tr as shellTr, en as shellEn } from "./keys/shell";
+import { tr as docs2Tr, en as docs2En } from "./keys/docs2";
+import { tr as fixTr, en as fixEn } from "./keys/fix";
+import { tr as flowsTr, en as flowsEn } from "./keys/flows";
+import { tr as issueTr, en as issueEn } from "./keys/issue";
+import { tr as ticketTr, en as ticketEn } from "./keys/ticket";
+import { tr as checkinTr, en as checkinEn } from "./keys/checkin";
+import { tr as adminTr, en as adminEn } from "./keys/admin";
+import { tr as reportTr, en as reportEn } from "./keys/report";
+import { tr as miscTr, en as miscEn } from "./keys/misc";
+import { tr as chatTr, en as chatEn } from "./keys/chat";
+import { tr as tipsTr, en as tipsEn } from "./keys/tips";
+import { tr as rightsTr, en as rightsEn } from "./keys/rights";
+import { tr as queuesTr, en as queuesEn } from "./keys/queues";
+import { tr as skchgTr, en as skchgEn } from "./keys/skchg";
+import { tr as deskTr, en as deskEn } from "./keys/desk";
+import { tr as resTr, en as resEn } from "./keys/res";
+import { tr as groupTr, en as groupEn } from "./keys/group";
+import { tr as memosTr, en as memosEn } from "./keys/memos";
+
+import type { Lang } from "@/store/ui";
+
+// Uygulama geneli sözlük (TR/EN). Flat dotted key'ler. Yeni metin eklerken ikisini de doldur.
+// Not: Derin domain string'leri kademeli çevriliyor; chrome + modüller + form'lar kapsanır.
+const tr = {
+  // marka / modüller
+  "brand.suite": "Troya Suite",
+  "module.panel": "Panel",
+  "module.quickres": "QuickRes",
+  "module.troya": "Troya",
+  "module.checkin": "QuickCheck-in",
+  "module.quickres.sub": "Rezervasyon",
+  "module.troya.sub": "Biletleme",
+  "module.checkin.sub": "Check-in / DCS",
+
+  // topbar
+  "topbar.searchPlaceholder": "Bilet, PNR, yolcu ara…",
+  "topbar.station": "İstasyon",
+  "topbar.notifications": "Bildirimler",
+  "topbar.messages": "Hızlı Mesajlaşma",
+  "topbar.language": "Dil",
+  "topbar.account": "Hesap",
+  "topbar.logout": "Çıkış",
+
+  // ortak
+  "common.new": "Yeni",
+  "common.search": "Ara",
+  "common.back": "Geri",
+  "common.next": "İleri",
+  "common.cancel": "İptal",
+  "common.confirm": "Onayla",
+  "common.save": "Kaydet",
+  "common.continue": "Devam",
+  "common.close": "Kapat",
+  "common.advanced": "Gelişmiş",
+  "common.clearFilters": "Filtreleri temizle",
+  "common.status": "Durum",
+  "common.total": "Toplam",
+  "common.passenger": "Yolcu",
+  "common.route": "Güzergah",
+  "common.soon": "yakında",
+  "common.loading": "Yükleniyor…",
+  "common.notFound": "Bulunamadı",
+  "common.print": "Yazdır / PDF",
+  "common.selectTicketHint": "İşlem için önce bir bilet seçin.",
+
+  // nav — Troya (biletleme)
+  "nav.section.ticketing": "Biletleme",
+  "nav.section.operations": "Satış Sonrası",
+  "nav.section.documents": "Dokümanlar",
+  "nav.section.order": "Order",
+  "nav.section.interline": "Interline",
+  "nav.section.admin": "Yönetim",
+  "nav.issue": "Bilet Kes",
+  "nav.search": "Bilet Ara",
+  "nav.exchange": "Exchange / Reissue",
+  "nav.refund": "Refund",
+  "nav.void": "Void",
+  "nav.emd": "EMD / Ancillary",
+  "nav.emd.search": "EMD Ara",
+  "nav.section.reports": "Raporlar",
+  "nav.profile": "Profilim",
+  "nav.reports": "Rapor Merkezi",
+  "nav.report": "Satış / İşlem Raporu",
+  "nav.report.financial": "Mali Rapor",
+  "nav.report.period": "Dönem Kapanışı",
+  "nav.irrop": "IRROP / Yönlendirme",
+  "nav.endorse": "Ciro / Endorsement",
+  "nav.pta": "PTA (Prepaid)",
+  "nav.orders": "Order'lar",
+  "nav.messages": "Mesajlar",
+  "nav.chat": "Mesajlaşma",
+  "chat.desc": "Vardiya ekibi, supervisor ve şeflerle anlık mesajlaşma. Kişiler & operasyon kanalları.",
+  "nav.agreements": "Bilateral Anlaşmalar",
+  "nav.revenue": "Gelir Koruma",
+  "nav.roles": "Roller & Yetkiler",
+  "nav.users": "Kullanıcılar",
+  "nav.logs": "Loglar",
+  "nav.settings": "Ayarlar",
+
+  // nav — QuickRes
+  "nav.section.reservation": "Rezervasyon",
+  "nav.res.new": "PNR Oluştur",
+  "nav.res.search": "PNR Ara",
+  "nav.res.availability": "Uygunluk (Availability)",
+
+  // nav — QuickCheck-in
+  "nav.section.checkin": "Check-in",
+  "nav.ci.flights": "Uçuşlar",
+  "nav.ci.boarding": "Biniş (Boarding)",
+  "nav.section.ops": "Operasyon",
+  "nav.ci.hub": "HUB Kontrol",
+  "nav.ci.servicemap": "Servis Haritası",
+
+  // panel home
+  "panel.title": "Panel",
+  "panel.greeting": "İyi çalışmalar",
+  "panel.kpi.flights": "Bugünkü uçuş",
+  "panel.kpi.checkedin": "Check-in yapılan",
+  "panel.kpi.pnrs": "Aktif PNR",
+  "panel.kpi.tickets": "Bilet",
+  "panel.kpi.flights.hint": "{n} uçuşta kontuar açık",
+  "panel.kpi.checkedin.hint": "kapasitenin %{n}'i",
+  "panel.kpi.pnrs.hint": "{n} tanesinin kesim süresi yaklaştı ya da doldu",
+  "panel.kpi.tickets.hint": "bugün {n} bilet kesildi",
+  "common.viewAll": "Tümünü gör",
+  "panel.subtitle": "QuickRes · Troya · QuickCheck-in tek çalışma alanında. Bir modüle girin ya da global aramayı (⌘K) kullanın.",
+  "panel.todayFlights": "Bugünkü Uçuşlar",
+  "panel.recentTickets": "Son Biletler",
+  "panel.recentPnrs": "Son PNR'lar",
+  "panel.openModule": "Modülü aç",
+  "panel.quickres.desc": "Rezervasyon: uygunluk, PNR oluşturma, arama ve yönetim.",
+  "panel.troya.desc": "Biletleme: bilet kes, exchange/refund/void, EMD, interline, order.",
+  "panel.checkin.desc": "Check-in / DCS: yolcu kabul, koltuk, biniş kartı, bagaj.",
+
+  // help
+  "help.title": "Nasıl doldurulur?",
+  "ticket.search.desc": "Tek akıllı çubuk: TKT no, PNR, yolcu adı ya da havalimanı kodu otomatik algılanır.",
+  "ticket.issue.desc": "Yolcu → Segment → Fare/Ödeme → Onay. Para işlemi sunucu sonucunu bekler (optimistic UI yok).",
+  "ticket.issue.help": "Soyadı en az 2 karakter (Handbook Ch 2 zorunlu alan). Segment: O/D 3 harf, carrier 2-3 harf, RBD tek harf. Fare/ödeme acentenin işidir; PCI gereği kart maskeli girilir. 'Bilet Kes'e basınca sunucu sonucu beklenir, çift-submit idempotency key ile engellenir.",
+  "orders.desc": "ONE Order — sipariş ana kayıt; Ticket ve EMD onun fulfillment artifact'leri.",
+  "emd.search.desc": "Elektronik Muhtelif Belge (EMD) — numara, yolcu, RFISC/hizmet ya da bağlı bilet ile ara ve aç.",
+  "report.desc": "Tüm biletleme işlemlerinin denetim kaydı (audit) — tarih, işlem tipi, personel ve carrier'a göre sorgulayın.",
+  "messages.desc": "Outbox ile yayınlanan / alınan mesajlar. Legacy EDIFACT + modern NDC / ONE Order.",
+  "agreements.desc": "Interline ortakları ve yetenekleri. Control transferi yalnızca anlaşması olan carrier ile.",
+
+  // settings
+  "settings.title": "Ayarlar",
+  "settings.language": "Arayüz dili",
+  "settings.station": "Çalışma istasyonu",
+  "settings.theme": "Tema",
+  "settings.theme.light": "Açık",
+  "settings.theme.dark": "Koyu",
+  "settings.theme.system": "Sistem",
+
+  // dokümantasyon + hata yüzeyleri
+  "nav.docs": "Dokümantasyon",
+  "nav.guide": "Kullanım Kılavuzu",
+  "docs.banner.title": "Sistem Dokümantasyonu",
+  "docs.banner.desc": "Troya Suite ne barındırır, neyi çözer, hangi teknolojiler üzerine kuruludur.",
+  "docs.banner.cta": "İncele",
+  "error.title": "Bir şeyler ters gitti",
+  "error.desc": "Beklenmeyen bir hata oluştu. Yeniden deneyebilir ya da anasayfaya dönebilirsiniz.",
+  "error.retry": "Yeniden dene",
+  "error.home": "Anasayfa",
+  "notfound.title": "Sayfa bulunamadı",
+  "notfound.desc": "Aradığınız sayfa taşınmış ya da hiç var olmamış olabilir.",
+} as const;
+
+const en: Record<keyof typeof tr, string> = {
+  "brand.suite": "Troya Suite",
+  "module.panel": "Panel",
+  "module.quickres": "QuickRes",
+  "module.troya": "Troya",
+  "module.checkin": "QuickCheck-in",
+  "module.quickres.sub": "Reservation",
+  "module.troya.sub": "Ticketing",
+  "module.checkin.sub": "Check-in / DCS",
+
+  "topbar.searchPlaceholder": "Search ticket, PNR, passenger…",
+  "topbar.station": "Station",
+  "topbar.notifications": "Notifications",
+  "topbar.messages": "Quick Messaging",
+  "topbar.language": "Language",
+  "topbar.account": "Account",
+  "topbar.logout": "Log out",
+
+  "common.new": "New",
+  "common.search": "Search",
+  "common.back": "Back",
+  "common.next": "Next",
+  "common.cancel": "Cancel",
+  "common.confirm": "Confirm",
+  "common.save": "Save",
+  "common.continue": "Continue",
+  "common.close": "Close",
+  "common.advanced": "Advanced",
+  "common.clearFilters": "Clear filters",
+  "common.status": "Status",
+  "common.total": "Total",
+  "common.passenger": "Passenger",
+  "common.route": "Route",
+  "common.soon": "soon",
+  "common.loading": "Loading…",
+  "common.notFound": "Not found",
+  "common.print": "Print / PDF",
+  "common.selectTicketHint": "Select a ticket first to start the operation.",
+
+  "nav.section.ticketing": "Ticketing",
+  "nav.section.operations": "Servicing",
+  "nav.section.documents": "Documents",
+  "nav.section.order": "Order",
+  "nav.section.interline": "Interline",
+  "nav.section.admin": "Admin",
+  "nav.issue": "Issue Ticket",
+  "nav.search": "Search Tickets",
+  "nav.exchange": "Exchange / Reissue",
+  "nav.refund": "Refund",
+  "nav.void": "Void",
+  "nav.emd": "EMD / Ancillary",
+  "nav.emd.search": "Search EMD",
+  "nav.section.reports": "Reports",
+  "nav.profile": "My profile",
+  "nav.reports": "Report hub",
+  "nav.report": "Sales / Transaction Report",
+  "nav.report.financial": "Financial Report",
+  "nav.report.period": "Period Closing",
+  "nav.irrop": "IRROP / Rerouting",
+  "nav.endorse": "Endorsement",
+  "nav.pta": "PTA (Prepaid)",
+  "nav.orders": "Orders",
+  "nav.messages": "Messages",
+  "nav.chat": "Team Chat",
+  "chat.desc": "Real-time messaging with the shift team, supervisors and chiefs. People & operations channels.",
+  "nav.agreements": "Bilateral Agreements",
+  "nav.revenue": "Revenue Protection",
+  "nav.roles": "Roles & Permissions",
+  "nav.users": "Users",
+  "nav.logs": "Logs",
+  "nav.settings": "Settings",
+
+  "nav.section.reservation": "Reservation",
+  "nav.res.new": "Create PNR",
+  "nav.res.search": "Search PNR",
+  "nav.res.availability": "Availability",
+
+  "nav.section.checkin": "Check-in",
+  "nav.ci.flights": "Flights",
+  "nav.ci.boarding": "Boarding",
+  "nav.section.ops": "Operations",
+  "nav.ci.hub": "HUB Control",
+  "nav.ci.servicemap": "Service Map",
+
+  "panel.title": "Panel",
+  "panel.greeting": "Welcome",
+  "panel.kpi.flights": "Today's flights",
+  "panel.kpi.checkedin": "Checked in",
+  "panel.kpi.pnrs": "Active PNRs",
+  "panel.kpi.tickets": "Tickets",
+  "panel.kpi.flights.hint": "counter open on {n} flights",
+  "panel.kpi.checkedin.hint": "{n}% of capacity",
+  "panel.kpi.pnrs.hint": "{n} near or past the ticketing time limit",
+  "panel.kpi.tickets.hint": "{n} issued today",
+  "common.viewAll": "View all",
+  "panel.subtitle": "QuickRes · Troya · QuickCheck-in in one workspace. Open a module or use global search (⌘K).",
+  "panel.todayFlights": "Today's Flights",
+  "panel.recentTickets": "Recent Tickets",
+  "panel.recentPnrs": "Recent PNRs",
+  "panel.openModule": "Open module",
+  "panel.quickres.desc": "Reservation: availability, PNR creation, search and management.",
+  "panel.troya.desc": "Ticketing: issue, exchange/refund/void, EMD, interline, orders.",
+  "panel.checkin.desc": "Check-in / DCS: passenger acceptance, seat, boarding pass, baggage.",
+
+  "help.title": "How to fill this in?",
+  "ticket.search.desc": "One smart bar: ticket no, PNR, passenger name or airport code is auto-detected.",
+  "ticket.issue.desc": "Passenger → Segment → Fare/Payment → Confirm. Money operations wait for the server (no optimistic UI).",
+  "ticket.issue.help": "Surname min 2 chars (Handbook Ch 2 mandatory). Segment: O/D 3 letters, carrier 2-3, RBD single letter. Fare/payment is the agent's task; card is entered masked per PCI. On 'Issue', the server result is awaited; double-submit is blocked by the idempotency key.",
+  "orders.desc": "ONE Order — order is the system of record; Ticket and EMD are its fulfillment artifacts.",
+  "emd.search.desc": "Electronic Miscellaneous Document (EMD) — retrieve by number, passenger, RFISC/service or associated ticket.",
+  "report.desc": "Audit log of all ticketing transactions — query by date, transaction type, agent and carrier.",
+  "messages.desc": "Messages published/received via the outbox. Legacy EDIFACT + modern NDC / ONE Order.",
+  "agreements.desc": "Interline partners and capabilities. Control transfer only with a partner that has an agreement.",
+
+  "settings.title": "Settings",
+  "settings.language": "Interface language",
+  "settings.station": "Workstation",
+  "settings.theme": "Theme",
+  "settings.theme.light": "Light",
+  "settings.theme.dark": "Dark",
+  "settings.theme.system": "System",
+
+  // documentation + error surfaces
+  "nav.docs": "Documentation",
+  "nav.guide": "User Guide",
+  "docs.banner.title": "System Documentation",
+  "docs.banner.desc": "What Troya Suite contains, what it solves, and the technologies it is built on.",
+  "docs.banner.cta": "Explore",
+  "error.title": "Something went wrong",
+  "error.desc": "An unexpected error occurred. You can retry or go back to the home page.",
+  "error.retry": "Retry",
+  "error.home": "Home",
+  "notfound.title": "Page not found",
+  "notfound.desc": "The page you are looking for may have been moved or never existed.",
+};
+
+/**
+ * Sözlük alan alan dosyalara bölündü: her alan kendi `keys/*.ts` dosyasında
+ * TR ve EN değerlerini YAN YANA tutar — 130 satır uzaklıktaki iki blok
+ * arasında kayma riski kalmadı.
+ */
+const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr, ...skchgTr, ...deskTr, ...resTr, ...groupTr, ...memosTr };
+const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn, ...skchgEn, ...deskEn, ...resEn, ...groupEn, ...memosEn };
+
+export type Key = keyof typeof TR;
+
+/** EN sözlüğü TR ile birebir aynı anahtarları taşımak ZORUNDA — eksik olan tsc hatası. */
+export const DICT: Record<Lang, Record<Key, string>> = { tr: TR, en: EN };
