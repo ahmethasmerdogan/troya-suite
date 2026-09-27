@@ -15,6 +15,7 @@ import { Donut, Sparkline, type Seg } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dot } from "@/components/ui/pill";
 import { NoticeRow, useNotices } from "@/components/layout/Notices";
+import { DailyTip } from "@/components/tips/DailyTip";
 import { formatDateTime, locale } from "@/lib/utils";
 
 /** Sparkline altındaki gün kısaltmaları — pazartesiden pazara. */
@@ -60,19 +61,21 @@ export function Panel() {
         title={`${greeting}, ${user?.name?.split(" ")[0] ?? ""}`}
         hint={new Date().toLocaleDateString(locale(), { day: "2-digit", month: "long", weekday: "long" }) + " · IST-CTR · TK"}
         action={
-          <>
+          <div data-tour="panel.actions" className="flex flex-wrap items-center gap-2">
             <Button variant="secondary" onClick={() => setCommandOpen(true)}><Search size={15} strokeWidth={1.75} /> {t("common.search")}</Button>
             <Button onClick={() => navigate({ to: "/issue" })}><TicketPlus size={15} strokeWidth={1.75} /> {t("nav.issue")}</Button>
-          </>
+          </div>
         }
       />
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-tour="panel.kpis" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Stat label={t("panel.kpi.flights")} value={flights.data?.length ?? "—"} />
         <Stat label={t("panel.kpi.checkedin")} value={flights.data?.reduce((a, f) => a + f.checkedIn, 0) ?? "—"} />
         <Stat label={t("panel.kpi.pnrs")} value={pnrs.data?.filter((p) => p.status === "active").length ?? "—"} />
         <Stat label={t("panel.kpi.tickets")} value={tickets.data?.length ?? "—"} />
       </div>
+
+      <DailyTip />
 
       <StationNotices />
 
@@ -184,7 +187,7 @@ function StationNotices() {
   const urgent = notices.filter((n) => n.severity !== "info").length;
   if (notices.length === 0) return null;
   return (
-    <Card>
+    <Card data-tour="panel.notices">
       <PanelHead
         title={t("search.panel.notices.title")}
         hint={t("search.panel.notices.hint", { n: urgent, m: notices.length })}

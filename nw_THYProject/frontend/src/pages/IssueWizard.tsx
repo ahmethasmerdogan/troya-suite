@@ -9,6 +9,7 @@ import { getPnr, type ReservationSegment } from "@/domain/reservation";
 import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
+import { Tip } from "@/components/tips/Tip";
 import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -234,7 +235,7 @@ export function IssueWizard() {
           sağda belge dolarken canlı önizleme. Operatör ne girdiğini ve neyin
           oluştuğunu aynı anda görür; adımlar arası geri dönüş tek tık. */}
       <div className="grid grid-cols-1 gap-5 pb-24 lg:grid-cols-[220px_1fr] xl:grid-cols-[220px_1fr_320px]">
-        <StepRail step={step} onGo={setStep} pax={pax} legs={legs} offer={offer} fop={fop} />
+        <div data-tour="issue.steps"><StepRail step={step} onGo={setStep} pax={pax} legs={legs} offer={offer} fop={fop} /></div>
 
         <div className="min-w-0">
           {srcPnr && (
@@ -248,7 +249,7 @@ export function IssueWizard() {
               {t("issue.blocked.body1")} <b>*</b> {t("issue.blocked.body2")}
             </Alert>
           )}
-          <Card className="p-5">
+          <Card data-tour="issue.form" className="p-5">
             {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} />}
             {step === 1 && <LegStep legs={legs} setLegs={setLegs} errors={errors} />}
             {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} />}
@@ -257,14 +258,14 @@ export function IssueWizard() {
           </Card>
         </div>
 
-        <div className="hidden xl:block">
+        <div data-tour="issue.preview" className="hidden xl:block">
           <LivePreview pax={pax} carrier={carrier} pnr={pnr} legs={legs} offer={offer} />
         </div>
       </div>
 
       {/* Aksiyon şeridi ekranın altına yapışır — uzun formda "İleri" aranmaz. */}
       <div className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 backdrop-blur-sm">
-        <div className="mx-auto flex max-w-content items-center gap-4 px-5 py-3 sm:px-6 lg:px-8">
+        <div data-tour="issue.footer" className="mx-auto flex max-w-content items-center gap-4 px-5 py-3 sm:px-6 lg:px-8">
           <Button variant="ghost" disabled={step === 0} iconLeft={<ChevronLeft size={15} strokeWidth={2} />} onClick={() => setStep((s) => Math.max(0, s - 1))}>{t("issue.back")}</Button>
           <span className="num hidden text-[12px] text-ink-3 sm:block">{t("issue.stepCounter", { n: step + 1, total: STEPS.length })}</span>
           <span className="ml-auto flex items-center gap-4">
@@ -526,8 +527,8 @@ function PaxStep({
       </div>
 
       <Rule label={t("issue.pax.ssrRule")} />
-      <p className="-mt-2 text-[13px] text-ink-2">
-        {t("issue.pax.ssrDesc")}
+      <p className="-mt-2 flex items-center gap-2 text-[13px] text-ink-2">
+        {t("issue.pax.ssrDesc")} <Tip id="issue.ssr" />
       </p>
       <div className="flex flex-col gap-4">
         {byCat.map(([cat, list]) => (
@@ -696,6 +697,7 @@ function FareStep({
               <>
                 <span className="mx-1 h-5 w-px bg-line" />
                 <span className="microlabel">{t("issue.fare.quick")}</span>
+                <Tip id="issue.fare" />
                 {quick.map(([labelKey, o]) => (
                   <button key={labelKey} type="button" onClick={() => setOffer(o)}
                     className="rounded-full border border-line px-3 py-1 text-[12.5px] text-ink-2 transition-colors hover:border-brand hover:text-brand">

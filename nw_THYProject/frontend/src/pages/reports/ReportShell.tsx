@@ -60,7 +60,7 @@ export function ReportShell({ title, hint, action, children }: {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-1 border-b border-line">
+      <div data-tour="reports.tabs" className="mb-4 flex flex-wrap items-center gap-1 border-b border-line">
         {TABS.map((tab) => {
           const on = pathname === tab.to;
           return (

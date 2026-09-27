@@ -5,6 +5,7 @@ import { OPS_STATUS_META, deriveOpsStatus, getOpsBoard, milestoneLabel, opsAlert
 import { KIND_TONE } from "@/components/domain/statusTone";
 import { Button } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Stat, Empty } from "@/components/ui/surface";
+import { Tip } from "@/components/tips/Tip";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
@@ -73,7 +74,7 @@ export function HubControl() {
         action={<Pill tone="green">{t("checkin.hub.live")}</Pill>}
       />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div data-tour="ops.kpis" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
         <Stat label="OTP / D0" value={`%${k?.otpD0 ?? 0}`} tone="var(--t-green-i)" hint={t("checkin.hub.kpi.otp.hint")} />
         <Stat label={t("checkin.hub.kpi.boarding")} value={k?.byStage.boarding ?? 0} />
         <Stat label={t("checkin.hub.kpi.alerts")} value={(k?.openCritical ?? 0) + (k?.openWarning ?? 0)} tone="var(--t-red-i)" hint={t("checkin.hub.kpi.alerts.hint", { n: k?.openCritical ?? 0 })} />
@@ -83,7 +84,7 @@ export function HubControl() {
       </div>
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_360px]">
-        <Panel>
+        <Panel data-tour="ops.board">
           <PanelHead
             title={t("checkin.hub.board")}
             hint={t("checkin.hub.board.hint", { shown: shown.length, total: flights.length })}
@@ -148,8 +149,11 @@ export function HubControl() {
         </Panel>
 
         <div className="flex flex-col gap-4">
-          <Panel>
-            <PanelHead title={t("checkin.hub.alerts")} hint={t("checkin.hub.alerts.hint", { n: data.alerts.length })} />
+          <Panel data-tour="ops.alerts">
+            <PanelHead
+              title={<span className="inline-flex items-center gap-1.5">{t("checkin.hub.alerts")} <Tip id="ops.resolve" /></span>}
+              hint={t("checkin.hub.alerts.hint", { n: data.alerts.length })}
+            />
             <PanelBody className="flex flex-col gap-2 pt-2">
               {data.alerts.length === 0 ? (
                 <Empty title={t("checkin.hub.alerts.empty.title")} hint={t("checkin.hub.alerts.empty.hint")} />

@@ -7,6 +7,8 @@ import { FullView } from "./views";
 import { isSplit } from "./shape";
 import { CommandPalette } from "@/components/CommandPalette";
 import { ToastHost } from "@/components/ui/toast";
+import { Onboarding } from "@/components/tips/Onboarding";
+import { TourHost, TourPrompt } from "@/components/tips/Tour";
 import { Login } from "@/pages/Login";
 import { useUI } from "@/store/ui";
 import { useChat } from "@/store/chat";
@@ -40,12 +42,15 @@ export function AppShell() {
     <div className="flex h-screen flex-col overflow-hidden bg-canvas">
       <Topbar />
       <AnnouncementBar />
+      <TourPrompt />
       <main className="flex min-h-0 flex-1 flex-col overflow-hidden">
         {split ? <Outlet /> : <FullView key={pathname}><Outlet /></FullView>}
       </main>
       <MobileNav />
       <CommandPalette />
       <ToastHost />
+      <Onboarding />
+      <TourHost />
     </div>
   );
 }

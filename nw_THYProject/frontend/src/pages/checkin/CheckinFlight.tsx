@@ -9,6 +9,7 @@ import {
 } from "@/domain/checkin";
 import { flightBoarded, flightLiveStatus } from "@/domain/ops";
 import { paxSeatNotes } from "@/domain/seatRules";
+import { Tip } from "@/components/tips/Tip";
 import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
 import { FlightListPane } from "@/components/panes/FlightListPane";
 import { BoardingPass } from "@/components/domain/BoardingPass";
@@ -173,6 +174,7 @@ export function CheckinFlight() {
   if (!flight) return withList(<DetailBody><p className="text-sm text-ink-2">{t("checkin.flight.notFound")}</p></DetailBody>);
 
   const intl = isInternational(flight);
+  const firstApisGap = intl ? rows.findIndex((p) => p.status === "not_checked" && apisMissing(p).length > 0) : -1;
   // Sayaçlar uçuşun TOPLAMINDAN gelir — HUB panosu ve uçuş listesiyle aynı
   // kaynak. Aşağıdaki liste tam manifest değil, bu ekranda işlem yapılabilen
   // yolcu örneğidir; önceden sayaçlar yalnız bu örnekten sayıldığı için liste
@@ -207,6 +209,7 @@ export function CheckinFlight() {
                     <Users size={15} strokeWidth={1.75} /> {t("checkin.flight.boardAll")}
                   </Button>
                 )}
+                <Tip id="checkin.closeout" />
                 <Button variant="danger" size="sm" disabled={closeOut.isPending}
                   title={t("checkin.flight.closeOut.title")}
                   onClick={() => closeOut.mutate()}>
@@ -229,7 +232,7 @@ export function CheckinFlight() {
         }
       />
       <DetailBody>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div data-tour="checkin.stats" className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <Stat
             label={t("checkin.stat.departure")}
             value={new Date(flight.departure).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
@@ -253,7 +256,7 @@ export function CheckinFlight() {
           </span>
         </div>
 
-        <Panel>
+        <Panel data-tour="checkin.pax">
           <PanelHead
             title={tab === "checkin" ? t("checkin.panel.acceptance") : t("checkin.tab.boarding")}
             hint={`${flight.aircraft.type} · ${flight.aircraft.config} · ${t("checkin.panel.listed", { n: (pax ?? []).length })}`}
@@ -263,7 +266,7 @@ export function CheckinFlight() {
             {rows.length === 0 ? (
               <Empty icon={<Users size={22} strokeWidth={1.5} />} title={t("checkin.empty.pax.title")} hint={t("checkin.empty.pax.hint")} />
             ) : (
-              rows.map((p) => {
+              rows.map((p, idx) => {
                 const notes = paxSeatNotes(p, lang);
                 // APIS kapısı: uluslararası uçuşta eksik bilgi kabul ettirmez.
                 const gaps = intl && p.status === "not_checked" ? apisMissing(p) : [];
@@ -275,6 +278,8 @@ export function CheckinFlight() {
                         <Pill tone={PAX_TONE[p.status]}>{t(PAX_LABEL[p.status])}</Pill>
                         {p.cabin === "Business" && <Pill tone="violet">Business</Pill>}
                         {gaps.length > 0 && <Pill tone="amber">{t("checkin.pill.apisMissing")}</Pill>}
+                        {/* ipucu listede yalnız ilk APIS eksiği satırında — her satırda nokta gürültüdür */}
+                        {gaps.length > 0 && idx === firstApisGap && <Tip id="checkin.apis" />}
                       </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-[11.5px] text-ink-3">
                         <span className="num">PNR {p.pnr}</span>

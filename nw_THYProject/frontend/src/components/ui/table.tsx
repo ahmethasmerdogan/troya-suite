@@ -14,6 +14,7 @@ import { useOutside } from "./overlay";
 import { toCsv, downloadCsv, csvFileName } from "@/lib/csv";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
+import { Tip } from "@/components/tips/Tip";
 
 /* ====================================================================
    Veri tablosu — kurumsal operasyon grid'i.
@@ -180,7 +181,8 @@ export function DataTable<T>({
       {(toolbar || exportName || hideable.length > 0) && (
         <div className="flex flex-wrap items-center gap-2">
           {toolbar}
-          <div className="ml-auto flex items-center gap-1.5">
+          <div data-tour="table.tools" className="ml-auto flex items-center gap-1.5">
+            {exportName && <Tip id="table.export" />}
             {exportName && (
               <Button variant="secondary" size="sm" onClick={exportCsv}>
                 <Download size={15} strokeWidth={1.75} /> CSV
@@ -219,7 +221,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface">
+      <div data-tour="table.body" className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="overflow-auto" style={{ maxHeight }}>
           <table className="w-full min-w-[720px] border-collapse">
             <thead className="sticky top-0 z-10">

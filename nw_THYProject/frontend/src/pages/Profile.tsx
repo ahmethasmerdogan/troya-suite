@@ -11,6 +11,7 @@ import {
 } from "@/domain/auth";
 import { useT } from "@/i18n";
 import { PersonCard } from "@/components/domain/PersonCard";
+import { TipsSettings } from "@/components/tips/TipsSettings";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/surface";
 import { Pill } from "@/components/ui/pill";
@@ -155,6 +156,8 @@ export function Profile() {
               </button>
             </PanelBody>
           </Panel>
+
+          <TipsSettings />
 
           <Panel>
             <PanelHead title={t("admin.profile.recent")} hint={t("admin.profile.recentHint")} />

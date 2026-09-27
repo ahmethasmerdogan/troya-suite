@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import { BookOpen, HelpCircle, Keyboard, Lightbulb, X } from "lucide-react";
+import { BookOpen, Compass, HelpCircle, Keyboard, Lightbulb, X } from "lucide-react";
 import { Modal } from "@/components/ui/overlay";
 import { useT, type Key } from "@/i18n";
+import { tourFor } from "@/components/tips/catalog";
+import { useTips } from "@/store/tips";
 import { cn } from "@/lib/utils";
 
 /* ====================================================================
@@ -166,10 +168,13 @@ export function ScreenHelpButton({ className }: { className?: string }) {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const t = useT();
   const g = guideFor(path);
+  const tour = tourFor(path);
+  const startTour = useTips((s) => s.startTour);
 
   return (
     <>
       <button
+        data-tour="shell.help"
         onClick={() => setOpen(true)}
         aria-label={t("admin.help.button")}
         title={t("admin.help.button")}
@@ -184,6 +189,20 @@ export function ScreenHelpButton({ className }: { className?: string }) {
       <Modal open={open} onClose={() => setOpen(false)} title={t("admin.help.modalTitle", { title: t(g.title) })} width="md">
         <div className="flex flex-col gap-4">
           <p className="text-[13.5px] leading-relaxed text-ink-2">{t(g.what)}</p>
+
+          {tour && (
+            <button
+              type="button"
+              onClick={() => { setOpen(false); startTour(tour.id); }}
+              className="flex items-center gap-3 rounded-md border border-line bg-raised px-3 py-2.5 text-left transition-colors hover:border-brand hover:bg-brand-wash"
+            >
+              <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-md bg-brand text-white"><Compass size={16} strokeWidth={1.75} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13.5px] font-semibold text-ink">{t("tips.startTour")}</span>
+                <span className="block text-[12px] text-ink-3">{t("tips.help.tourMeta", { name: t(tour.name), n: tour.steps.length })}</span>
+              </span>
+            </button>
+          )}
 
           <section>
             <div className="microlabel mb-1.5">{t("admin.help.steps")}</div>

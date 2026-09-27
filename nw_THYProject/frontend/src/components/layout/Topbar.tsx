@@ -65,7 +65,7 @@ export function Topbar() {
         <span className="mx-1 hidden h-6 w-px bg-line lg:block" aria-hidden />
 
         {/* modül gezinme */}
-        <nav className="hidden items-center gap-1 lg:flex" aria-label={t("shell.modules")}>
+        <nav data-tour="shell.modules" className="hidden items-center gap-1 lg:flex" aria-label={t("shell.modules")}>
           <ModTab to="/" icon={PANEL_ICON} label={t("module.panel")} on={activeModule === "panel"} />
           {MODULES.map((m) => (
             <ModTab key={m.id} to={m.home} icon={m.icon} label={t(m.labelKey)} on={activeModule === m.id} />
@@ -73,6 +73,7 @@ export function Topbar() {
         </nav>
 
         <button
+          data-tour="shell.palette"
           onClick={() => setCommandOpen(true)}
           className="ml-auto hidden h-9 w-56 items-center gap-2 rounded-[10px] border border-line-strong bg-canvas px-3 text-[13px] text-ink-3 transition-colors hover:border-[var(--brand)] hover:text-ink-2 md:flex xl:w-72"
         >
@@ -80,7 +81,7 @@ export function Topbar() {
           <span className="truncate">{t("topbar.searchPlaceholder")}</span>
           <Kbd className="ml-auto"><CommandIcon size={9} strokeWidth={2} />K</Kbd>
         </button>
-        <button onClick={() => setCommandOpen(true)} className={cn(ICON_BTN, "ml-auto md:hidden")} aria-label={t("common.search")}>
+        <button data-tour="shell.palette" onClick={() => setCommandOpen(true)} className={cn(ICON_BTN, "ml-auto md:hidden")} aria-label={t("common.search")}>
           <Search size={17} strokeWidth={1.75} />
         </button>
 
@@ -165,7 +166,7 @@ function NotificationMenu() {
   const urgent = notices.filter((n) => n.severity !== "info").length;
 
   return (
-    <div ref={ref} className="relative">
+    <div ref={ref} className="relative" data-tour="shell.notifications">
       <button onClick={() => setOpen((o) => !o)} className={cn(ICON_BTN, "relative")} title={t("topbar.notifications")} aria-label={t("topbar.notifications")}>
         <Bell size={17} strokeWidth={1.75} />
         {urgent > 0 && (

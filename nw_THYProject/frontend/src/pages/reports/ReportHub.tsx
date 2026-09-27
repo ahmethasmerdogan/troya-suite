@@ -54,7 +54,7 @@ export function ReportHub() {
     >
 
       {/* --- bugünün durumu --- */}
-      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div data-tour="reports.kpis" className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile
           icon={<ClipboardList size={16} strokeWidth={1.75} />}
           value={isLoading ? "—" : (todayRows?.length ?? 0)}
@@ -82,7 +82,7 @@ export function ReportHub() {
       </div>
 
       {/* --- rapor kartları --- */}
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div data-tour="reports.cards" className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <ReportCard
           to="/report"
           icon={<ClipboardList size={19} strokeWidth={1.75} />}

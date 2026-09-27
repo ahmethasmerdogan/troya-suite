@@ -8,6 +8,7 @@ import { layoutFor } from "@/domain/aircraftLayout";
 import { CabinMap, CabinLegend, blockedSummary } from "@/components/checkin/CabinMap";
 import { Button, Field, Input } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Meta, MetaGrid } from "@/components/ui/surface";
+import { Tip } from "@/components/tips/Tip";
 import { Banner } from "@/components/ui/banner";
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -159,7 +160,10 @@ export function SeatSelection() {
           {/* Kapalı koltukların NEDENİ kalıcı yüzeyde — hover'a bakmak gerekmesin. */}
           {blocked.length > 0 && (
             <Panel>
-              <PanelHead title={t("checkin.seat.blocked.title")} hint={t("checkin.seat.blocked.hint")} />
+              <PanelHead
+                title={<span className="inline-flex items-center gap-1.5">{t("checkin.seat.blocked.title")} <Tip id="seat.blocked" /></span>}
+                hint={t("checkin.seat.blocked.hint")}
+              />
               <PanelBody className="flex flex-col gap-2.5 pt-1">
                 {blocked.map((b) => (
                   <div key={b.reason} className="rounded-md border border-line bg-inset px-3 py-2">

@@ -12,6 +12,7 @@ import { STATUS_TONE } from "@/components/domain/statusTone";
 import { RouteCell } from "@/components/domain/RouteCell";
 import { Money } from "@/components/domain/Money";
 import { DataTable } from "@/components/ui/table";
+import { Tip } from "@/components/tips/Tip";
 import { PageTitle } from "@/components/ui/surface";
 import { SearchField, Card, InsetPanel } from "@/ui";
 import { Button, IconButton } from "@/components/ui/core";
@@ -153,12 +154,15 @@ export function TicketSearch() {
 
       <Card className="mb-4 p-4">
         <div className="flex flex-wrap items-center gap-2">
-          <SearchField
-            value={query}
-            onValueChange={setQuery}
-            placeholder={t("search.placeholder")}
-            className="min-w-64 flex-1"
-          />
+          <div data-tour="search.bar" className="flex min-w-64 flex-1 items-center gap-2">
+            <SearchField
+              value={query}
+              onValueChange={setQuery}
+              placeholder={t("search.placeholder")}
+              className="min-w-0 flex-1"
+            />
+            <Tip id="search.smartbar" />
+          </div>
           {query && (
             <span className="num rounded-full bg-inset px-2.5 py-1 text-[11px] text-ink-2">
               {numeric
@@ -166,7 +170,7 @@ export function TicketSearch() {
                 : t("search.shape.text")}
             </span>
           )}
-          <Button variant={advActive ? "primary" : "secondary"} onClick={() => setAdvOpen((a) => !a)}>
+          <Button data-tour="search.advanced" variant={advActive ? "primary" : "secondary"} onClick={() => setAdvOpen((a) => !a)}>
             <SlidersHorizontal size={15} strokeWidth={1.75} />
             {t("common.advanced")}{advActive ? ` (${Object.values(adv).filter((v) => v.trim()).length})` : ""}
           </Button>
@@ -196,7 +200,7 @@ export function TicketSearch() {
           </InsetPanel>
         )}
 
-        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+        <div data-tour="search.chips" className="mt-3 flex flex-wrap items-center gap-1.5">
           {FILTERS.map((f) => (
             <button
               key={f.id}

@@ -15,6 +15,7 @@ import { Money } from "@/components/domain/Money";
 import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
 import { TicketFlows, type FlowId } from "@/components/flows";
+import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -101,14 +102,15 @@ export function TicketDetail() {
           className="grid h-9 w-9 place-items-center rounded-[10px] border border-line bg-surface text-ink-2 transition-colors hover:bg-elev hover:text-ink">
           <ArrowLeft size={16} strokeWidth={1.75} />
         </button>
-        <div className="min-w-0">
+        <div data-tour="ticket.head" className="min-w-0">
           <h1 className="num text-[24px] font-semibold leading-none tracking-[-0.02em] text-ink">{ticket.ticketNumber}</h1>
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className="text-[13px] text-ink-2">{p.surname}/{p.givenName}{p.title ? ` ${p.title}` : ""}</span>
             <ControlIndicator control={ticket.control} />
           </div>
         </div>
-        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+        <div data-tour="ticket.actions" className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Tip id="ticket.shortcuts" className="mr-1" />
           <Button variant="white" size="sm" disabled={!can("ticket.exchange")} title={lockHint("ticket.exchange") ?? t("ticket.detail.shortcut", { k: "e" })}
             iconLeft={<ArrowLeftRight size={15} strokeWidth={1.75} />} onClick={() => setFlow("exchange")}>Exchange</Button>
           <Button variant="white" size="sm" disabled={!can("ticket.refund")} title={lockHint("ticket.refund") ?? t("ticket.detail.shortcut", { k: "r" })}
@@ -121,7 +123,9 @@ export function TicketDetail() {
         </div>
       </div>
 
-      <TicketDocument ticket={ticket} compact lang={uiLang} className="mb-4" />
+      <div data-tour="ticket.document" className="mb-4">
+        <TicketDocument ticket={ticket} compact lang={uiLang} />
+      </div>
 
       {/* --- dört ölçü --- */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
@@ -184,7 +188,7 @@ export function TicketDetail() {
           </Card>
 
           {/* --- kuponlar --- */}
-          <Card className="p-5">
+          <Card data-tour="ticket.coupons" className="p-5">
             <div className="mb-3 flex items-center justify-between">
               <span className="microlabel">{t("ticket.detail.coupons")}</span>
               <span className="num text-[12px] text-ink-3">{t("ticket.detail.couponCount", { n: ticket.coupons.length, o: open })}</span>
@@ -277,9 +281,9 @@ export function TicketDetail() {
             )}
           </Card>
 
-          <Card className="p-5">
+          <Card data-tour="ticket.lifecycle" className="p-5">
             <div className="mb-1 flex items-baseline justify-between">
-              <span className="microlabel">{t("ticket.detail.lifecycle")}</span>
+              <span className="microlabel flex items-center gap-1.5">{t("ticket.detail.lifecycle")} <Tip id="ticket.lifecycle" /></span>
               <span className="num text-[11.5px] text-ink-3">{t("ticket.detail.eventCount", { n: ticket.history.length })}</span>
             </div>
             <p className="mb-3 text-[12px] leading-snug text-ink-3">
@@ -291,7 +295,7 @@ export function TicketDetail() {
 
         {/* --- sağ sütun --- */}
         <div className="flex flex-col gap-4">
-          <Card className="p-5">
+          <Card data-tour="ticket.fare" className="p-5">
             <div className="microlabel mb-3">Fare / TFC</div>
             <div className="flex items-baseline justify-between py-1.5">
               <span className="text-[13px] text-ink-2">{t("ticket.detail.baseFare")}</span>

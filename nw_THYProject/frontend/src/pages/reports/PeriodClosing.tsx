@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
 import { FileText, Lock, LockOpen, ShieldCheck } from "lucide-react";
 import { closeReportingPeriod, listClosedPeriods, queryTransactions } from "@/domain/api";
+import { Tip } from "@/components/tips/Tip";
 import { periodsFrom, type PeriodSummary } from "@/domain/reports";
 import { Money } from "@/components/domain/Money";
 import { Button } from "@/components/ui/core";
@@ -71,7 +72,7 @@ export function PeriodClosing() {
               {t("report.close.hiddenDays", { n: hidden })}
             </p>
           )}
-          {periods.map((p) => (
+          {periods.map((p, idx) => (
             <Card key={p.periodId} className={cn("p-5", p.closed && "opacity-90")}>
               <div className="mb-3 flex flex-wrap items-center gap-3">
                 <span className="num text-[16px] font-semibold text-ink">{p.periodId}</span>
@@ -95,9 +96,12 @@ export function PeriodClosing() {
                       <ShieldCheck size={14} strokeWidth={1.75} /> {t("report.close.sentToSettlement")}
                     </span>
                   ) : (
+                    <>
+                    {idx === periods.findIndex((x) => !x.closed) && <Tip id="reports.close" />}
                     <Button size="sm" variant="danger" onClick={() => setConfirm(p)}>
                       <Lock size={14} strokeWidth={1.75} /> {t("report.close.action")}
                     </Button>
+                    </>
                   )}
                 </div>
               </div>

@@ -24,6 +24,7 @@ export function SplitView({ list, detail }: { list: ReactNode; detail: ReactNode
   return (
     <div className="flex min-h-0 flex-1">
       <aside
+        data-tour="split.list"
         className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex"
         style={{ width: "var(--pane)" }}
         aria-label={t("shell.recordList")}
@@ -134,7 +135,7 @@ export function DetailHead({
       )}
     >
       <div className="flex min-w-0 flex-1 items-center gap-3">{title}</div>
-      {actions && <div className="flex flex-wrap items-center gap-1.5">{actions}</div>}
+      {actions && <div data-tour="detail.actions" className="flex flex-wrap items-center gap-1.5">{actions}</div>}
     </div>
   );
 }

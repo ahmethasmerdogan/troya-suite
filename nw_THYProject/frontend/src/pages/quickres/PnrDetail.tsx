@@ -5,6 +5,7 @@ import { getPnr, ttlState } from "@/domain/reservation";
 import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
 import { PnrListPane } from "@/components/panes/PnrListPane";
 import { TtlBadge } from "@/components/domain/TtlBadge";
+import { Tip } from "@/components/tips/Tip";
 import { Button } from "@/components/ui/core";
 import { Panel, PanelHead, PanelBody, Meta, MetaGrid } from "@/components/ui/surface";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -37,6 +38,7 @@ export function PnrDetail() {
             <span className="num text-[19px] font-semibold text-ink">{pnr.recordLocator}</span>
             <Pill tone={TONE[pnr.status] ?? "gray"}>{pnr.status}</Pill>
             <TtlBadge status={pnr.status} ttl={pnr.ttl} />
+            {ttl.kind !== "none" && <Tip id="res.ttl" />}
           </>
         }
         actions={
