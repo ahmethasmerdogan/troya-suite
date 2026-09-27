@@ -65,7 +65,7 @@ export function Memos() {
   const open = list.find((m) => m.id === openId) ?? null;
 
   const columns = useMemo(() => [
-    col.accessor("number", { header: t("memos.col.number"), cell: (c) => <span className="num font-medium text-ink">{c.getValue()}</span> }),
+    col.accessor("number", { header: t("memos.col.number"), cell: (c) => <span className="num whitespace-nowrap font-medium text-ink">{c.getValue()}</span> }),
     col.accessor("type", {
       header: t("memos.col.type"),
       cell: (c) => <Pill tone={c.getValue() === "ADM" ? "red" : "green"}>{c.getValue()}</Pill>,

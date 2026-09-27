@@ -336,7 +336,7 @@ export function CheckinFlight() {
               rows.map((p, idx) => {
                 const notes = paxSeatNotes(p, lang);
                 // APIS kapısı: uluslararası uçuşta eksik bilgi kabul ettirmez.
-                const gaps = intl && p.status === "not_checked" ? apisMissing(p) : [];
+                const gaps = intl && p.status === "not_checked" ? apisMissing(p, lang) : [];
                 // Seyahat belgesi — dış hatta, henüz kabul edilmemiş yolcuda kabul kapısıdır.
                 const docs = intl ? paxDocCheck(p, flight) : null;
                 const docsBlocked = !!docs && p.status === "not_checked" && docs.verdict === "not_ok";

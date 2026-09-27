@@ -1,0 +1,93 @@
+name: Deploy v2 (Vercel)
+
+# nw_THYProject/frontend'i Vercel'e yayınlar.
+#
+# Gerekli repo secret'ları (Settings → Secrets and variables → Actions):
+#   VERCEL_TOKEN       Vercel hesabından üretilen erişim anahtarı
+#   VERCEL_ORG_ID      .vercel/project.json → "orgId"
+#   VERCEL_PROJECT_ID  .vercel/project.json → "projectId"
+# Secret'lar yoksa iş akışı dağıtımı atlar ve yeşil biter (uyarı yazar).
+#
+# Tetikleme:
+#   - Bu dala push  → önizleme (preview) dağıtımı.
+#     Commit mesajında [deploy:prod] varsa canlı (production) dağıtım.
+#   - Elle (Actions → Run workflow; iş akışı varsayılan dalda olduğunda) —
+#     hedef seçilir.
+
+on:
+  push:
+    branches: [claude/confident-rubin-itzk4r]
+    paths:
+      - "nw_THYProject/frontend/**"
+      - ".github/workflows/deploy-v2.yml"
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Dağıtım hedefi"
+        type: choice
+        default: production
+        options: [production, preview]
+
+concurrency:
+  group: deploy-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build + test + deploy
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nw_THYProject/frontend
+    env:
+      VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+      VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      TARGET: ${{ github.event_name == 'workflow_dispatch' && inputs.target || (contains(github.event.head_commit.message, '[deploy:prod]') && 'production' || 'preview') }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Secret kontrolü
+        id: secrets
+        run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "::warning::VERCEL_TOKEN / VERCEL_ORG_ID / VERCEL_PROJECT_ID secret'ları tanımlı değil — dağıtım atlandı."
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nw_THYProject/frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Vercel proje ayarlarını çek
+        if: steps.secrets.outputs.ok == 'true'
+        run: npx --yes vercel@latest pull --yes --environment="$TARGET" --token="$VERCEL_TOKEN"
+
+      - name: Derle
+        if: steps.secrets.outputs.ok == 'true'
+        run: |
+          if [ "$TARGET" = "production" ]; then
+            npx --yes vercel@latest build --prod --token="$VERCEL_TOKEN"
+          else
+            npx --yes vercel@latest build --token="$VERCEL_TOKEN"
+          fi
+
+      - name: Yayınla
+        if: steps.secrets.outputs.ok == 'true'
+        run: |
+          if [ "$TARGET" = "production" ]; then
+            url=$(npx --yes vercel@latest deploy --prebuilt --prod --token="$VERCEL_TOKEN")
+          else
+            url=$(npx --yes vercel@latest deploy --prebuilt --token="$VERCEL_TOKEN")
+          fi
+          echo "Dağıtım ($TARGET): $url"
+          echo "### Vercel ($TARGET)" >> "$GITHUB_STEP_SUMMARY"
+          echo "$url" >> "$GITHUB_STEP_SUMMARY"

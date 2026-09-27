@@ -467,11 +467,12 @@ export function isInternational(flight: DepartureFlight): boolean {
   return !!o && !!d && o !== d;
 }
 
-export function apisMissing(pax: CheckinPassenger): string[] {
+export function apisMissing(pax: CheckinPassenger, lang: "tr" | "en" = "tr"): string[] {
   const gaps: string[] = [];
-  if (!pax.passport?.trim()) gaps.push("pasaport numarası");
-  if (!pax.nationality?.trim()) gaps.push("uyruk");
-  if (pax.apis === false) gaps.push("APIS teyidi");
+  const en = lang === "en";
+  if (!pax.passport?.trim()) gaps.push(en ? "passport number" : "pasaport numarası");
+  if (!pax.nationality?.trim()) gaps.push(en ? "nationality" : "uyruk");
+  if (pax.apis === false) gaps.push(en ? "APIS confirmation" : "APIS teyidi");
   return gaps;
 }
 
