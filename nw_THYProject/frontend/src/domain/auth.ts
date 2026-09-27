@@ -20,8 +20,8 @@ export const ROLE_LABEL: Record<Role, string> = {
 };
 export const ROLE_DESC: Record<Role, string> = {
   staff: "Bilet kesme, EMD, check-in/biniş ve sorgulama.",
-  supervisor: "+ Para işlemleri: void, refund, exchange, endorsement.",
-  chief: "+ IRROP/FIM ve gelir koruma görünürlüğü.",
+  supervisor: "+ Para işlemleri: void, refund, exchange, endorsement; geç kabul ve belge istisnası.",
+  chief: "+ IRROP/FIM, gelir koruma görünürlüğü ve ADM/ACM.",
   manager: "+ Kullanıcı yönetimi ve sistem ayarları.",
   admin: "+ Rol & yetki yönetimi. Tam erişim.",
 };
@@ -36,8 +36,8 @@ export const ROLE_LABEL_EN: Record<Role, string> = {
 };
 export const ROLE_DESC_EN: Record<Role, string> = {
   staff: "Ticket issuance, EMD, check-in/boarding and retrieval.",
-  supervisor: "+ Money transactions: void, refund, exchange, endorsement.",
-  chief: "+ IRROP/FIM and revenue protection visibility.",
+  supervisor: "+ Money transactions: void, refund, exchange, endorsement; late acceptance and document exceptions.",
+  chief: "+ IRROP/FIM, revenue protection visibility and ADM/ACM.",
   manager: "+ User management and system settings.",
   admin: "+ Role & permission management. Full access.",
 };
@@ -63,6 +63,8 @@ export type Permission =
   | "pta.manage"
   | "checkin.accept"
   | "checkin.board"
+  | "checkin.override"
+  | "adm.manage"
   | "ops.view"
   | "order.view"
   | "messages.view"
@@ -87,6 +89,8 @@ export const PERMISSION_LABEL: Record<Permission, string> = {
   "pta.manage": "PTA (Prepaid)",
   "checkin.accept": "Check-in kabul",
   "checkin.board": "Biniş (boarding)",
+  "checkin.override": "Geç kabul / belge istisnası (OK TO BOARD)",
+  "adm.manage": "ADM / ACM (acente borç-alacak dekontu)",
   "ops.view": "HUB Kontrol / Operasyon",
   "order.view": "Order görüntüle",
   "messages.view": "Interline mesajları",
@@ -112,6 +116,8 @@ export const PERMISSION_LABEL_EN: Record<Permission, string> = {
   "pta.manage": "PTA (Prepaid)",
   "checkin.accept": "Check-in acceptance",
   "checkin.board": "Boarding",
+  "checkin.override": "Late acceptance / document exception (OK TO BOARD)",
+  "adm.manage": "ADM / ACM (agency debit/credit memo)",
   "ops.view": "HUB Control / Operations",
   "order.view": "View order",
   "messages.view": "Interline messages",
@@ -130,8 +136,8 @@ export function permissionLabel(p: Permission, lang: DocLang = "tr"): string {
 // Her rolün KENDİ getirdiği yetkiler; alt roller kümülatif eklenir.
 const INCREMENTAL: Record<Role, Permission[]> = {
   staff: ["ticket.issue", "ticket.emd", "ticket.print", "pta.manage", "checkin.accept", "checkin.board", "order.view", "messages.view"],
-  supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate", "chat.channel.create"],
-  chief: ["ticket.irrop", "ticket.suspend", "revenue.view", "ops.view"],
+  supervisor: ["ticket.void", "ticket.refund", "ticket.exchange", "ticket.endorse", "ticket.revalidate", "chat.channel.create", "checkin.override"],
+  chief: ["ticket.irrop", "ticket.suspend", "revenue.view", "ops.view", "adm.manage"],
   manager: ["admin.users", "admin.users.write", "admin.settings"],
   admin: ["admin.roles"],
 };

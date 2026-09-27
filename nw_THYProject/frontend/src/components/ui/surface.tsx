@@ -28,12 +28,13 @@ export function PanelHead({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-start justify-between gap-3 border-b border-line px-4 py-3", className)}>
-      <div className="min-w-0">
+    <div className={cn("flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b border-line px-4 py-3", className)}>
+      {/* Dar ekranda aksiyon (arama kutusu vb.) başlığın ALTINA iner; başlığı harf harf sıkıştırmaz. */}
+      <div className="min-w-[12rem] flex-1">
         <h2 className="text-[15px] font-semibold leading-tight tracking-[-0.01em] text-ink">{title}</h2>
         {hint && <p className="mt-0.5 text-[12.5px] leading-snug text-ink-3">{hint}</p>}
       </div>
-      {action && <div className="flex flex-shrink-0 items-center gap-1.5">{action}</div>}
+      {action && <div className="flex max-w-full flex-shrink-0 flex-wrap items-center gap-1.5">{action}</div>}
     </div>
   );
 }

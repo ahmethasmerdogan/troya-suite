@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell, BookOpen, BookText, Check, ChevronDown, Command as CommandIcon, Globe,
@@ -10,7 +10,7 @@ import { ScreenHelpButton } from "@/components/layout/ScreenHelp";
 import { useT } from "@/i18n";
 import { usePerm } from "@/lib/usePerm";
 import { ROLE_ORDER, roleDesc, roleLabel, type Role } from "@/domain/auth";
-import { MODULES, PANEL_ICON, moduleDef, moduleForPath } from "@/modules";
+import { MODULES, PANEL_ICON, moduleDef, moduleForPath, type ModuleDef, type NavItem, type NavSection } from "@/modules";
 import { BrandMark } from "@/components/BrandMark";
 import { Menu as Pop, MenuItem, MenuLabel, MenuRule, useOutside } from "@/components/ui/overlay";
 import { Dot } from "@/components/ui/pill";
@@ -37,7 +37,6 @@ export function Topbar() {
   const setTheme = useUI((s) => s.setTheme);
   const navigate = useNavigate();
   const t = useT();
-  const { can } = usePerm();
 
   const activeModule = moduleForPath(pathname);
   const def = moduleDef(activeModule);
@@ -108,9 +107,93 @@ export function Topbar() {
       </div>
 
       {/* --- 2. kat: aktif modülün bölümleri --- */}
-      {def && (
-        <div className="hidden h-11 items-center gap-1 overflow-x-auto border-t border-line px-3 sm:px-4 lg:flex">
-          {def.sections.flatMap((s) => s.items.filter((i) => !i.perm || can(i.perm))).map((item) => {
+      {def && <SectionNav def={def} isOn={isOn} />}
+    </header>
+  );
+}
+
+/**
+ * 2. kat. Modülün öğeleri tek satıra sığıyorsa düz bağlantılardır; sığmıyorsa
+ * (Troya: yetkiye göre 25'e kadar öğe) ilk bölüm düz kalır, diğer bölümler
+ * başlığıyla açılır menüye toplanır. Tek öğeli bölüm menü açmaz — doğrudan
+ * bağlantıdır. Böylece satır hiçbir genişlikte taşmaz, kesilmez.
+ */
+const FLAT_LIMIT = 6;
+
+function SectionNav({ def, isOn }: { def: ModuleDef; isOn: (to: string) => boolean }) {
+  const t = useT();
+  const { can } = usePerm();
+  const sections = def.sections
+    .map((s) => ({ ...s, items: s.items.filter((i) => !i.perm || can(i.perm)) }))
+    .filter((s) => s.items.length > 0);
+  const total = sections.reduce((n, s) => n + s.items.length, 0);
+  const flat = total <= FLAT_LIMIT;
+
+  return (
+    <nav aria-label={t(def.labelKey)} className="hidden h-11 items-center gap-0.5 border-t border-line px-3 sm:px-4 lg:flex">
+      {sections.map((s, i) =>
+        flat || i === 0 || s.items.length === 1 ? (
+          s.items.map((item) => <SubLink key={`${item.to}-${item.labelKey}`} item={item} on={!item.contextual && isOn(item.to)} />)
+        ) : (
+          <SubMenu key={s.titleKey} section={s} isOn={isOn} />
+        ),
+      )}
+    </nav>
+  );
+}
+
+function SubLink({ item, on }: { item: NavItem; on: boolean }) {
+  const t = useT();
+  const Icon = item.icon;
+  return (
+    <Link
+      to={item.to}
+      search={item.action ? { action: item.action } : undefined}
+      title={item.contextual ? t("common.selectTicketHint") : undefined}
+      aria-current={on ? "page" : undefined}
+      className={cn(
+        "relative flex h-11 flex-shrink-0 items-center gap-1.5 px-3 text-[13px] transition-colors",
+        on ? "font-semibold text-ink" : "text-ink-3 hover:text-ink",
+      )}
+    >
+      <Icon size={14} strokeWidth={1.75} className={on ? "text-brand" : ""} />
+      {t(item.labelKey)}
+      {on && <span aria-hidden className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-brand" />}
+    </Link>
+  );
+}
+
+function SubMenu({ section, isOn }: { section: NavSection; isOn: (to: string) => boolean }) {
+  const t = useT();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useOutside(ref, () => setOpen(false));
+  const active = section.items.some((i) => !i.contextual && isOn(i.to));
+  const pathname = useRouterState({ select: (s) => s.location.pathname });
+  // Sayfa değişince menü kapanır (klavyeyle ya da geri tuşuyla gidilse de).
+  useEffect(() => setOpen(false), [pathname]);
+
+  return (
+    <div ref={ref} className="relative flex-shrink-0">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        className={cn(
+          "relative flex h-11 items-center gap-1 px-3 text-[13px] transition-colors",
+          active || open ? "font-semibold text-ink" : "text-ink-3 hover:text-ink",
+        )}
+      >
+        {t(section.titleKey)}
+        <span className="num ml-0.5 rounded-full bg-inset px-1.5 text-[10.5px] font-medium text-ink-3">{section.items.length}</span>
+        <ChevronDown size={13} strokeWidth={2} className={cn("transition-transform", open && "rotate-180")} />
+        {active && <span aria-hidden className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-brand" />}
+      </button>
+      {open && (
+        <Pop align="left" className="w-64">
+          <MenuLabel>{t(section.titleKey)}</MenuLabel>
+          {section.items.map((item) => {
             const Icon = item.icon;
             const on = !item.contextual && isOn(item.to);
             return (
@@ -118,21 +201,24 @@ export function Topbar() {
                 key={`${item.to}-${item.labelKey}`}
                 to={item.to}
                 search={item.action ? { action: item.action } : undefined}
-                title={item.contextual ? t("common.selectTicketHint") : undefined}
+                role="menuitem"
+                onClick={() => setOpen(false)}
                 className={cn(
-                  "relative flex h-11 flex-shrink-0 items-center gap-1.5 px-3 text-[13px] transition-colors",
-                  on ? "font-semibold text-ink" : "text-ink-3 hover:text-ink",
+                  "flex w-full items-start gap-2.5 rounded-md px-2.5 py-2 text-[13px] transition-colors",
+                  on ? "bg-brand-wash font-semibold text-brand" : "text-ink hover:bg-inset",
                 )}
               >
-                <Icon size={14} strokeWidth={1.75} className={on ? "text-brand" : ""} />
-                {t(item.labelKey)}
-                {on && <span aria-hidden className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-brand" />}
+                <Icon size={15} strokeWidth={1.75} className={cn("mt-px flex-shrink-0", on ? "text-brand" : "text-ink-3")} />
+                <span className="min-w-0">
+                  <span className="block">{t(item.labelKey)}</span>
+                  {item.contextual && <span className="block text-[11.5px] font-normal text-ink-3">{t("common.selectTicketHint")}</span>}
+                </span>
               </Link>
             );
           })}
-        </div>
+        </Pop>
       )}
-    </header>
+    </div>
   );
 }
 

@@ -80,7 +80,16 @@ const checkinFlightRoute = createRoute({
   component: lazyRouteComponent(() => import("@/pages/checkin/CheckinFlight"), "CheckinFlight"),
   validateSearch: (s: Record<string, unknown>): { pax?: string } => ({ pax: typeof s.pax === "string" ? s.pax : undefined }),
 });
-const seatSelectionRoute = createRoute({ getParentRoute: () => rootRoute, path: "/checkin/$flightId/seat/$passengerId", component: lazyRouteComponent(() => import("@/pages/checkin/SeatSelection"), "SeatSelection") });
+const seatSelectionRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/checkin/$flightId/seat/$passengerId",
+  component: lazyRouteComponent(() => import("@/pages/checkin/SeatSelection"), "SeatSelection"),
+  // Geç kabul: gerekçe kodu ve açıklama uçuş ekranından taşınır; kabul bu bilgiyle yapılır.
+  validateSearch: (s: Record<string, unknown>): { late?: string; note?: string } => ({
+    late: typeof s.late === "string" ? s.late : undefined,
+    note: typeof s.note === "string" ? s.note : undefined,
+  }),
+});
 const opsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/ops", component: lazyRouteComponent(() => import("@/pages/checkin/HubControl"), "HubControl") });
 const serviceMapRoute = createRoute({ getParentRoute: () => rootRoute, path: "/service-map", component: lazyRouteComponent(() => import("@/pages/ServiceMap"), "ServiceMap") });
 

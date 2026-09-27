@@ -214,6 +214,8 @@ export const tr = {
   "admin.help.checkin.s3": "Bindir: kuponu uçağa alınmış yapar (C→L).",
   "admin.help.checkin.s4": "Uçuşu kapat: binenlerin kuponu uçulmuş olur (L→F), binmeyenler no-show.",
   "admin.help.checkin.w1": "Uluslararası uçuşta APIS (pasaport + uyruk) eksikse kabul yapılamaz.",
+  "admin.help.checkin.w2": "Kontuar dış hatta kalkıştan 60, iç hatta 45 dk önce kapanır. Sonrasında kabul yalnız süpervizör onayı ve gerekçeyle (geç kabul); kapı 15 dk önce kapanınca hiç yapılamaz.",
+  "admin.help.checkin.w3": "Seyahat belgesi \"Belge uygun değil\" çıkan yolcu kabul edilmez. Belge penceresinden vize/ETA/ESTA ya da pasaport tarihi girin; istisna yalnız varış ülkesi makamının OK TO BOARD onayıyla.",
 
   // ---- Ekran yardımı: Raporlar ----
   "admin.help.report.title": "Raporlar",
@@ -455,6 +457,8 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.help.checkin.s3": "Board: sets the coupon to boarded (C→L).",
   "admin.help.checkin.s4": "Close flight: coupons of boarded passengers become flown (L→F), those who did not board are no-show.",
   "admin.help.checkin.w1": "On an international flight acceptance is not possible while APIS (passport + nationality) is missing.",
+  "admin.help.checkin.w2": "The counter closes 60 min before departure on international and 45 min on domestic flights. After that, acceptance only with supervisor approval and a reason (late acceptance); once the gate closes at 15 min, not at all.",
+  "admin.help.checkin.w3": "A passenger whose travel documents are \"not OK\" cannot be accepted. Enter the visa/ETA/ESTA or passport expiry in the document window; the only exception is an OK TO BOARD approval from the destination authority.",
 
   // ---- Ekran yardımı: Raporlar ----
   "admin.help.report.title": "Reports",

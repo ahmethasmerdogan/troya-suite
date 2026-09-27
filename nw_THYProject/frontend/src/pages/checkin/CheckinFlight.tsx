@@ -1,16 +1,19 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { IdCard, Luggage, LockKeyhole, PlaneLanding, Printer, Undo2, UserCheck, Users } from "lucide-react";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { AlarmClock, FileCheck2, IdCard, Luggage, LockKeyhole, PlaneLanding, Printer, Undo2, UserCheck, Users } from "lucide-react";
 import { advanceCouponStatus, takeAirportControl } from "@/domain/api";
 import {
-  apisMissing, boardAll, boardPassenger, closeOutFlight, getFlight, isInternational,
-  listPassengers, recordApis, undoCheckIn, type CheckinPassenger,
+  apisMissing, boardAll, boardPassenger, checkinWindow, closeOutFlight, getFlight, isInternational,
+  listPassengers, paxDocCheck, recordApis, undoCheckIn, GATE_CLOSE_MIN, LATE_REASONS, type CheckinPassenger,
 } from "@/domain/checkin";
 import { flightBoarded, flightLiveStatus } from "@/domain/ops";
 import { paxSeatNotes } from "@/domain/seatRules";
 import { Tip } from "@/components/tips/Tip";
-import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
+import { SplitView, DetailHead, DetailBody, Chip } from "@/components/layout/views";
+import { CloseOutModal, DocsModal, LateAcceptModal, VERDICT_PILL, VERDICT_TONE } from "@/components/checkin/DeskModals";
+import { Banner } from "@/components/ui/banner";
+import { usePerm } from "@/lib/usePerm";
 import { FlightListPane } from "@/components/panes/FlightListPane";
 import { BoardingPass } from "@/components/domain/BoardingPass";
 import { Button, Field, Input, SearchInput } from "@/components/ui/core";
@@ -39,6 +42,12 @@ const PAX_LABEL: Record<string, Key> = {
   not_checked: "checkin.pax.notChecked", checked_in: "checkin.pax.checkedIn", boarded: "checkin.pax.boarded",
 };
 
+type Filter = "all" | "waiting" | "accepted" | "boarded" | "apis" | "docs" | "special";
+const FILTER_LABEL: Record<Filter, Key> = {
+  all: "desk.chip.all", waiting: "desk.chip.waiting", accepted: "desk.chip.accepted", boarded: "desk.chip.boarded",
+  apis: "desk.chip.apis", docs: "desk.chip.docs", special: "desk.chip.special",
+};
+
 export function CheckinFlight() {
   const { flightId } = useParams({ from: "/checkin/$flightId" });
   const t = useT();
@@ -46,8 +55,21 @@ export function CheckinFlight() {
   const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const search = useSearch({ from: "/checkin/$flightId" });
+  const { can } = usePerm();
   const [tab, setTab] = useState<"checkin" | "boarding">("checkin");
-  const [q, setQ] = useState("");
+  // Kalkış kontrolü panosundan yolcu adıyla gelindiyse liste o yolcuya süzülü açılır.
+  const [q, setQ] = useState(search.pax ?? "");
+  useEffect(() => { setQ(search.pax ?? ""); }, [flightId, search.pax]);
+  const [filter, setFilter] = useState<Filter>("all");
+  /** Seyahat belgesi kontrolü açık yolcu. */
+  const [docsFor, setDocsFor] = useState<CheckinPassenger | null>(null);
+  /** Geç kabul gerekçesi istenen yolcu. */
+  const [lateFor, setLateFor] = useState<CheckinPassenger | null>(null);
+  const [confirmClose, setConfirmClose] = useState(false);
+  // Kontuar penceresi saatle değişir: yarım dakikada bir yeniden hesapla.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 30_000); return () => window.clearInterval(id); }, []);
   /** Biniş kartı önizlemesi — ETKT işaretli belge (1.2). */
   const [pass, setPass] = useState<CheckinPassenger | null>(null);
   /** APIS bilgisi girilecek yolcu (uluslararası uçuşta zorunlu). */
@@ -142,6 +164,7 @@ export function CheckinFlight() {
       return { ...res, flown };
     },
     onSuccess: (r) => {
+      setConfirmClose(false);
       toast.success(t("checkin.toast.closed.title"), t("checkin.toast.closed.body", { flown: r.flown, noshow: r.noShow.length }));
       refreshAll();
     },
@@ -162,18 +185,36 @@ export function CheckinFlight() {
     onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), e.message),
   });
 
+  const intlFlight = flight ? isInternational(flight) : false;
+  /** Süzgeç yüklemi — sayımlar ve liste aynı tanımı kullanır. */
+  const matches = (p: CheckinPassenger, f: Filter): boolean => {
+    switch (f) {
+      case "waiting": return p.status === "not_checked";
+      case "accepted": return p.status === "checked_in";
+      case "boarded": return p.status === "boarded";
+      case "apis": return intlFlight && p.status === "not_checked" && apisMissing(p).length > 0;
+      case "docs": return intlFlight && !!flight && p.status === "not_checked" && paxDocCheck(p, flight).verdict !== "ok";
+      case "special": return !!(p.ssr?.length || p.infant || p.child);
+      default: return true;
+    }
+  };
+  const tabRows = (pax ?? []).filter((p) => (tab === "checkin" ? p.status !== "boarded" : p.status !== "not_checked"));
   const rows = useMemo(() => {
     const s = q.trim().toUpperCase();
-    return (pax ?? [])
-      .filter((p) => (tab === "checkin" ? p.status !== "boarded" : p.status !== "not_checked"))
-      .filter((p) => !s || `${p.surname} ${p.givenName} ${p.pnr} ${p.ticketNumber ?? ""} ${p.passport ?? ""} ${p.nationalId ?? ""}`.toUpperCase().includes(s));
-  }, [pax, tab, q]);
+    return tabRows
+      .filter((p) => matches(p, filter))
+      .filter((p) => !s || `${p.surname} ${p.givenName} ${p.surname}/${p.givenName} ${p.pnr} ${p.ticketNumber ?? ""} ${p.passport ?? ""} ${p.nationalId ?? ""}`.toUpperCase().includes(s));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pax, tab, q, filter, flight]);
 
   const withList = (detail: React.ReactNode) => <SplitView list={<FlightListPane selected={flightId} />} detail={detail} />;
   if (isLoading) return withList(<DetailBody><Skeleton className="h-64 w-full" /></DetailBody>);
   if (!flight) return withList(<DetailBody><p className="text-sm text-ink-2">{t("checkin.flight.notFound")}</p></DetailBody>);
 
   const intl = isInternational(flight);
+  const win = checkinWindow(flight, now);
+  const canLate = can("checkin.override");
+  const noShowIfClosed = (pax ?? []).filter((p) => p.status === "checked_in").length;
   const firstApisGap = intl ? rows.findIndex((p) => p.status === "not_checked" && apisMissing(p).length > 0) : -1;
   // Sayaçlar uçuşun TOPLAMINDAN gelir — HUB panosu ve uçuş listesiyle aynı
   // kaynak. Aşağıdaki liste tam manifest değil, bu ekranda işlem yapılabilen
@@ -212,7 +253,7 @@ export function CheckinFlight() {
                 <Tip id="checkin.closeout" />
                 <Button variant="danger" size="sm" disabled={closeOut.isPending}
                   title={t("checkin.flight.closeOut.title")}
-                  onClick={() => closeOut.mutate()}>
+                  onClick={() => setConfirmClose(true)}>
                   <PlaneLanding size={15} strokeWidth={1.75} /> {t("checkin.flight.closeOut")}
                 </Button>
               </>
@@ -221,7 +262,7 @@ export function CheckinFlight() {
             {(["checkin", "boarding"] as const).map((k) => (
               <button
                 key={k}
-                onClick={() => setTab(k)}
+                onClick={() => { setTab(k); setFilter("all"); }}
                 className={`h-7 rounded-sm px-3 text-[12.5px] font-medium transition-colors ${tab === k ? "bg-panel text-ink" : "text-ink-2 hover:text-ink"}`}
               >
                 {k === "checkin" ? t("checkin.tab.checkin") : t("checkin.tab.boarding")}
@@ -256,12 +297,38 @@ export function CheckinFlight() {
           </span>
         </div>
 
+        {/* Kontuar penceresi — kabulün kuralı ekranın en görünür yerinde. */}
+        {flight.status !== "departed" && flight.status !== "closed" && (
+          win.state === "open" ? (
+            <div className="flex items-center gap-2 text-[12.5px] text-ink-2">
+              <AlarmClock size={14} strokeWidth={1.75} className="text-ink-3" />
+              {t("desk.window.open", { time: new Date(win.closesAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }), n: win.closeMin })}
+            </div>
+          ) : win.state === "late" ? (
+            <Banner kind="warning" title={t("desk.window.late.title")}>
+              {t("desk.window.late.body", { m: win.minsToDeparture, g: GATE_CLOSE_MIN })}
+            </Banner>
+          ) : (
+            <Banner kind="danger" title={t("desk.window.closed.title")}>{t("desk.window.closed.body")}</Banner>
+          )
+        )}
+
         <Panel data-tour="checkin.pax">
           <PanelHead
             title={tab === "checkin" ? t("checkin.panel.acceptance") : t("checkin.tab.boarding")}
             hint={`${flight.aircraft.type} · ${flight.aircraft.config} · ${t("checkin.panel.listed", { n: (pax ?? []).length })}`}
             action={<SearchInput className="w-64" value={q} onChange={setQ} placeholder={t("checkin.search.pax")} />}
           />
+          <div className="flex gap-1.5 overflow-x-auto border-b border-line px-4 py-2.5">
+            {(tab === "checkin"
+              ? (["all", "waiting", "accepted", ...(intl ? ["apis", "docs"] : []), "special"] as Filter[])
+              : (["all", "accepted", "boarded", "special"] as Filter[])
+            ).map((f) => (
+              <Chip key={f} active={filter === f} count={tabRows.filter((p) => matches(p, f)).length} onClick={() => setFilter(f)}>
+                {t(FILTER_LABEL[f])}
+              </Chip>
+            ))}
+          </div>
           <PanelBody className="pt-1">
             {rows.length === 0 ? (
               <Empty icon={<Users size={22} strokeWidth={1.5} />} title={t("checkin.empty.pax.title")} hint={t("checkin.empty.pax.hint")} />
@@ -270,14 +337,27 @@ export function CheckinFlight() {
                 const notes = paxSeatNotes(p, lang);
                 // APIS kapısı: uluslararası uçuşta eksik bilgi kabul ettirmez.
                 const gaps = intl && p.status === "not_checked" ? apisMissing(p) : [];
+                // Seyahat belgesi — dış hatta, henüz kabul edilmemiş yolcuda kabul kapısıdır.
+                const docs = intl ? paxDocCheck(p, flight) : null;
+                const docsBlocked = !!docs && p.status === "not_checked" && docs.verdict === "not_ok";
+                const firstTime = p.status === "not_checked";
+                const late = firstTime && win.state === "late";
+                const shut = firstTime && win.state === "closed";
                 return (
                   <div key={p.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-3 last:border-0">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
+                    {/* Dar ekranda aksiyonlar adın altına iner; rozetler adın üstüne binmez. */}
+                    <div className="min-w-[min(100%,18rem)] flex-1">
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                         <span className="text-[13.5px] font-medium text-ink">{p.surname}/{p.givenName}</span>
                         <Pill tone={PAX_TONE[p.status]}>{t(PAX_LABEL[p.status])}</Pill>
                         {p.cabin === "Business" && <Pill tone="violet">Business</Pill>}
                         {gaps.length > 0 && <Pill tone="amber">{t("checkin.pill.apisMissing")}</Pill>}
+                        {docs && p.status === "not_checked" && docs.verdict !== "ok" && <Pill tone={VERDICT_TONE[docs.verdict]}>{t(VERDICT_PILL[docs.verdict])}</Pill>}
+                        {p.lateAcceptance && (
+                          <Pill tone="amber">
+                            <span title={`${(() => { const r = LATE_REASONS.find((x) => x.code === p.lateAcceptance!.reason); return r ? (lang === "en" ? r.en : r.tr) : p.lateAcceptance!.reason; })()} · ${p.lateAcceptance.approvedBy}${p.lateAcceptance.note ? ` · ${p.lateAcceptance.note}` : ""}`}>{t("desk.pill.late")}</span>
+                          </Pill>
+                        )}
                         {/* ipucu listede yalnız ilk APIS eksiği satırında — her satırda nokta gürültüdür */}
                         {gaps.length > 0 && idx === firstApisGap && <Tip id="checkin.apis" />}
                       </div>
@@ -292,7 +372,7 @@ export function CheckinFlight() {
                         )}
                       </div>
                     </div>
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
                       {p.status !== "not_checked" && (
                         <Button variant="ghost" size="sm" onClick={() => setPass(p)} title={t("checkin.action.boardingPass.title")}>
                           <Printer size={15} strokeWidth={1.75} /> {t("checkin.action.boardingPass")}
@@ -310,16 +390,29 @@ export function CheckinFlight() {
                           <IdCard size={15} strokeWidth={1.75} /> {t("checkin.action.apis")}
                         </Button>
                       )}
+                      {docs && firstTime && gaps.length === 0 && (
+                        <Button variant={docs.verdict === "ok" ? "ghost" : "secondary"} size="sm" title={t("desk.action.docs.title")} onClick={() => setDocsFor(p)}>
+                          <FileCheck2 size={15} strokeWidth={1.75} /> {t("desk.action.docs")}
+                        </Button>
+                      )}
                       {tab === "checkin" ? (
                         <Button
                           size="sm"
-                          disabled={gaps.length > 0}
-                          title={gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") }) : undefined}
-                          variant={p.status === "not_checked" ? "primary" : "secondary"}
-                          onClick={() => navigate({ to: "/checkin/$flightId/seat/$passengerId", params: { flightId, passengerId: p.id } })}
+                          disabled={gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
+                          title={
+                            gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") })
+                              : docsBlocked ? t("desk.action.docsBlocked")
+                                : shut ? t("desk.action.closedTitle")
+                                  : late ? (canLate ? t("desk.action.late.title") : t("desk.action.lateLocked"))
+                                    : undefined
+                          }
+                          variant={!firstTime ? "secondary" : late ? "secondary" : "primary"}
+                          onClick={() => late
+                            ? setLateFor(p)
+                            : navigate({ to: "/checkin/$flightId/seat/$passengerId", params: { flightId, passengerId: p.id } })}
                         >
-                          <UserCheck size={15} strokeWidth={1.75} />
-                          {p.status === "not_checked" ? t("checkin.action.accept") : t("checkin.action.changeSeat")}
+                          {late ? <AlarmClock size={15} strokeWidth={1.75} /> : <UserCheck size={15} strokeWidth={1.75} />}
+                          {!firstTime ? t("checkin.action.changeSeat") : late ? t("desk.action.late") : t("checkin.action.accept")}
                         </Button>
                       ) : (
                         <Button variant="success" size="sm" disabled={p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
@@ -346,6 +439,29 @@ export function CheckinFlight() {
       >
         {pass && <BoardingPass flight={flight} pax={pass} />}
       </Modal>
+
+      {docsFor && (
+        <DocsModal
+          flight={flight}
+          pax={(pax ?? []).find((x) => x.id === docsFor.id) ?? docsFor}
+          onClose={() => setDocsFor(null)}
+          onSaved={() => refreshAll()}
+        />
+      )}
+      {lateFor && (
+        <LateAcceptModal
+          pax={lateFor}
+          onClose={() => setLateFor(null)}
+          onContinue={(l) => {
+            const id = lateFor.id;
+            setLateFor(null);
+            navigate({ to: "/checkin/$flightId/seat/$passengerId", params: { flightId, passengerId: id }, search: { late: l.reason, note: l.note } });
+          }}
+        />
+      )}
+      {confirmClose && (
+        <CloseOutModal noShow={noShowIfClosed} pending={closeOut.isPending} onClose={() => setConfirmClose(false)} onConfirm={() => closeOut.mutate()} />
+      )}
 
       {/* APIS — uluslararası uçuşta yolcu bilgisi kalkıştan önce iletilir. */}
       {apisFor && (

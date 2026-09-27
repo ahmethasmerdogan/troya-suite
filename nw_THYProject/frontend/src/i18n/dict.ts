@@ -14,6 +14,7 @@ import { tr as tipsTr, en as tipsEn } from "./keys/tips";
 import { tr as rightsTr, en as rightsEn } from "./keys/rights";
 import { tr as queuesTr, en as queuesEn } from "./keys/queues";
 import { tr as skchgTr, en as skchgEn } from "./keys/skchg";
+import { tr as deskTr, en as deskEn } from "./keys/desk";
 
 import type { Lang } from "@/store/ui";
 
@@ -63,7 +64,7 @@ const tr = {
 
   // nav — Troya (biletleme)
   "nav.section.ticketing": "Biletleme",
-  "nav.section.operations": "İşlemler",
+  "nav.section.operations": "Değişiklik & İade",
   "nav.section.documents": "Dokümanlar",
   "nav.section.order": "Order",
   "nav.section.interline": "Interline",
@@ -200,7 +201,7 @@ const en: Record<keyof typeof tr, string> = {
   "common.selectTicketHint": "Select a ticket first to start the operation.",
 
   "nav.section.ticketing": "Ticketing",
-  "nav.section.operations": "Operations",
+  "nav.section.operations": "Changes & refunds",
   "nav.section.documents": "Documents",
   "nav.section.order": "Order",
   "nav.section.interline": "Interline",
@@ -297,8 +298,8 @@ const en: Record<keyof typeof tr, string> = {
  * TR ve EN değerlerini YAN YANA tutar — 130 satır uzaklıktaki iki blok
  * arasında kayma riski kalmadı.
  */
-const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr, ...skchgTr };
-const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn, ...skchgEn };
+const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr, ...skchgTr, ...deskTr };
+const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn, ...skchgEn, ...deskEn };
 
 export type Key = keyof typeof TR;
 

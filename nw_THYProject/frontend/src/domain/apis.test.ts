@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   listFlights, listPassengers, checkInPassenger, recordApis,
-  apisMissing, isInternational,
+  apisMissing, isInternational, checkinWindow,
 } from "./checkin";
 import { newIdempotencyKey } from "./api";
 
@@ -20,7 +20,8 @@ describe("APIS", () => {
 
   it("eksik APIS'li yolcu uluslararası uçuşta kabul EDİLEMEZ", async () => {
     const flights = await listFlights();
-    const intl = flights.find((f) => isInternational(f) && f.status !== "departed")!;
+    // Kontuarı açık bir dış hat uçuşu — kapanmış uçuşta ret APIS'ten önce pencereden gelir.
+    const intl = flights.find((f) => isInternational(f) && checkinWindow(f).state === "open")!;
     const list = await listPassengers(intl.flightId);
     const bad = list.find((p) => p.status === "not_checked" && apisMissing(p).length > 0);
     if (!bad) return; // veri setinde eksik APIS'li yolcu yoksa kural zaten sınanamaz

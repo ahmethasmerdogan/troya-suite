@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useNavigate, useParams } from "@tanstack/react-router";
-import { checkInPassenger, getFlight, getSeatMap, listPassengers, type Seat } from "@/domain/checkin";
+import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
+import { checkInPassenger, getFlight, getSeatMap, listPassengers, LATE_REASONS, type LateReason, type Seat } from "@/domain/checkin";
 import { advanceCouponStatus, newIdempotencyKey, recordBaggage } from "@/domain/api";
 import { denialReason, paxSeatNotes, seatDenial } from "@/domain/seatRules";
 import { layoutFor } from "@/domain/aircraftLayout";
@@ -25,6 +25,11 @@ import { useUI } from "@/store/ui";
  */
 export function SeatSelection() {
   const { flightId, passengerId } = useParams({ from: "/checkin/$flightId/seat/$passengerId" });
+  const search = useSearch({ from: "/checkin/$flightId/seat/$passengerId" });
+  const user = useUI((s) => s.user);
+  // Geç kabul — uçuş ekranında gerekçesi alınıp buraya taşındı.
+  const lateReason = LATE_REASONS.find((r) => r.code === search.late);
+  const late = lateReason ? { reason: lateReason.code as LateReason, note: search.note, approvedBy: user?.name ?? "—" } : undefined;
   const t = useT();
   // Kural gerekçeleri (koltuk reddi, kısıt notları) domainden iki dilli gelir.
   const lang = useUI((s) => s.lang);
@@ -47,7 +52,7 @@ export function SeatSelection() {
    */
   const accept = useMutation({
     mutationFn: async () => {
-      const p = await checkInPassenger({ flightId, passengerId, seat: seat!, bags, idempotencyKey: newIdempotencyKey() });
+      const p = await checkInPassenger({ flightId, passengerId, seat: seat!, bags, idempotencyKey: newIdempotencyKey(), late });
       let couponWarning: string | null = null;
       if (p.ticketNumber && p.couponSeq != null) {
         try {
@@ -103,6 +108,11 @@ export function SeatSelection() {
         title={t("checkin.seat.title")}
         hint={`${person.surname}/${person.givenName} · ${flight.carrier}${flight.flightNumber} · ${flight.origin} → ${flight.destination}`}
       />
+      {late && lateReason && (
+        <Banner kind="warning" className="mb-4" title={t("late.banner", { reason: lang === "en" ? lateReason.en : lateReason.tr, by: late.approvedBy })}>
+          {late.note}
+        </Banner>
+      )}
 
       <div className="grid grid-cols-1 gap-4 pb-24 lg:grid-cols-[1fr_340px]">
         <Panel>

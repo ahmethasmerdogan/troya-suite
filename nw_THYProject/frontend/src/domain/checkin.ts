@@ -8,6 +8,7 @@ import {
   type CabinZone, type CabinClass,
 } from "./aircraftLayout";
 import { MOCK_TICKETS } from "./mockData";
+import { checkTravelDocs, type DocCheckResult, type TravelPermit } from "./travelDocs";
 import { generateTickets } from "./genTickets";
 
 /**
@@ -80,6 +81,14 @@ export interface CheckinPassenger {
   infant?: boolean;
   /** 12 yaş altı — exit sırası kapalı. */
   child?: boolean;
+  /** Pasaport son geçerlilik tarihi (YYYY-MM-DD) — seyahat belgesi kontrolü okur. */
+  passportExpiry?: string;
+  /** Beyan edilen giriş izni (vize / ETA / ESTA) — DOCO. */
+  visa?: TravelPermit;
+  /** Varış ülkesi makamının "OK TO BOARD" onayı — belge NOT OK iken kabulü açan tek yol. */
+  okToBoard?: { ref: string; by: string; at: string };
+  /** Kontuar kapandıktan sonra süpervizör onayıyla yapılan kabul. */
+  lateAcceptance?: { reason: LateReason; note?: string; approvedBy: string; at: string };
 }
 
 export type Cabin = CabinClass;
@@ -137,26 +146,26 @@ for (const f of FLIGHTS) {
 
 const PASSENGERS: Record<string, CheckinPassenger[]> = {
   "TK198-D": [
-    { id: "p1", surname: "ERDOGAN", givenName: "AHMET", pnr: "XQ7T2M", ticketNumber: "2351234567890", couponSeq: 1, cabin: "Business", status: "not_checked", bags: 1, ff: "TK 233 445 566", nationalId: "12345678901", passport: "U07654321", nationality: "TR", apis: true },
-    { id: "p2", surname: "TANAKA", givenName: "KENJI", pnr: "JJ22KK", cabin: "Economy", status: "checked_in", seat: "23C", bags: 2, sequenceNumber: 41, passport: "TK9981234", nationality: "JP", apis: true },
-    { id: "p3", surname: "SMITH", givenName: "JOHN", pnr: "PP90AB", cabin: "Economy", status: "not_checked", bags: 0, passport: "557120098", nationality: "US", apis: false, ssr: ["WCHR"] },
-    { id: "p8", surname: "KAYA", givenName: "MERVE", pnr: "XQ7T2M", cabin: "Business", status: "checked_in", seat: "3A", bags: 1, sequenceNumber: 12, nationalId: "23456789012", passport: "U08123456", nationality: "TR", apis: true },
-    { id: "p9", surname: "WANG", givenName: "LEI", pnr: "CN44ZZ", cabin: "Economy", status: "not_checked", bags: 2, passport: "EJ7766554", nationality: "CN", apis: true, infant: true },
+    { id: "p1", surname: "ERDOGAN", givenName: "AHMET", pnr: "XQ7T2M", ticketNumber: "2351234567890", couponSeq: 1, cabin: "Business", status: "not_checked", bags: 1, ff: "TK 233 445 566", nationalId: "12345678901", passport: "U07654321", passportExpiry: "2031-04-18", nationality: "TR", apis: true },
+    { id: "p2", surname: "TANAKA", givenName: "KENJI", pnr: "JJ22KK", cabin: "Economy", status: "checked_in", seat: "23C", bags: 2, sequenceNumber: 41, passport: "TK9981234", passportExpiry: "2030-11-02", nationality: "JP", apis: true },
+    { id: "p3", surname: "SMITH", givenName: "JOHN", pnr: "PP90AB", cabin: "Economy", status: "not_checked", bags: 0, passport: "557120098", passportExpiry: "2029-06-30", nationality: "US", apis: false, ssr: ["WCHR"] },
+    { id: "p8", surname: "KAYA", givenName: "MERVE", pnr: "XQ7T2M", cabin: "Business", status: "checked_in", seat: "3A", bags: 1, sequenceNumber: 12, nationalId: "23456789012", passport: "U08123456", passportExpiry: "2032-01-09", nationality: "TR", apis: true },
+    { id: "p9", surname: "WANG", givenName: "LEI", pnr: "CN44ZZ", cabin: "Economy", status: "not_checked", bags: 2, passport: "EJ7766554", passportExpiry: "2030-03-15", nationality: "CN", apis: true, infant: true, visa: { type: "JP", number: "JPV448120", validUntil: "2027-02-28" } },
   ],
   "TK21-D": [
-    { id: "p4", surname: "YILMAZ", givenName: "ELIF", pnr: "LM4K9Z", ticketNumber: "2359988776655", couponSeq: 1, cabin: "Economy", status: "not_checked", bags: 1, nationalId: "34567890123", passport: "U05551122", nationality: "TR", apis: true, ssr: ["PETC"] },
-    { id: "p5", surname: "MUELLER", givenName: "HANS", pnr: "DE77QW", cabin: "Business", status: "checked_in", seat: "2A", bags: 1, sequenceNumber: 8, passport: "C01X9988", nationality: "DE", apis: true },
-    { id: "p10", surname: "BROWN", givenName: "EMMA", pnr: "GB12MN", cabin: "Economy", status: "not_checked", bags: 1, passport: "509887766", nationality: "GB", apis: false, ssr: ["UMNR"], child: true },
+    { id: "p4", surname: "YILMAZ", givenName: "ELIF", pnr: "LM4K9Z", ticketNumber: "2359988776655", couponSeq: 1, cabin: "Economy", status: "not_checked", bags: 1, nationalId: "34567890123", passport: "U05551122", passportExpiry: "2030-08-21", nationality: "TR", apis: true, ssr: ["PETC"], visa: { type: "UK", number: "GBV0912733", validUntil: "2027-05-31" } },
+    { id: "p5", surname: "MUELLER", givenName: "HANS", pnr: "DE77QW", cabin: "Business", status: "checked_in", seat: "2A", bags: 1, sequenceNumber: 8, passport: "C01X9988", passportExpiry: "2031-09-12", nationality: "DE", apis: true, visa: { type: "ETA", number: "ETA7745120", validUntil: "2028-03-01" } },
+    { id: "p10", surname: "BROWN", givenName: "EMMA", pnr: "GB12MN", cabin: "Economy", status: "not_checked", bags: 1, passport: "509887766", passportExpiry: "2029-12-01", nationality: "GB", apis: false, ssr: ["UMNR"], child: true },
   ],
   "TK2410-D": [
     { id: "p6", surname: "DEMIR", givenName: "CAN", pnr: "TR8N1P", cabin: "Economy", status: "boarded", seat: "14A", bags: 1, sequenceNumber: 120, nationalId: "45678901234", nationality: "TR", apis: true },
     { id: "p7", surname: "DEMIR", givenName: "AYSE", pnr: "TR8N1P", cabin: "Economy", status: "checked_in", seat: "14B", bags: 1, sequenceNumber: 121, nationalId: "56789012345", nationality: "TR", apis: true },
   ],
   "TK1591-D": [
-    { id: "p11", surname: "SCHNEIDER", givenName: "PAUL", pnr: "DE90KL", cabin: "Economy", status: "not_checked", bags: 1, passport: "C09X1122", nationality: "DE", apis: true },
+    { id: "p11", surname: "SCHNEIDER", givenName: "PAUL", pnr: "DE90KL", cabin: "Economy", status: "not_checked", bags: 1, passport: "C09X1122", passportExpiry: "2032-05-20", nationality: "DE", apis: true },
   ],
   "TK6-D": [
-    { id: "p12", surname: "JOHNSON", givenName: "MARY", pnr: "US33PP", cabin: "Business", status: "not_checked", bags: 2, passport: "558901234", nationality: "US", apis: false, ssr: ["WCHC"] },
+    { id: "p12", surname: "JOHNSON", givenName: "MARY", pnr: "US33PP", cabin: "Business", status: "not_checked", bags: 2, passport: "558901234", passportExpiry: "2030-02-14", nationality: "US", apis: false, ssr: ["WCHC"] },
   ],
   "TK2128-D": [],
 };
@@ -243,6 +252,30 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
 // Her uçuş için yolcu listesini (el yazımı + üretilen) hazırla.
 for (const flight of FLIGHTS) {
   PASSENGERS[flight.flightId] = genFor(flight, PASSENGERS[flight.flightId] ?? []);
+  for (const p of PASSENGERS[flight.flightId]) if (p.id.includes("-g")) seedDocs(flight, p);
+}
+
+/**
+ * Üretilen yolcuya belge bilgisi (pasaport bitişi + gerekiyorsa izin).
+ *
+ * AYRI bir rastgele akışla üretilir (yolcu id'sinden): `genFor`'un akışına
+ * çağrı eklemek tüm yolcuları kaydırır, testlerin dayandığı veriyi bozardı.
+ * Dağılım bilerek karışık — gişede "belge uygun değil" hâli görünür olsun:
+ * izin gerekenlerin ~%12'sinde izin yok, pasaportların ~%8'i eşiğe yakın.
+ */
+function seedDocs(flight: DepartureFlight, p: CheckinPassenger) {
+  const rng = mkRng(`${p.id}-docs`);
+  if (p.passport) {
+    const day = flight.departure.slice(0, 10);
+    const r = rng();
+    const addDays = (n: number) => new Date(Date.parse(`${day}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
+    p.passportExpiry = r < 0.05 ? addDays(40) : r < 0.08 ? addDays(120) : addDays(700 + Math.floor(rng() * 2600));
+  }
+  const dest = airportByCode(flight.destination)?.countryCode ?? "";
+  const probe = checkTravelDocs({ nationality: p.nationality, passport: p.passport ?? "X", passportExpiry: "2099-01-01" }, dest, airportByCode(flight.origin)?.countryCode ?? "", flight.departure);
+  if (probe.permitType && rng() > 0.12) {
+    p.visa = { type: probe.permitType, number: `${probe.permitType.slice(0, 2)}${digits(rng, 7)}`, validUntil: "2028-12-31" };
+  }
 }
 
 export async function listFlights(): Promise<DepartureFlight[]> {
@@ -294,7 +327,132 @@ function buildSeat(layout: AircraftLayout, zone: CabinZone, row: number, col: st
   };
 }
 
-export interface CheckInInput { flightId: string; passengerId: string; seat: string; bags: number; idempotencyKey: string; }
+export interface CheckInInput {
+  flightId: string; passengerId: string; seat: string; bags: number; idempotencyKey: string;
+  /** Kontuar kapandıktan sonra kabul — süpervizör onayı ve gerekçe zorunlu. */
+  late?: { reason: LateReason; note?: string; approvedBy: string };
+}
+
+/* ===================================================================
+   Kabul penceresi — kontuar kapanışı ve geç kabul.
+
+   Gişe kabulü kalkıştan belirli bir süre önce kapanır: yolcu ve bagajı
+   kapıya, yükleme planına (loadsheet) yetişmelidir. Kapanıştan sonra kabul
+   ancak süpervizör onayıyla ve gerekçeyle yapılır (geç kabul); kapı
+   kapandıktan sonra hiç yapılmaz. Süreler taşıyıcı politikasıdır —
+   burada THY'nin İstanbul kontuar kapanışı: dış hat 60, iç hat 45 dk.
+   =================================================================== */
+
+export const CHECKIN_CLOSE_MIN = { domestic: 45, international: 60 } as const;
+/** Kapı kapanışı — HUB durum modelindeki `gate_closed` eşiğiyle aynı. */
+export const GATE_CLOSE_MIN = 15;
+
+export type CheckinWindowState = "open" | "late" | "closed";
+export interface CheckinWindow {
+  state: CheckinWindowState;
+  /** Kalkışa kalan dakika (negatif = kalkmış). */
+  minsToDeparture: number;
+  /** Kontuar kapanışı — kalkıştan kaç dk önce. */
+  closeMin: number;
+  /** Kontuar kapanış anı (ISO). */
+  closesAt: string;
+}
+
+export function checkinWindow(flight: DepartureFlight, now = Date.now()): CheckinWindow {
+  const dep = Date.parse(flight.departure);
+  const mins = Math.round((dep - now) / 60000);
+  const closeMin = isInternational(flight) ? CHECKIN_CLOSE_MIN.international : CHECKIN_CLOSE_MIN.domestic;
+  const closesAt = new Date(dep - closeMin * 60000).toISOString();
+  const gone = flight.status === "departed" || flight.status === "closed";
+  const state: CheckinWindowState = gone || mins <= GATE_CLOSE_MIN ? "closed" : mins <= closeMin ? "late" : "open";
+  return { state, minsToDeparture: mins, closeMin, closesAt };
+}
+
+/** Geç kabul gerekçeleri — denetim kaydında kod olarak durur. */
+export type LateReason = "CONN" | "IRROP" | "MEDA" | "SEC" | "CIP" | "OTHER";
+export const LATE_REASONS: { code: LateReason; tr: string; en: string }[] = [
+  { code: "CONN", tr: "Gecikmeli bağlantı uçuşundan gelen yolcu", en: "Passenger from a delayed connecting flight" },
+  { code: "IRROP", tr: "Havayolu kaynaklı aksama (IRROP)", en: "Airline-caused disruption (IRROP)" },
+  { code: "SEC", tr: "Güvenlik / pasaport kontrolü kuyruğu", en: "Security / passport control queue" },
+  { code: "MEDA", tr: "Özel yardım / tıbbi durum", en: "Special assistance / medical" },
+  { code: "CIP", tr: "CIP / protokol yolcusu", en: "CIP / protocol passenger" },
+  { code: "OTHER", tr: "Diğer (not zorunlu)", en: "Other (note required)" },
+];
+
+/** Yolcunun seyahat belgesi kontrolü — uçuşun varış ülkesine göre. */
+export function paxDocCheck(pax: CheckinPassenger, flight: DepartureFlight): DocCheckResult {
+  return checkTravelDocs(
+    { nationality: pax.nationality, passport: pax.passport, passportExpiry: pax.passportExpiry, visa: pax.visa, okToBoard: pax.okToBoard },
+    airportByCode(flight.destination)?.countryCode ?? "",
+    airportByCode(flight.origin)?.countryCode ?? "",
+    flight.departure,
+  );
+}
+
+/** Gişede beyan edilen izni (vize/ETA/ESTA) kaydet — DOCO. */
+export async function recordTravelPermit(flightId: string, passengerId: string, permit: TravelPermit): Promise<CheckinPassenger> {
+  await delay(320);
+  const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
+  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (!permit.type.trim() || !permit.number.trim()) throw new Error("İzin türü ve numarası zorunlu");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(permit.validUntil)) throw new Error("Geçerlilik tarihi YYYY-AA-GG olmalı");
+  pax.visa = { type: permit.type.trim().toUpperCase(), number: permit.number.trim().toUpperCase(), validUntil: permit.validUntil };
+  return pax;
+}
+
+/** Pasaport son geçerlilik tarihini düzelt (belgeden okunur). */
+export async function recordPassportExpiry(flightId: string, passengerId: string, expiry: string): Promise<CheckinPassenger> {
+  await delay(240);
+  const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
+  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) throw new Error("Tarih YYYY-AA-GG olmalı");
+  pax.passportExpiry = expiry;
+  return pax;
+}
+
+/**
+ * "OK TO BOARD" — varış ülkesi makamının onayı.
+ *
+ * Belgesi NOT OK çıkan yolcuyu kabul etmenin tek yolu budur ve yetki
+ * süpervizördedir; makam referansı olmadan istisna açılmaz.
+ */
+export async function recordOkToBoard(flightId: string, passengerId: string, ref: string, by: string): Promise<CheckinPassenger> {
+  await delay(320);
+  const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
+  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (ref.trim().length < 4) throw new Error("Makam onay referansı zorunlu");
+  pax.okToBoard = { ref: ref.trim().toUpperCase(), by, at: new Date().toISOString() };
+  return pax;
+}
+
+/**
+ * Gişe özeti — kalkış kontrolü giriş sayfası okur. Uçuş başına bekleyen
+ * yolcu, APIS eksiği, belgesi uygun olmayan yolcu ve kabul penceresi.
+ */
+export interface DeskFlight {
+  flight: DepartureFlight;
+  window: CheckinWindow;
+  waiting: number;
+  apisGaps: number;
+  docsNotOk: number;
+  special: number;
+}
+export async function deskOverview(now = Date.now()): Promise<DeskFlight[]> {
+  await delay(160);
+  return FLIGHTS.map((flight) => {
+    const list = PASSENGERS[flight.flightId] ?? [];
+    const pending = list.filter((p) => p.status === "not_checked");
+    const intl = isInternational(flight);
+    return {
+      flight,
+      window: checkinWindow(flight, now),
+      waiting: pending.length,
+      apisGaps: intl ? pending.filter((p) => apisMissing(p).length > 0).length : 0,
+      docsNotOk: intl ? pending.filter((p) => paxDocCheck(p, flight).verdict === "not_ok").length : 0,
+      special: list.filter((p) => p.ssr?.length || p.infant || p.child).length,
+    };
+  });
+}
 /**
  * APIS kapısı (Advance Passenger Information).
  *
@@ -336,11 +494,27 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
   await delay(550);
   const pax = PASSENGERS[input.flightId]?.find((p) => p.id === input.passengerId);
   if (!pax) throw new Error("Yolcu bulunamadı");
-  // APIS kapısı — uluslararası uçuşta eksik bilgiyle kabul yok.
   const flightRef = FLIGHTS.find((f) => f.flightId === input.flightId);
+  const firstAcceptance = pax.status === "not_checked";
+  // Kabul penceresi — yalnız İLK kabulde (koltuk değiştirmek kabul değildir).
+  if (flightRef && firstAcceptance) {
+    const w = checkinWindow(flightRef);
+    if (w.state === "closed") throw new Error("Kapı kapandı — bu uçuşa kabul yapılamaz.");
+    if (w.state === "late") {
+      if (!input.late) throw new Error(`Kontuar kapandı (kalkıştan ${w.closeMin} dk önce) — geç kabul süpervizör onayı ve gerekçe ister.`);
+      if (input.late.reason === "OTHER" && !input.late.note?.trim()) throw new Error("\"Diğer\" gerekçesinde açıklama zorunlu.");
+    }
+  }
+  // APIS kapısı — uluslararası uçuşta eksik bilgiyle kabul yok.
   if (flightRef && isInternational(flightRef)) {
     const gaps = apisMissing(pax);
     if (gaps.length) throw new Error(`APIS eksik (${gaps.join(", ")}) — uluslararası uçuşta kabul yapılamaz.`);
+    // Seyahat belgesi kapısı (Timatic benzeri) — NOT OK yolcu taşınmaz.
+    const docs = paxDocCheck(pax, flightRef);
+    if (docs.verdict === "not_ok") {
+      const why = docs.lines.filter((l) => !l.ok).map((l) => l.tr).join("; ");
+      throw new Error(`Seyahat belgesi uygun değil — ${why}.`);
+    }
   }
   // Koltuk uygunluğu — backend otorite ilkesinin mock karşılığı: UI atlatılsa bile burada reddedilir.
   const seatInfo = seatFromId(input.seat, input.flightId);
@@ -356,7 +530,10 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
   if (other) throw new Error(`Koltuk ${seatInfo.id} dolu — ${other.surname}/${other.givenName}.`);
 
   // Koltuk DEĞİŞTİRME kabul sayacını şişirmemeli; yalnız ilk kabul sayılır.
-  const firstAccept = pax.status === "not_checked";
+  const firstAccept = firstAcceptance;
+  if (firstAccept && input.late && flightRef && checkinWindow(flightRef).state === "late") {
+    pax.lateAcceptance = { ...input.late, note: input.late.note?.trim() || undefined, at: new Date().toISOString() };
+  }
   pax.status = "checked_in";
   pax.seat = input.seat.toUpperCase();
   pax.bags = input.bags;

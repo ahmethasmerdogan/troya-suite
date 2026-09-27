@@ -104,7 +104,7 @@ const GUIDES: { match: (path: string) => boolean; guide: ScreenGuide }[] = [
         "admin.help.checkin.s3",
         "admin.help.checkin.s4",
       ],
-      watch: ["admin.help.checkin.w1"],
+      watch: ["admin.help.checkin.w1", "admin.help.checkin.w2", "admin.help.checkin.w3"],
     },
   },
   {

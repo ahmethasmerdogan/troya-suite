@@ -240,6 +240,7 @@ export function SearchInput({
         autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
+        aria-label={placeholder}
         className="h-full w-full min-w-0 bg-transparent text-sm text-ink outline-none placeholder:text-ink-3"
       />
       {badge}

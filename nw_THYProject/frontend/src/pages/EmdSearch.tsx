@@ -9,6 +9,7 @@ export function EmdSearch() {
   const t = useT();
   return (
     <SplitView
+      landing
       list={<EmdListPane />}
       detail={
         <div className="flex h-full flex-col">

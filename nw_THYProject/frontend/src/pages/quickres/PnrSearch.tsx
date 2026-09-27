@@ -9,6 +9,7 @@ export function PnrSearch() {
   const t = useT();
   return (
     <SplitView
+      landing
       list={<PnrListPane />}
       detail={
         <div className="flex h-full flex-col">

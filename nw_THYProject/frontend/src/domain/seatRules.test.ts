@@ -12,6 +12,8 @@ import { layoutFor, seatCount, configString, seatPosition, AIRCRAFT_LAYOUTS } fr
  *   bulkhead 1/9, düzen 3-4-3 (A B C | D E F G | H J K).
  */
 const FLIGHT = "TK198-D"; // B777-300ER
+/** TK198 kontuar kapanışını geçti — kabul testleri süpervizör onaylı geç kabulle yürür. */
+const LATE = { reason: "CONN" as const, approvedBy: "test" };
 const base: CheckinPassenger = {
   id: "t1", surname: "TEST", givenName: "USER", pnr: "AAAAAA",
   cabin: "Economy", status: "not_checked", bags: 0,
@@ -130,13 +132,14 @@ describe("seatRules — özel konum kuralları", () => {
 describe("seatRules — mock sunucu zorlaması (backend otorite)", () => {
   it("checkInPassenger kural ihlalinde reddeder (UI atlatılsa bile)", async () => {
     // TK198'de WANG/LEI kucak bebeğiyle seyahat ediyor → exit sırası (30A) reddedilir.
+    // TK198'in kontuarı kapanmış (kalkışa 55 dk, dış hat 60): kabul geç kabul onayıyla yapılır.
     const pax = (await listPassengers(FLIGHT)).find((p) => p.surname === "WANG");
     expect(pax?.infant).toBe(true);
     await expect(
-      checkInPassenger({ flightId: FLIGHT, passengerId: pax!.id, seat: "30A", bags: 1, idempotencyKey: "test-seat-rule-1" }),
+      checkInPassenger({ flightId: FLIGHT, passengerId: pax!.id, seat: "30A", bags: 1, idempotencyKey: "test-seat-rule-1", late: LATE }),
     ).rejects.toThrow(/verilemez/);
     // uygun koltuk (Economy, exit değil) kabul edilir
-    const ok = await checkInPassenger({ flightId: FLIGHT, passengerId: pax!.id, seat: "20B", bags: 1, idempotencyKey: "test-seat-rule-2" });
+    const ok = await checkInPassenger({ flightId: FLIGHT, passengerId: pax!.id, seat: "20B", bags: 1, idempotencyKey: "test-seat-rule-2", late: LATE });
     expect(ok.seat).toBe("20B");
   });
 
@@ -154,7 +157,7 @@ describe("seatRules — mock sunucu zorlaması (backend otorite)", () => {
     const flight = (await listFlights()).find((f) => f.flightId === FLIGHT)!;
     const pax = (await listPassengers(FLIGHT)).find((p) => p.surname === "WANG")!;
     const before = flight.checkedIn;
-    await checkInPassenger({ flightId: FLIGHT, passengerId: pax.id, seat: "21B", bags: 1, idempotencyKey: "test-seat-move" });
+    await checkInPassenger({ flightId: FLIGHT, passengerId: pax.id, seat: "21B", bags: 1, idempotencyKey: "test-seat-move", late: LATE });
     expect(flight.checkedIn).toBe(before); // zaten kabul edilmişti
   });
 });

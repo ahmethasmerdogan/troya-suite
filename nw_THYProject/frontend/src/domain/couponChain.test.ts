@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   listFlights, listPassengers, checkInPassenger, boardPassenger,
-  undoCheckIn, boardAll, closeOutFlight,
+  undoCheckIn, boardAll, closeOutFlight, checkinWindow, isInternational, apisMissing, paxDocCheck,
 } from "./checkin";
 import { advanceCouponStatus, takeAirportControl, getTicket, newIdempotencyKey } from "./api";
 
@@ -12,19 +12,22 @@ import { advanceCouponStatus, takeAirportControl, getTicket, newIdempotencyKey }
  * havalimanı kontrolü (A) almıyor ve hiçbir ekran Flown (F) yazmıyordu.
  */
 /**
- * Kısıtsız bir yolcu bul: Economy, SSR yok, bebek/çocuk yok, henüz kabul
- * edilmemiş. Testler modül durumunu paylaştığı için her test farklı uçuş
+ * Kısıtsız bir yolcu bul: kontuarı açık uçuşta, Economy, SSR yok, bebek/çocuk
+ * yok, belgesi uygun, henüz kabul edilmemiş. Testler modül durumunu paylaştığı için her test farklı uçuş
  * kullanır (`skip` ile ilerlenir); `needTicket` yalnız kupon zinciri
  * testlerinde gerekir (her yolcu gerçek bir ET'ye bağlı değildir).
  */
 async function paxWithTicket(skip = 0, needTicket = true) {
   let seen = 0;
   for (const f of await listFlights()) {
-    if (f.status === "departed" || f.status === "closed") continue;
+    // Kabul penceresi açık olmalı: kontuarı kapanmış uçuş geç kabul onayı ister.
+    if (checkinWindow(f).state !== "open") continue;
     const list = await listPassengers(f.flightId);
     for (const p of list) {
       if (p.status !== "not_checked" || p.cabin !== "Economy") continue;
       if (p.ssr?.length || p.infant || p.child) continue;
+      // Dış hatta APIS'i ve seyahat belgesi uygun olmayan yolcu kabul edilemez.
+      if (isInternational(f) && (apisMissing(p).length > 0 || paxDocCheck(p, f).verdict === "not_ok")) continue;
       if (needTicket) {
         if (!p.ticketNumber || p.couponSeq == null) continue;
         if (!(await getTicket(p.ticketNumber))) continue;
@@ -64,7 +67,8 @@ describe("kupon zinciri — O→A→C→L→F", () => {
   }, 30_000);
 
   it("kapatılmış uçuş ikinci kez kapatılamaz", async () => {
-    const { flight, pax } = await paxWithTicket(2);
+    // Bilet bağı gerekmez; kapanış kuralı sınanıyor.
+    const { flight, pax } = await paxWithTicket(2, false);
     await checkInPassenger({ flightId: flight.flightId, passengerId: pax.id, seat: "21C", bags: 0, idempotencyKey: newIdempotencyKey() });
     await closeOutFlight(flight.flightId);
     await expect(closeOutFlight(flight.flightId)).rejects.toThrow();
@@ -92,7 +96,8 @@ describe("check-in geri alma", () => {
 
 describe("toplu biniş", () => {
   it("kabul edilmiş herkesi bindirir, kimse kalmazsa hata verir", async () => {
-    const { flight, pax } = await paxWithTicket(2, false);
+    // Önceki testler iki uçuşu kapattı; kontuarı hâlâ açık ilk uçuş kullanılır.
+    const { flight, pax } = await paxWithTicket(0, false);
     await checkInPassenger({ flightId: flight.flightId, passengerId: pax.id, seat: "24A", bags: 0, idempotencyKey: newIdempotencyKey() });
     const boarded = await boardAll(flight.flightId);
     expect(boarded.length).toBeGreaterThan(0);

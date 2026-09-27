@@ -17,21 +17,27 @@ export function FullView({ children, className }: { children: ReactNode; classNa
 
 /**
  * İki panelli konsol. Panellerin kaydırması bağımsızdır; gövde asla kaymaz.
- * Dar ekranda liste gizlenir — kayıt seçiliyken detay tam genişlik olur.
+ *
+ * Dar ekranda tek panel görünür: kayıt seçiliyken detay, seçim bekleyen
+ * giriş sayfasında (`landing`) liste. Önceden giriş sayfasında da liste
+ * gizleniyordu — telefonda "soldan bir kayıt seçin" diyen ama solu olmayan
+ * bir ekran kalıyordu.
  */
-export function SplitView({ list, detail }: { list: ReactNode; detail: ReactNode }) {
+export function SplitView({ list, detail, landing }: { list: ReactNode; detail: ReactNode; landing?: boolean }) {
   const t = useT();
   return (
     <div className="flex min-h-0 flex-1">
       <aside
         data-tour="split.list"
-        className="hidden min-h-0 flex-col border-r border-line bg-panel md:flex"
-        style={{ width: "var(--pane)" }}
+        className={cn(
+          "min-h-0 flex-col border-r border-line bg-panel md:flex md:w-[var(--pane)] md:flex-shrink-0",
+          landing ? "flex w-full" : "hidden",
+        )}
         aria-label={t("shell.recordList")}
       >
         {list}
       </aside>
-      <section className="anim-fade min-h-0 flex-1 overflow-y-auto">{detail}</section>
+      <section className={cn("anim-fade min-h-0 flex-1 overflow-y-auto", landing && "hidden md:block")}>{detail}</section>
     </div>
   );
 }

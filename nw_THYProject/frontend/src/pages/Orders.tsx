@@ -9,6 +9,7 @@ export function Orders() {
   const t = useT();
   return (
     <SplitView
+      landing
       list={<OrderListPane />}
       detail={
         <div className="flex h-full flex-col">

@@ -2,11 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Calendar, Leaf,
+  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Leaf,
 } from "lucide-react";
 import { issueTicket, newIdempotencyKey } from "@/domain/api";
 import { getPnr, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
-import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
 import { Tip } from "@/components/tips/Tip";
@@ -18,7 +17,7 @@ import type { FormOfPaymentType, Passenger, Segment, Ticket } from "@/domain/typ
 import { Money } from "@/components/domain/Money";
 import { IssueSuccess } from "@/components/domain/document/IssueSuccess";
 import { Field, Input, Select } from "@/components/ui/core";
-import { useOutside } from "@/components/ui/overlay";
+import { AirportPicker, DayPicker } from "@/components/ui/pickers";
 import { PageTitle, Rule, Line, Empty } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
 import {
@@ -863,119 +862,6 @@ function ReviewStep({
           <div className="flex items-baseline justify-between">
             <span className="text-[14px] font-semibold text-ink">{t("issue.review.total")}</span>
             <Money value={offer.total} size="lg" />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* --- havalimanı seçici ------------------------------------------------ */
-function AirportPicker({ value, onChange, placeholder }: { value: string; onChange: (v: string) => void; placeholder: string }) {
-  const [text, setText] = useState(value);
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useOutside(ref, () => setOpen(false));
-  useEffect(() => { setText(value); }, [value]);
-
-  const hits = searchAirports(text, 8);
-  const pick = (code: string) => { onChange(code); setText(code); setOpen(false); };
-
-  return (
-    <div ref={ref} className="relative">
-      <Input
-        value={text}
-        placeholder={placeholder}
-        onChange={(e) => { setText(e.target.value.toUpperCase()); setOpen(true); }}
-        onFocus={() => setOpen(true)}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (hits[0]) pick(hits[0].code); } }}
-        className="uppercase"
-      />
-      {open && hits.length > 0 && (
-        <div className="anim-pop absolute left-0 right-0 top-11 z-40 max-h-64 overflow-y-auto rounded-md border border-line bg-panel p-1">
-          {hits.map((a) => (
-            <button key={a.code} type="button" onClick={() => pick(a.code)}
-              className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-sunken">
-              <span className="num font-semibold text-ink">{a.code}</span>
-              <span className="min-w-0 flex-1 truncate text-ink-2">{a.city} · {a.country}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* --- tarih seçici ----------------------------------------------------- */
-const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-
-const DOW_KEYS = ["issue.dow.mon", "issue.dow.tue", "issue.dow.wed", "issue.dow.thu", "issue.dow.fri", "issue.dow.sat", "issue.dow.sun"] as const;
-
-function DayPicker({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const t = useT();
-  const [open, setOpen] = useState(false);
-  const [month, setMonth] = useState(() => { const d = value ? new Date(value) : new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
-  const ref = useRef<HTMLDivElement>(null);
-  useOutside(ref, () => setOpen(false));
-
-  const today = new Date(); today.setHours(0, 0, 0, 0);
-  const pretty = value
-    ? new Date(value).toLocaleDateString(locale(), { day: "2-digit", month: "long", year: "numeric", weekday: "short" })
-    : t("issue.day.placeholder");
-
-  const first = new Date(month.getFullYear(), month.getMonth(), 1);
-  const lead = (first.getDay() + 6) % 7; // pazartesi başlangıç
-  const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  const cells = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => new Date(month.getFullYear(), month.getMonth(), i + 1))];
-
-  const pick = (d: Date) => { onChange(ymd(d)); setOpen(false); };
-
-  return (
-    <div ref={ref} className="relative">
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-expanded={open}
-        className={cn("flex h-9 w-full items-center gap-2 rounded-md border bg-panel px-3 text-left text-sm transition-colors",
-          open ? "border-brand ring-[3px] ring-[var(--brand-ring)]" : "border-line-firm", value ? "text-ink" : "text-ink-3")}
-      >
-        <Calendar size={15} strokeWidth={1.75} className={value || open ? "text-brand" : "text-ink-3"} />
-        <span className="truncate">{pretty}</span>
-      </button>
-
-      {open && (
-        <div className="anim-pop absolute left-0 top-11 z-40 w-[290px] rounded-lg border border-line bg-panel p-3">
-          <div className="mb-2 flex flex-wrap gap-1.5">
-            {([["issue.day.today", 0], ["issue.day.tomorrow", 1], ["issue.day.week", 7]] as const).map(([labelKey, add]) => (
-              <button key={labelKey} type="button"
-                onClick={() => { const d = new Date(today); d.setDate(d.getDate() + add); pick(d); }}
-                className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-brand hover:text-brand">
-                {t(labelKey)}
-              </button>
-            ))}
-          </div>
-          <div className="mb-2 flex items-center justify-between">
-            <button type="button" aria-label={t("issue.day.prevMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))}
-              className="grid h-7 w-7 place-items-center rounded-md text-ink-2 hover:bg-sunken"><ChevronLeft size={16} strokeWidth={2} /></button>
-            <span className="text-[13.5px] font-semibold capitalize text-ink">
-              {month.toLocaleDateString(locale(), { month: "long", year: "numeric" })}
-            </span>
-            <button type="button" aria-label={t("issue.day.nextMonth")} onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() + 1, 1))}
-              className="grid h-7 w-7 place-items-center rounded-md text-ink-2 hover:bg-sunken"><ChevronRight size={16} strokeWidth={2} /></button>
-          </div>
-          <div className="grid grid-cols-7 gap-0.5">
-            {DOW_KEYS.map((dk) => (
-              <span key={dk} className="microlabel grid h-7 place-items-center">{t(dk)}</span>
-            ))}
-            {cells.map((d, i) => d === null ? <span key={i} /> : (
-              <button key={i} type="button" onClick={() => pick(d)}
-                className={cn("num grid h-8 place-items-center rounded-md text-[12.5px] transition-colors",
-                  value === ymd(d) ? "bg-brand font-semibold text-white"
-                    : ymd(d) === ymd(today) ? "text-brand ring-1 ring-inset ring-[var(--brand-ring)] hover:bg-brand-wash"
-                      : "text-ink-2 hover:bg-sunken hover:text-ink")}>
-                {d.getDate()}
-              </button>
-            ))}
           </div>
         </div>
       )}
