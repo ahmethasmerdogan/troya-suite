@@ -1,5 +1,21 @@
 # IATA Kapsam Denetimi — v2
 
+> **GÜNCELLEME (2026-09-27, ek):** Önceki turun "açık kalan" dört maddesi kapatıldı ve arayüz eksikleri
+> giderildi.
+
+| Madde | Ne yapıldı |
+| --- | --- |
+| **Kabul penceresi / geç kabul** | `checkinWindow`: kontuar dış hatta kalkıştan 60, iç hatta 45 dk önce kapanır (taşıyıcı politikası, THY İstanbul); kapı 15 dk önce kapanınca kabul yok. Arada yalnız süpervizör onaylı, gerekçeli (CONN/IRROP/SEC/MEDA/CIP/OTHER) geç kabul — sunucuda zorlanır, yolcu kaydına yazılır. Uçuş kapanışı onay ister. |
+| **Seyahat belgesi (Timatic benzeri)** | `domain/travelDocs.ts`: uyruk × varış → vatandaş / serbest dolaşım / vizesiz / ETA / ESTA / vize; pasaport geçerliliği (Schengen 3 ay sert, ABD 6 ay yumuşak, BAE 6 ay sert), izin türü ve süresi; OK/şartlı/NOT OK. NOT OK yolcu kabul edilmez; tek istisna süpervizörün kaydettiği varış ülkesi "OK TO BOARD" onayı. **Kural tablosu temsilîdir** — canlıda Timatic otoritedir. |
+| **2.3 · Grup / aile kesimi** | `issueGroup`: tek işlemde en çok 9 yolcu, her yolcu kendi ET'si, ortak `groupRef`; tüm yolcular yazılmadan önce doğrulanır (hepsi ya da hiçbiri); idempotent; en az bir ADT. Çocuk (CHD) ücreti Cat 19 indirimiyle (%25, temsilî) — havalimanı harcı yolcu başı, YQ/KDV yeniden hesaplanır. PNR'dan gelindiyse biletsiz tüm yolcular tek işlemde. |
+| **ADM / ACM (Res. 850m)** | `domain/memos.ts` + `/memos`: yalnız acente satışına; ADM son uçuş/iade tarihinden en geç 9 ay içinde; 15 günlük inceleme/itiraz süresi dolmadan ya da itiraz açıkken faturalanmaz; itiraz kabulü geri çeker, ret faturalanabilir kılar; aynı bilet+gerekçe için ikinci açık ADM yok; faturalanmış dekont geri çekilmez (ters kayıt ACM); BSP dönemi (ayın 4 dönemi). Biletlerde satış kanalı (acente IATA kodu). |
+| **QuickRes** | Uygunluk artık sefer programı + ücret motorundan (önce sabit TK198 dönüyordu), RBD başına 0–9 koltuk; PNR iptali (XI), segment iptali (XE), kesim süresi uzatma, RM/OSI notları, rezervasyon geçmişi (RH). |
+| **Arayüz** | Gruplu alt menü (taşma/kesilme bitti), liste-detay ekranları kenardan kenara konsol, check-in girişinde uçuşlar arası yolcu araması, Panel'in sahte haftalık grafiği gerçek kayıtlardan, mesaj/PTA durumları Türkçe. |
+
+**Test:** 483 vitest · 68 e2e.
+
+---
+
 > **GÜNCELLEME (2026-09-27):** Araştırma turuyla (Handbook + EU261/SHY-YOLCU/UK261, Amadeus/Sabre
 > kuyrukları, THY/LH tarife değişikliği ve ad düzeltme kuralları, IATA RP 1726) aşağıdakiler kapatıldı.
 
