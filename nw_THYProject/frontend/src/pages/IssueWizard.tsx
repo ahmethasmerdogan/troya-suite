@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Calendar,
+  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Calendar, Leaf,
 } from "lucide-react";
 import { issueTicket, newIdempotencyKey } from "@/domain/api";
 import { getPnr, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
@@ -10,6 +10,7 @@ import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
 import { Tip } from "@/components/tips/Tip";
+import { co2PerPax } from "@/domain/co2";
 import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -257,7 +258,7 @@ export function IssueWizard() {
           <Card data-tour="issue.form" className="p-5">
             {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} />}
             {step === 1 && <LegStep legs={legs} setLegs={setLegs} errors={errors} />}
-            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} />}
+            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} />}
             {step === 3 && <PayStep fop={fop} setFop={setFop} detail={fopDetail} setDetail={setFopDetail} error={errors.fop} />}
             {step === 4 && <ReviewStep pax={pax} carrier={carrier} legs={legs} offer={offer} fop={fop} detail={fopDetail} />}
           </Card>
@@ -637,6 +638,7 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                       ) : (
                         <>
                           <span className="text-[12px] text-ink-3">{f.aircraft}</span>
+                          <Co2Tag kg={co2PerPax(f.origin, f.destination, "Economy", f.aircraft)} />
                           <span className="num ml-auto text-[12px] text-ink-3">{t("issue.leg.seatsLeft", { n: f.seatsLeft })}</span>
                           {f.fromEconomy && (
                             <span className="text-[12px] text-ink-2">
@@ -664,8 +666,8 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
 
 /* --- 2 · ücret -------------------------------------------------------- */
 function FareStep({
-  offers, offer, setOffer, cabin, setCabin, error,
-}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string }) {
+  offers, offer, setOffer, cabin, setCabin, error, legs,
+}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string; legs: Leg[] }) {
   const t = useT();
   const lang = useUI((s) => s.lang); // ürün açıklaması ve ceza kuralı domainden gelir, dili burada seçilir
   const cabins = ["all", ...Array.from(new Set(offers.map((o) => o.cabin)))];
@@ -737,6 +739,10 @@ function FareStep({
                     <StatusPill tone={o.refundable ? "green" : "gray"} dot>{o.refundable ? t("issue.fare.refundable") : t("issue.fare.nonRefundable")}</StatusPill>
                     <StatusPill tone={o.changeable ? "green" : "gray"} dot>{o.changeable ? t("issue.fare.changeable") : t("issue.fare.nonChangeable")}</StatusPill>
                     <StatusPill tone="gray">{t("issue.fare.baggage", { n: o.baggageKg })}</StatusPill>
+                    <Co2Tag kg={legs.reduce<number | undefined>((sum, l) => {
+                      const kg = l.origin && l.destination ? co2PerPax(l.origin, l.destination, o.cabin, l.flight?.aircraft) : undefined;
+                      return kg === undefined ? sum : (sum ?? 0) + kg;
+                    }, undefined)} />
                     <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{o.seatNote}</StatusPill>
                     <span className="num ml-1 text-[11.5px] text-ink-3">{t("issue.fare.seatsLeft", { n: o.seatsLeft })}</span>
                   </span>
@@ -974,5 +980,16 @@ function DayPicker({ value, onChange }: { value: string; onChange: (v: string) =
         </div>
       )}
     </div>
+  );
+}
+
+/** Yolcu başı CO₂ tahmini — IATA RP 1726 yöntemi (demo parametreleri). */
+function Co2Tag({ kg }: { kg?: number }) {
+  const t = useT();
+  if (kg === undefined) return null;
+  return (
+    <span className="num inline-flex items-center gap-1 text-[11.5px] text-[var(--t-green-i)]" title={t("co2.hint")}>
+      <Leaf size={12} strokeWidth={1.75} /> {t("co2.perPax", { n: kg.toLocaleString(locale()) })}
+    </span>
   );
 }

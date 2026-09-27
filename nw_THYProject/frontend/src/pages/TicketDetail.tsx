@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
-  CreditCard, FileOutput, HeartPulse, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
+  CreditCard, FileOutput, HeartPulse, Leaf, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, newIdempotencyKey } from "@/domain/api";
 import { toast } from "@/components/ui/toast";
@@ -16,6 +16,7 @@ import { Money } from "@/components/domain/Money";
 import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
 import { ValidityCard } from "@/components/domain/ValidityCard";
+import { cabinOfRbd, co2PerPax } from "@/domain/co2";
 import { TicketFlows, type FlowId } from "@/components/flows";
 import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
@@ -228,6 +229,14 @@ export function TicketDetail() {
                       {c.segment.notValidBefore && <span>NVB <b className="num font-medium text-ink-2">{c.segment.notValidBefore}</b></span>}
                       {c.segment.notValidAfter && <span>NVA <b className="num font-medium text-ink-2">{c.segment.notValidAfter}</b></span>}
                       <span>{t("ticket.detail.resStatus")} <b className="num font-medium text-ink-2">{c.segment.reservationStatus}</b></span>
+                      {(() => {
+                        const kg = co2PerPax(c.segment.origin, c.segment.destination, cabinOfRbd(c.segment.rbd));
+                        return kg !== undefined && (
+                          <span className="inline-flex items-center gap-1 text-[var(--t-green-i)]" title={t("co2.hint")}>
+                            <Leaf size={11} strokeWidth={1.75} /> <b className="num font-medium">{t("co2.coupon", { n: kg.toLocaleString(locale()) })}</b>
+                          </span>
+                        );
+                      })()}
                       {c.sac && <span>SAC <b className="num font-medium text-ink-2">{c.sac}</b></span>}
                     </div>
 

@@ -44,6 +44,9 @@ export const tr = {
   "rights.hub.perPax": "yolcu başı",
   "rights.hub.exposure": "Kabul edilen {n} yolcu için üst sınır",
   "rights.hub.under": "Rötar henüz 3 saatin altında — tazminat eşiği aşılmadı; eşik aşılırsa yolcu başı:",
+  "co2.perPax": "≈ {n} kg CO₂",
+  "co2.hint": "Yolcu başı tahmini CO₂ — IATA RP 1726 yöntemi (yakıt × 3,16, kabin katsayısı, ICAO mesafe düzeltmesi). Demo parametreleri; sertifikalı değer değildir.",
+  "co2.coupon": "CO₂ ≈ {n} kg",
 } as const;
 
 export const en: Record<keyof typeof tr, string> = {
@@ -88,4 +91,7 @@ export const en: Record<keyof typeof tr, string> = {
   "rights.hub.perPax": "per passenger",
   "rights.hub.exposure": "Upper bound for {n} accepted passengers",
   "rights.hub.under": "Delay still under 3 hours — no compensation yet; if it crosses the threshold, per passenger:",
+  "co2.perPax": "≈ {n} kg CO₂",
+  "co2.hint": "Estimated CO₂ per passenger — IATA RP 1726 method (fuel × 3.16, cabin weighting, ICAO distance correction). Demo parameters; not a certified value.",
+  "co2.coupon": "CO₂ ≈ {n} kg",
 };
