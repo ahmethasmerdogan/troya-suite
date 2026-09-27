@@ -56,6 +56,30 @@ export function TicketDetail() {
     navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber }, search: {}, replace: true });
   }, [flowParam, ticketNumber, navigate]);
 
+  // e / r / v — buton ipuçlarında ve ekran kılavuzunda vaat edilen kısayollar.
+  // Yazı alanındayken, bir katman (drawer/modal/palet) açıkken ya da yetki
+  // yokken tetiklenmez; yetkisiz kısayol buton gibi sessizce kilitli kalır.
+  useEffect(() => {
+    const KEYS: Record<string, { flow: FlowId; perm: "ticket.exchange" | "ticket.refund" | "ticket.void" }> = {
+      e: { flow: "exchange", perm: "ticket.exchange" },
+      r: { flow: "refund", perm: "ticket.refund" },
+      v: { flow: "void", perm: "ticket.void" },
+    };
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.metaKey || ev.ctrlKey || ev.altKey || ev.repeat) return;
+      const hit = KEYS[ev.key.toLowerCase()];
+      if (!hit || !ticket || flow !== null || useUI.getState().commandOpen) return;
+      const el = ev.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (document.querySelector('[role="dialog"]')) return;
+      if (!can(hit.perm)) return;
+      ev.preventDefault();
+      setFlow(hit.flow);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [ticket, flow, can]);
+
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (!ticket)
     return (
