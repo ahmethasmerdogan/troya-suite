@@ -2,12 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
-  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Leaf,
+  Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Leaf, Trash2, UserPlus, Users,
 } from "lucide-react";
-import { issueTicket, newIdempotencyKey } from "@/domain/api";
-import { getPnr, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
+import { issueGroup, issueTicket, newIdempotencyKey, GROUP_MAX } from "@/domain/api";
+import { getPnr, paxKey, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
-import { computeFareOffers, type FareOffer } from "@/domain/pricing";
+import { computeFareOffers, fareForPtc, CHILD_DISCOUNT, type FareOffer, type Ptc } from "@/domain/pricing";
 import { Tip } from "@/components/tips/Tip";
 import { co2PerPax } from "@/domain/co2";
 import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
@@ -45,6 +45,10 @@ interface Leg {
   booked?: FlightItem;
 }
 const emptyLeg = (): Leg => ({ origin: "", destination: "", date: "", flight: null });
+
+/** Aynı işlemde kesilecek diğer yolcu (grup / aile kesimi). */
+interface Companion { surname: string; givenName: string; title: string; foid: string; ptc: Ptc }
+const emptyCompanion = (surname = ""): Companion => ({ surname, givenName: "", title: "MR", foid: "", ptc: "ADT" });
 
 /**
  * Rezervasyon segmentini sefer kartına çevirir.
@@ -88,6 +92,9 @@ export function IssueWizard() {
   const [pax, setPax] = useState<Passenger>({ surname: "", givenName: "", title: "MR", foid: "", ssr: [] });
   const [carrier, setCarrier] = useState("TK");
   const [pnr, setPnr] = useState("");
+  /** Grup kesimi — ana yolcunun yanında aynı işlemde kesilecek yolcular. */
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [issuedGroup, setIssuedGroup] = useState<{ groupRef: string; tickets: Ticket[] } | null>(null);
 
   // --- sefer
   const [legs, setLegs] = useState<Leg[]>([emptyLeg()]);
@@ -118,9 +125,15 @@ export function IssueWizard() {
   useEffect(() => {
     if (!srcPnr || filled.current) return;
     filled.current = true;
-    // Her yolcu ayrı ET alır: form, bileti henüz kesilmemiş ilk yolcuyla dolar.
-    const first = unticketedPassengers(srcPnr)[0] ?? srcPnr.passengers[0];
+    // Her yolcu ayrı ET alır: form, bileti henüz kesilmemiş ilk yolcuyla dolar;
+    // kalan biletsiz yolcular aynı işlemde kesilmek üzere grup listesine gelir.
+    const open = unticketedPassengers(srcPnr);
+    const first = open[0] ?? srcPnr.passengers[0];
     if (first) setPax((p) => ({ ...p, surname: first.surname, givenName: first.givenName, title: first.title ?? p.title }));
+    setCompanions(open.slice(1).map((x) => ({
+      surname: x.surname, givenName: x.givenName, title: x.title ?? "MR", foid: x.foid ?? "",
+      ptc: x.title === "CHD" ? "CHD" : "ADT",
+    })));
     if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
     setPnr(srcPnr.recordLocator);
     if (srcPnr.segments.length) setLegs(srcPnr.segments.map(legFromSegment));
@@ -136,6 +149,15 @@ export function IssueWizard() {
       if (pax.surname.trim().length < 2) e.surname = t("issue.err.surname");
       if (!pax.givenName.trim()) e.givenName = t("issue.err.givenName");
       if (carrier.trim().length !== 2) e.carrier = t("issue.err.carrier");
+      // Grup: her yolcunun adı zorunlu; aynı ad iki kez yazılamaz (her yolcu tek ET).
+      const seen = new Set([paxKey(pax)]);
+      companions.forEach((c, i) => {
+        if (c.surname.trim().length < 2) e[`c${i}s`] = t("issue.err.surname");
+        if (!c.givenName.trim()) e[`c${i}g`] = t("issue.err.givenName");
+        const k = paxKey(c);
+        if (c.surname && c.givenName && seen.has(k)) e[`c${i}g`] = t("group.err.dup");
+        seen.add(k);
+      });
       // Kucak bebeği (1.1.8): ad-soyad zorunlu, doğum tarihi verilmişse 2 yaş altı olmalı.
       if (pax.infant) {
         if (!pax.infant.surname.trim()) e.infantSurname = t("issue.err.infantSurname");
@@ -189,6 +211,35 @@ export function IssueWizard() {
     reservationStatus: "HK",
   }));
 
+  /** Grup satırları — ana yolcu yetişkindir, diğerleri kendi tipinde. */
+  const groupRows = offer
+    ? [
+      { passenger: pax, ptc: "ADT" as Ptc },
+      ...companions.map((c) => ({
+        passenger: { surname: c.surname.trim().toUpperCase(), givenName: c.givenName.trim().toUpperCase(), title: c.title, foid: c.foid || undefined } as Passenger,
+        ptc: c.ptc,
+      })),
+    ].map((r) => ({ ...r, fare: fareForPtc(offer, r.ptc) }))
+    : [];
+  const isGroup = companions.length > 0;
+  const collect = offer
+    ? { amount: groupRows.reduce((n, r) => n + r.fare.total.amount, 0), currency: offer.total.currency }
+    : null;
+
+  const group = useMutation({
+    mutationFn: () => issueGroup({
+      passengers: groupRows.map((r) => ({ passenger: r.passenger, ptc: r.ptc, fare: r.fare })),
+      validatingCarrier: carrier.toUpperCase(),
+      pnr: pnr || undefined,
+      segments,
+      formOfPayment: { type: fop, detail: fopDetail || undefined },
+      baggageAllowanceKg: offer!.baggageKg,
+      idempotencyKey: newIdempotencyKey(),
+    }),
+    onSuccess: (r) => { setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+  });
+
   const issue = useMutation({
     mutationFn: () => issueTicket({
       passenger: pax,
@@ -218,6 +269,7 @@ export function IssueWizard() {
     return (
       <IssueSuccess
         ticket={issued}
+        group={issuedGroup ?? undefined}
         onOpen={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: tn } })}
         onPrint={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: tn } })}
         onNew={() => window.location.reload()}
@@ -255,11 +307,12 @@ export function IssueWizard() {
             </Alert>
           )}
           <Card data-tour="issue.form" className="p-5">
-            {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} />}
+            {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} companions={companions} setCompanions={setCompanions} />}
             {step === 1 && <LegStep legs={legs} setLegs={setLegs} errors={errors} />}
             {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} />}
             {step === 3 && <PayStep fop={fop} setFop={setFop} detail={fopDetail} setDetail={setFopDetail} error={errors.fop} />}
             {step === 4 && <ReviewStep pax={pax} carrier={carrier} legs={legs} offer={offer} fop={fop} detail={fopDetail} />}
+            {isGroup && offer && (step === 2 || step === 4) && <GroupFareTable rows={groupRows} total={collect!} />}
           </Card>
         </div>
 
@@ -276,7 +329,8 @@ export function IssueWizard() {
           <span className="ml-auto flex items-center gap-4">
             <span className="flex items-baseline gap-2">
               <span className="microlabel">{t("issue.collect")}</span>
-              {offer ? <Money value={offer.total} size="md" /> : <span className="num text-ink-3">—</span>}
+              {collect ? <Money value={collect} size="md" /> : <span className="num text-ink-3">—</span>}
+              {isGroup && <span className="num hidden text-[11.5px] text-ink-3 sm:inline">· {t("group.summary", { n: companions.length + 1, adt: companions.filter((c) => c.ptc === "ADT").length + 1, chd: companions.filter((c) => c.ptc === "CHD").length })}</span>}
             </span>
             {step < STEPS.length - 1 ? (
               <Button variant="green" onClick={next} iconRight={<ChevronRight size={15} strokeWidth={2} />}>{t("issue.next")}</Button>
@@ -294,10 +348,12 @@ export function IssueWizard() {
           <p className="mt-1 text-[13px] text-ink-2">{t("issue.confirm.desc")}</p>
 
           <InsetPanel className="mt-4 p-4">
-            <Line label={t("issue.confirm.pax")} value={`${pax.surname}/${pax.givenName}`} />
+            <Line label={t("issue.confirm.pax")} value={isGroup
+              ? <span className="text-right">{[pax, ...companions].map((p) => `${p.surname.toUpperCase()}/${p.givenName.toUpperCase()}`).join(" · ")}</span>
+              : `${pax.surname}/${pax.givenName}`} />
             <Line label={t("issue.confirm.route")} value={<span className="num">{legs.map((l) => `${l.origin}→${l.destination}`).join(" · ")}</span>} />
             <Line label={t("issue.confirm.fare")} value={offer?.fareType.label ?? "—"} />
-            <Line label={t("issue.confirm.total")} strong value={offer ? <Money value={offer.total} size="sm" /> : "—"} />
+            <Line label={t("issue.confirm.total")} strong value={collect ? <Money value={collect} size="sm" /> : "—"} />
           </InsetPanel>
 
           <Alert tone="warning" title={t("issue.confirm.iata")} className="mt-4">
@@ -312,8 +368,8 @@ export function IssueWizard() {
 
           <div className="mt-5 flex items-center justify-end gap-2">
             <Button variant="ghost" onClick={() => setConfirming(false)}>{t("issue.confirm.cancel")}</Button>
-            <Button variant="success" disabled={!ack || issue.isPending} onClick={() => issue.mutate()}>
-              {issue.isPending ? t("issue.confirm.pending") : t("issue.confirm.ok")}
+            <Button variant="success" disabled={!ack || issue.isPending || group.isPending} onClick={() => (isGroup ? group.mutate() : issue.mutate())}>
+              {issue.isPending || group.isPending ? t("issue.confirm.pending") : t("issue.confirm.ok")}
             </Button>
           </div>
         </Card>
@@ -322,6 +378,100 @@ export function IssueWizard() {
   );
 }
 
+
+/* --- grup: aynı işlemdeki diğer yolcular ------------------------------ */
+function Companions({
+  list, setList, errors, surname,
+}: { list: Companion[]; setList: (c: Companion[]) => void; errors: Record<string, string>; surname: string }) {
+  const t = useT();
+  const set = (i: number, patch: Partial<Companion>) => setList(list.map((c, j) => (i === j ? { ...c, ...patch } : c)));
+  const full = list.length + 1 >= GROUP_MAX;
+  return (
+    <div className="flex flex-col gap-3">
+      <Rule label={t("group.title")} />
+      <p className="-mt-2 flex items-start gap-2 text-[13px] text-ink-2">
+        <Users size={15} strokeWidth={1.75} className="mt-0.5 flex-shrink-0 text-ink-3" />
+        {t("group.desc")}
+      </p>
+      {list.map((c, i) => (
+        <div key={i} className="grid grid-cols-2 gap-3 rounded-md border border-line p-3 sm:grid-cols-[1fr_1fr_110px_170px_auto]">
+          <Field label={t("issue.pax.surname")} required error={errors[`c${i}s`]}>
+            <Input value={c.surname} onChange={(e) => set(i, { surname: e.target.value.toUpperCase() })} className="uppercase" aria-invalid={!!errors[`c${i}s`]} />
+          </Field>
+          <Field label={t("issue.pax.givenName")} required error={errors[`c${i}g`]}>
+            <Input value={c.givenName} onChange={(e) => set(i, { givenName: e.target.value.toUpperCase() })} className="uppercase" aria-invalid={!!errors[`c${i}g`]} />
+          </Field>
+          <Field label={t("issue.pax.title")}>
+            <Select value={c.title} onChange={(e) => set(i, { title: e.target.value, ...(e.target.value === "CHD" ? { ptc: "CHD" as Ptc } : {}) })}>
+              {["MR", "MRS", "MS", "CHD"].map((x) => <option key={x}>{x}</option>)}
+            </Select>
+          </Field>
+          <Field label={t("group.ptc")}>
+            <Select value={c.ptc} onChange={(e) => set(i, { ptc: e.target.value as Ptc })}>
+              <option value="ADT">{t("group.ptc.ADT")}</option>
+              <option value="CHD">{t("group.ptc.CHD")}</option>
+            </Select>
+          </Field>
+          <div className="col-span-2 flex items-end justify-end sm:col-span-1">
+            <Button variant="ghost" size="sm" onClick={() => setList(list.filter((_, j) => j !== i))} aria-label={`${t("group.remove")} ${c.surname}/${c.givenName}`}>
+              <Trash2 size={15} strokeWidth={1.75} />
+            </Button>
+          </div>
+        </div>
+      ))}
+      <div className="flex flex-wrap items-center gap-3">
+        <Button variant="white" size="sm" disabled={full} onClick={() => setList([...list, emptyCompanion(surname)])}>
+          <UserPlus size={15} strokeWidth={1.75} /> {t("group.add")}
+        </Button>
+        {full && <span className="text-[12px] text-ink-3">{t("group.max", { n: GROUP_MAX })}</span>}
+      </div>
+    </div>
+  );
+}
+
+function GroupFareTable({
+  rows, total,
+}: { rows: { passenger: Passenger; ptc: Ptc; fare: ReturnType<typeof fareForPtc> }[]; total: { amount: number; currency: string } }) {
+  const t = useT();
+  const chd = rows.filter((r) => r.ptc === "CHD").length;
+  return (
+    <div className="mt-5 rounded-md border border-line">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line px-4 py-2.5">
+        <span className="text-[13.5px] font-semibold text-ink">{t("group.summary.title")}</span>
+        <span className="num text-[12px] text-ink-3">{t("group.summary", { n: rows.length, adt: rows.length - chd, chd })}</span>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="microlabel text-left">
+              <th className="px-4 py-2 font-medium">{t("group.col.pax")}</th>
+              <th className="px-2 py-2 font-medium">{t("group.col.ptc")}</th>
+              <th className="px-2 py-2 text-right font-medium">{t("group.col.base")}</th>
+              <th className="px-2 py-2 text-right font-medium">{t("group.col.tfc")}</th>
+              <th className="px-4 py-2 text-right font-medium">{t("group.col.total")}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} className="border-t border-hair">
+                <td className="px-4 py-2 text-ink">{r.passenger.surname}/{r.passenger.givenName}</td>
+                <td className="num px-2 py-2 text-ink-2">{r.ptc}</td>
+                <td className="px-2 py-2 text-right"><Money value={r.fare.baseFare} size="sm" /></td>
+                <td className="px-2 py-2 text-right"><Money value={r.fare.totalTfc} size="sm" /></td>
+                <td className="px-4 py-2 text-right"><Money value={r.fare.total} size="sm" /></td>
+              </tr>
+            ))}
+            <tr className="border-t border-line">
+              <td colSpan={4} className="px-4 py-2.5 text-[13.5px] font-semibold text-ink">{t("issue.review.total")}</td>
+              <td className="px-4 py-2.5 text-right"><Money value={total} size="md" /></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      {chd > 0 && <p className="border-t border-hair px-4 py-2 text-[12px] text-ink-3">{t("group.childNote", { p: Math.round(CHILD_DISCOUNT * 100) })}</p>}
+    </div>
+  );
+}
 
 /* --- adım rayı: tamamlananlar özetini gösterir, tıklanınca geri döner --- */
 function StepRail({
@@ -438,10 +588,11 @@ function LivePreview({
 
 /* --- 0 · yolcu -------------------------------------------------------- */
 function PaxStep({
-  pax, setPax, carrier, setCarrier, pnr, setPnr, errors,
+  pax, setPax, carrier, setCarrier, pnr, setPnr, errors, companions, setCompanions,
 }: {
   pax: Passenger; setPax: (p: Passenger) => void; carrier: string; setCarrier: (v: string) => void;
   pnr: string; setPnr: (v: string) => void; errors: Record<string, string>;
+  companions: Companion[]; setCompanions: (c: Companion[]) => void;
 }) {
   const t = useT();
   // SSR açıklamaları katalogdan iki dilli gelir (domain kaydı değişmez, metin seçilir).
@@ -487,6 +638,8 @@ function PaxStep({
           <Input value={pnr} onChange={(e) => setPnr(e.target.value.toUpperCase())} placeholder="XQ7T2M" maxLength={6} className="uppercase" />
         </Field>
       </div>
+
+      <Companions list={companions} setList={setCompanions} errors={errors} surname={pax.surname} />
 
       <Rule label={t("issue.pax.infantRule")} />
       <p className="-mt-2 text-[13px] text-ink-2">

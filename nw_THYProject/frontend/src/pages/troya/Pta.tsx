@@ -13,7 +13,7 @@ import { DataTable } from "@/components/ui/table";
 import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { toast } from "@/components/ui/toast";
-import { useT } from "@/i18n";
+import { useT, type Key } from "@/i18n";
 import { csvNumber } from "@/lib/csv";
 import { formatDate } from "@/lib/utils";
 
@@ -22,6 +22,9 @@ import { formatDate } from "@/lib/utils";
  * Bilet bedeli bir istasyonda ödenir, yolcu bileti başka istasyonda alır.
  */
 const TONE: Record<Pta["status"], Tone> = { open: "blue", used: "green", refunded: "pink", expired: "gray" };
+const STATUS_KEY: Record<Pta["status"], Key> = {
+  open: "misc.pta.status.open", used: "misc.pta.status.used", refunded: "misc.pta.status.refunded", expired: "misc.pta.status.expired",
+};
 const col = createColumnHelper<Pta>();
 
 export function PtaPage() {
@@ -106,7 +109,11 @@ export function PtaPage() {
     col.accessor((p) => p.amount.currency, {
       id: "currency", header: t("misc.pta.col.currency"), meta: { exportOnly: true },
     }),
-    col.accessor("status", { header: t("common.status"), enableSorting: false, cell: (c) => <Pill tone={TONE[c.getValue()]}>{c.getValue()}</Pill> }),
+    col.accessor("status", {
+      header: t("common.status"), enableSorting: false,
+      meta: { exportValue: (p: Pta) => t(STATUS_KEY[p.status]) },
+      cell: (c) => <Pill tone={TONE[c.getValue()]}>{t(STATUS_KEY[c.getValue()])}</Pill>,
+    }),
     col.display({
       id: "ack", header: t("misc.pta.col.ack"), enableSorting: false, meta: { label: t("misc.pta.col.ack"), exportSkip: true },
       cell: (c) => c.row.original.acknowledgedAt

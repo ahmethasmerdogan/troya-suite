@@ -196,3 +196,45 @@ export async function quoteFares(input: QuoteInput): Promise<FareOffer[]> {
   await new Promise((r) => setTimeout(r, 420)); // "sunucu" tarife hesaplıyor
   return computeFareOffers(input.legs, input.demandFactor ?? 1);
 }
+
+/* ===================================================================
+   Yolcu tipi (PTC) — çocuk ücreti.
+
+   Aynı işlemde kesilen çocuk (CHD, 2–11 yaş) yetişkin ücretinin
+   indirimli halini öder (ATPCO Cat 19 — çocuk/bebek indirimleri).
+   İndirim ÇIPLAK ücrete uygulanır; havalimanı harcı yolcu başınadır ve
+   indirilmez, taşıyıcı ek ücreti (YQ) yeni ücrete göre yeniden hesaplanır.
+   Oran temsilîdir — gerçek oran ücretin Cat 19 kuralından gelir.
+   =================================================================== */
+
+export type Ptc = "ADT" | "CHD";
+export const CHILD_DISCOUNT = 0.25;
+
+export interface PaxFare {
+  baseFare: Money;
+  totalTfc: Money;
+  total: Money;
+  tfcs: TaxFeeCharge[];
+  vat: VatBreakdown;
+}
+
+/** Seçilen teklifin bu yolcu tipine düşen ücreti — `base + ΣTFC == total` korunur. */
+export function fareForPtc(offer: FareOffer, ptc: Ptc, issueDateIso = new Date().toISOString()): PaxFare {
+  if (ptc === "ADT") {
+    return { baseFare: offer.baseFare, totalTfc: offer.totalTfc, total: offer.total, tfcs: offer.tfcs, vat: offer.vat };
+  }
+  const cur = offer.baseFare.currency;
+  const base = round(offer.baseFare.amount * (1 - CHILD_DISCOUNT), 10);
+  const tfcs: TaxFeeCharge[] = offer.tfcs.map((t) =>
+    t.code === "YQ" ? { ...t, amount: { amount: round(base * 0.045, 10), currency: cur } } : t);
+  const tfcTotal = tfcs.reduce((n, t) => n + t.amount.amount, 0);
+  const yq = tfcs.find((t) => t.code === "YQ")?.amount.amount ?? 0;
+  const domestic = offer.vat.regime === "taxable";
+  return {
+    baseFare: { amount: base, currency: cur },
+    totalTfc: { amount: tfcTotal, currency: cur },
+    total: { amount: base + tfcTotal, currency: cur },
+    tfcs,
+    vat: computeVat(base + yq, domestic, issueDateIso),
+  };
+}

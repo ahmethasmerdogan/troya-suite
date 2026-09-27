@@ -85,24 +85,39 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
   const existing = issuedKeys.get(input.idempotencyKey);
   if (existing) return store.find((t) => t.ticketNumber === existing)!;
 
+  assertCanIssue([input.passenger], input.pnr);
+  return writeTicket(input);
+}
+
+/**
+ * Kesim ön koşulları — tek yolcu ya da grup için aynı kapı.
+ * Hepsi yan etkisizdir: grup kesiminde HİÇBİR bilet yazılmadan önce tüm
+ * yolcular burada doğrulanır (hepsi ya da hiçbiri).
+ */
+function assertCanIssue(passengers: Passenger[], pnr?: string) {
   // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
   assertPeriodOpen(new Date().toISOString(), "yeni satış");
   // Rezervasyondan kesim: bilet adı PNR'daki adla birebir aynı olmalı ve her
   // yolcu tek ET alır (Handbook 2.3) — mükerrer kesim burada durur.
-  const srcPnr = input.pnr ? pnrByLocator(input.pnr) : undefined;
-  if (srcPnr) {
-    const k = paxKey(input.passenger);
+  const srcPnr = pnr ? pnrByLocator(pnr) : undefined;
+  if (!srcPnr) return;
+  for (const p of passengers) {
+    const k = paxKey(p);
     if (!srcPnr.passengers.some((x) => paxKey(x) === k))
-      throw new DomainError(`${input.passenger.surname}/${input.passenger.givenName} ${srcPnr.recordLocator} rezervasyonunda yok — bilet adı PNR'daki adla birebir aynı olmalı (Handbook 2.3).`);
+      throw new DomainError(`${p.surname}/${p.givenName} ${srcPnr.recordLocator} rezervasyonunda yok — bilet adı PNR'daki adla birebir aynı olmalı (Handbook 2.3).`);
     if (!unticketedPassengers(srcPnr).some((x) => paxKey(x) === k))
-      throw new DomainError(`${srcPnr.recordLocator} rezervasyonunda bu yolcunun bileti zaten kesilmiş — mükerrer kesim yapılamaz.`);
+      throw new DomainError(`${srcPnr.recordLocator} rezervasyonunda ${p.surname}/${p.givenName} için bilet zaten kesilmiş — mükerrer kesim yapılamaz.`);
   }
+}
+
+/** Bileti yazar — ön koşullar ÇAĞIRANDA doğrulanmış olmalı. */
+function writeTicket(input: IssueTicketInput, extra?: { groupRef?: string; ptc?: "ADT" | "CHD"; groupNote?: string }): Ticket {
   const ticketNumber = buildTicketNumber("235", String(serialCounter++));
   const now = new Date().toISOString();
   const history: LifecycleEvent[] = [
     {
       id: "h1", type: "TicketIssued", occurredAt: now,
-      actor: `${input.validatingCarrier} / Web`, detail: "Bilet kesildi", status: "O",
+      actor: `${input.validatingCarrier} / Web`, detail: extra?.groupNote ? `Bilet kesildi · ${extra.groupNote}` : "Bilet kesildi", status: "O",
       money: {
         currency: input.fare.total.currency,
         gross: input.fare.total.amount,
@@ -138,6 +153,8 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
         : {}),
     })),
     fare: input.fare,
+    ...(extra?.groupRef ? { groupRef: extra.groupRef } : {}),
+    ...(extra?.ptc ? { ptc: extra.ptc } : {}),
     history,
   };
 
@@ -146,6 +163,80 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
   // Rezervasyon → bilet bağı: PNR "biletlendi" olur, doküman numarası oraya yazılır.
   if (input.pnr) attachTicketToPnr(input.pnr, ticketNumber, input.passenger);
   return ticket;
+}
+
+/* ===================================================================
+   Grup / aile kesimi — aynı güzergâh, aynı ücret, tek ödeme, TEK işlem.
+
+   Her yolcu yine KENDİ biletini alır (Handbook 2.3 — bilet devredilemez,
+   bir ET tek yolcunundur); tek işlem olmasının anlamı atomikliktir:
+   bir yolcu kural dışıysa (PNR'da yok, zaten biletli, aynı ad iki kez)
+   HİÇBİR bilet kesilmez. Biletler ortak `groupRef` ile birbirine bağlanır.
+   Bir rezervasyonda en çok 9 yolcu olur; daha büyük grup, grup masasının
+   işidir.
+   =================================================================== */
+
+export const GROUP_MAX = 9;
+
+export interface GroupPassengerInput {
+  passenger: Passenger;
+  ptc: "ADT" | "CHD";
+  fare: Ticket["fare"];
+}
+export interface GroupIssueInput extends Omit<IssueTicketInput, "passenger" | "fare"> {
+  passengers: GroupPassengerInput[];
+}
+export interface GroupIssueResult { groupRef: string; tickets: Ticket[] }
+
+const groupKeys = new Map<string, GroupIssueResult>();
+let groupCounter = 1;
+
+export async function issueGroup(input: GroupIssueInput): Promise<GroupIssueResult> {
+  await delay(900);
+  const prior = groupKeys.get(input.idempotencyKey);
+  if (prior) return prior;
+
+  const n = input.passengers.length;
+  if (n < 2) throw new DomainError("Grup kesimi en az iki yolcu ister — tek yolcu için normal kesim yapılır.");
+  if (n > GROUP_MAX) throw new DomainError(`Tek işlemde en çok ${GROUP_MAX} yolcu kesilir — daha büyük grup için grup rezervasyonu gerekir.`);
+  const keys = input.passengers.map((p) => paxKey(p.passenger));
+  const dup = keys.find((k, i) => keys.indexOf(k) !== i);
+  if (dup) throw new DomainError(`${dup} iki kez yazılmış — her yolcu tek bilet alır (Handbook 2.3).`);
+  if (!input.passengers.some((p) => p.ptc === "ADT"))
+    throw new DomainError("Grupta en az bir yetişkin (ADT) olmalı — refakatsiz çocuk UMNR hizmetiyle ayrı kesilir.");
+  for (const p of input.passengers) {
+    if (p.passenger.surname.trim().length < 2 || !p.passenger.givenName.trim())
+      throw new DomainError("Her yolcunun soyadı ve adı zorunlu.");
+    const f = p.fare;
+    if (Math.abs(f.baseFare.amount + f.totalTfc.amount - f.total.amount) > 0.01)
+      throw new DomainError(`${paxKey(p.passenger)} ücret dökümü tutarsız — çıplak ücret + vergiler toplamı vermeli.`);
+  }
+  assertCanIssue(input.passengers.map((p) => p.passenger), input.pnr);
+
+  // Doğrulama bitti — artık yazılır. Her bilet kendi idempotency anahtarını taşır.
+  const groupRef = `GRP${String(groupCounter++).padStart(4, "0")}`;
+  const tickets = input.passengers.map((p, i) => writeTicket(
+    {
+      passenger: p.passenger,
+      validatingCarrier: input.validatingCarrier,
+      pnr: input.pnr,
+      segments: input.segments,
+      fare: p.fare,
+      formOfPayment: input.formOfPayment,
+      baggageAllowanceKg: input.baggageAllowanceKg,
+      idempotencyKey: `${input.idempotencyKey}:${i}`,
+    },
+    { groupRef, ptc: p.ptc, groupNote: `grup ${groupRef} · ${i + 1}/${n}${p.ptc === "CHD" ? " · CHD" : ""}` },
+  ));
+  const result = { groupRef, tickets };
+  groupKeys.set(input.idempotencyKey, result);
+  return result;
+}
+
+/** Aynı işlemde kesilmiş diğer biletler. */
+export async function listGroupTickets(groupRef: string): Promise<Ticket[]> {
+  await delay(120);
+  return store.filter((t) => t.groupRef === groupRef).sort((a, b) => a.ticketNumber.localeCompare(b.ticketNumber));
 }
 
 export function newIdempotencyKey(): string {

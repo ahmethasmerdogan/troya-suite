@@ -260,6 +260,10 @@ export interface Ticket {
   paperDocuments?: { couponSeq: number; documentNumber: string; kind: "print" | "print_exchange"; at: string }[];
   /** Hastalık uzatması (13.10) — bir kez verilir, geçerlilik sonunu öteler. */
   validityExtension?: import("./validity").ValidityExtension;
+  /** Aynı işlemde birlikte kesilen biletlerin ortak referansı (grup/aile kesimi). */
+  groupRef?: string;
+  /** Yolcu tipi — ADT yetişkin, CHD çocuk (2–11). Verilmezse ADT. */
+  ptc?: "ADT" | "CHD";
   history: LifecycleEvent[];
 }
 

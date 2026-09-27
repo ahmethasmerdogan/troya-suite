@@ -13,8 +13,8 @@ test.describe("Rezervasyon → bilet", () => {
     await expect(page).toHaveURL(/\/issue\?pnr=TR8N1P/);
     await expect(page.getByText(/TR8N1P rezervasyonundan dolduruldu/)).toBeVisible();
 
-    // Yolcu adımı PNR'daki yolcuyla dolu geldi.
-    await expect(page.getByRole("textbox", { name: /Soyadı/ })).toHaveValue("DEMIR");
+    // Yolcu adımı PNR'daki yolcuyla dolu geldi (ikinci yolcu aynı işlemin listesinde).
+    await expect(page.getByRole("textbox", { name: /Soyadı/ }).first()).toHaveValue("DEMIR");
 
     // Sefer adımında rezervasyondaki uçuş seçili ve işaretli.
     await page.getByRole("button", { name: "İleri" }).click();

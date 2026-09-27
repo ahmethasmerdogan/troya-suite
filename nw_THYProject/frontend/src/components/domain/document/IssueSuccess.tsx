@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { Link } from "@tanstack/react-router";
 import { ArrowRight, Printer, Scissors } from "lucide-react";
 import type { Ticket } from "@/domain/types";
 import { useUI } from "@/store/ui";
@@ -25,9 +26,11 @@ import { TicketDocument } from "./TicketDocument";
    ==================================================================== */
 
 export function IssueSuccess({
-  ticket, onOpen, onPrint, onNew,
+  ticket, group, onOpen, onPrint, onNew,
 }: {
   ticket: Ticket;
+  /** Grup kesiminde aynı işlemde kesilen tüm biletler. */
+  group?: { groupRef: string; tickets: Ticket[] };
   onOpen: () => void;
   onPrint: () => void;
   onNew: () => void;
@@ -68,7 +71,7 @@ export function IssueSuccess({
             {t("ticket.issued.desc")}
           </p>
           <span className="anim-doc-rise num mt-2 rounded-md bg-inset px-2.5 py-1 text-[13px] font-medium text-ink" style={{ animationDelay: "0.28s" }}>
-            {ticket.ticketNumber}
+            {group ? t("group.issued.title", { n: group.tickets.length, ref: group.groupRef }) : ticket.ticketNumber}
           </span>
         </div>
 
@@ -85,6 +88,26 @@ export function IssueSuccess({
             <Scissors size={22} strokeWidth={2} className="rotate-90" />
           </span>
         </div>
+
+        {/* --- grup: aynı işlemde kesilen diğer biletler --- */}
+        {group && (
+          <div className={cut ? "anim-doc-rise mt-5 rounded-lg border border-line bg-panel" : "mt-5 rounded-lg border border-line bg-panel opacity-0"}>
+            <div className="border-b border-line px-4 py-2 text-[12px] text-ink-3">{t("group.issued.hint")}</div>
+            <ul className="divide-y divide-[var(--hair)]">
+              {group.tickets.map((tk) => (
+                <li key={tk.ticketNumber}>
+                  <Link to="/tickets/$ticketNumber" params={{ ticketNumber: tk.ticketNumber }}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[13px] hover:bg-inset">
+                    <span className="num font-medium text-ink">{tk.ticketNumber}</span>
+                    <span className="text-ink-2">{tk.passenger.surname}/{tk.passenger.givenName}</span>
+                    <span className="num text-[11.5px] text-ink-3">{tk.ptc ?? "ADT"}</span>
+                    <span className="num ml-auto text-ink">{tk.fare.total.amount.toLocaleString()} {tk.fare.total.currency}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {/* --- aksiyonlar --- */}
         <div className={cut ? "anim-doc-rise mt-6 flex flex-wrap items-center justify-center gap-2" : "mt-6 flex flex-wrap items-center justify-center gap-2 opacity-0"}>

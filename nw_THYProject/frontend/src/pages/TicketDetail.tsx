@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
   CreditCard, FileOutput, HeartPulse, Leaf, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
-import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, newIdempotencyKey } from "@/domain/api";
+import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, newIdempotencyKey } from "@/domain/api";
 import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
 import { usePerm } from "@/lib/usePerm";
@@ -180,7 +180,7 @@ export function TicketDetail() {
               <MetaRow icon={<CreditCard size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.payment")} value={<span className="num">{fopLabel(ticket.formOfPayment.type)}{ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}</span>} />
             </div>
 
-            {(p.ssr?.length || p.infant || ticket.tourCode || ticket.conjunctionTickets?.length || ticket.endorsement) && (
+            {(p.ssr?.length || p.infant || ticket.tourCode || ticket.conjunctionTickets?.length || ticket.endorsement || ticket.groupRef || ticket.ptc === "CHD") && (
               <div className="mt-4 flex flex-wrap gap-2 border-t border-line pt-4">
                 {p.ssr?.map((code) => {
                   const label = ssrLabel(code, lang);
@@ -194,6 +194,8 @@ export function TicketDetail() {
                   </Link>
                 ))}
                 {ticket.endorsement && <OutlineBadge tone="amber">{ticket.endorsement}</OutlineBadge>}
+                {ticket.ptc === "CHD" && <OutlineBadge tone="violet">CHD</OutlineBadge>}
+                {ticket.groupRef && <GroupChips groupRef={ticket.groupRef} self={ticket.ticketNumber} />}
               </div>
             )}
           </Card>
@@ -508,5 +510,22 @@ function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: n
       className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--t-amber-d)] bg-[var(--t-amber-w)] px-2.5 text-[11.5px] font-semibold text-[var(--t-amber-i)] hover:opacity-90">
       TK · {t("skchg.ack")}
     </button>
+  );
+}
+
+/** Aynı işlemde (grup/aile kesimi) kesilen diğer biletler — her biri ayrı açılır. */
+function GroupChips({ groupRef, self }: { groupRef: string; self: string }) {
+  const t = useT();
+  const { data } = useQuery({ queryKey: ["group", groupRef], queryFn: () => listGroupTickets(groupRef) });
+  const others = (data ?? []).filter((x) => x.ticketNumber !== self);
+  return (
+    <>
+      <OutlineBadge tone="gray">{t("group.ticket.chip", { ref: groupRef, n: data?.length ?? 1 })}</OutlineBadge>
+      {others.map((o) => (
+        <Link key={o.ticketNumber} to="/tickets/$ticketNumber" params={{ ticketNumber: o.ticketNumber }}>
+          <OutlineBadge tone="gray">{o.passenger.surname}/{o.passenger.givenName} · {o.ticketNumber}</OutlineBadge>
+        </Link>
+      ))}
+    </>
   );
 }

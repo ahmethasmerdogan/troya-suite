@@ -16,6 +16,7 @@ import { tr as queuesTr, en as queuesEn } from "./keys/queues";
 import { tr as skchgTr, en as skchgEn } from "./keys/skchg";
 import { tr as deskTr, en as deskEn } from "./keys/desk";
 import { tr as resTr, en as resEn } from "./keys/res";
+import { tr as groupTr, en as groupEn } from "./keys/group";
 
 import type { Lang } from "@/store/ui";
 
@@ -299,8 +300,8 @@ const en: Record<keyof typeof tr, string> = {
  * TR ve EN değerlerini YAN YANA tutar — 130 satır uzaklıktaki iki blok
  * arasında kayma riski kalmadı.
  */
-const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr, ...skchgTr, ...deskTr, ...resTr };
-const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn, ...skchgEn, ...deskEn, ...resEn };
+const TR = { ...tr, ...flowsTr, ...issueTr, ...ticketTr, ...checkinTr, ...adminTr, ...reportTr, ...miscTr, ...chatTr, ...searchTr, ...shellTr, ...docs2Tr, ...fixTr, ...tipsTr, ...rightsTr, ...queuesTr, ...skchgTr, ...deskTr, ...resTr, ...groupTr };
+const EN = { ...en, ...flowsEn, ...issueEn, ...ticketEn, ...checkinEn, ...adminEn, ...reportEn, ...miscEn, ...chatEn, ...searchEn, ...shellEn, ...docs2En, ...fixEn, ...tipsEn, ...rightsEn, ...queuesEn, ...skchgEn, ...deskEn, ...resEn, ...groupEn };
 
 export type Key = keyof typeof TR;
 
