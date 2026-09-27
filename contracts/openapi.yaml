@@ -21,7 +21,7 @@ info:
       değer `Idempotency-Key` header'ı ile de gönderilebilir.
     - **Coupon Status = explicit FSM (kural 3):** Geçişler `CouponStatus` enum'unda
       tanımlı; izin verilmeyen geçiş `422` problem detayı döndürür. Final statüler
-      (`E F G R V P X Z T`) terminaldir.
+      (`E F G R V P X Z`) terminaldir.
 
     ## Domain dili (GLOSSARY)
     Ticket, Coupon, CouponStatus, Validating / Marketing / Operating Carrier,

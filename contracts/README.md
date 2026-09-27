@@ -2,7 +2,7 @@
 
 `openapi.yaml` (OpenAPI 3.1.0) **tek doğruluk kaynağıdır** (CLAUDE.md kural 12).
 Frontend ile backend arasındaki sözleşme buradadır; tip güvenliği uçtan uca
-buradan zorlanır. Domain dili `docs/GLOSSARY.md`'ye sadıktır
+buradan zorlanır. Domain dili [`GLOSSARY.md`](../GLOSSARY.md)'ye sadıktır
 (Ticket, Coupon, CouponStatus, Validating/Marketing/Operating Carrier, TFC, EMD,
 PTA, IRROP/FIM, ONE Order).
 
@@ -11,7 +11,9 @@ PTA, IRROP/FIM, ONE Order).
 - **Backend (Kotlin/Spring) tarafı** bu spec'e göre controller'ları ve DTO'ları
   doğrular; ileride spec'ten server stub üretimi ya da contract testleri (Spring
   REST Docs / schema validation) bağlanabilir.
-- **Frontend (Vite/React/TS) tarafı** tipleri elle yazmaz; bu dosyadan **üretir**.
+- **Frontend (Vite/React/TS) tarafı** canlı motora bağlandığında tipleri bu dosyadan
+  **üretecek**. Bugün prototip (`nw_THYProject/frontend`) bellek-içi mock üzerinde,
+  bu spec'e göre elle yazılmış tiplerle (`src/domain/types.ts`) çalışır.
 - İki yüzey de aynı operasyon kümesine map olur ("tek komut, iki yüzey").
 
 ## TS tip üretimi (openapi-typescript)
@@ -20,7 +22,7 @@ Frontend kökünden:
 
 ```bash
 # repo kökünden örnek
-npx openapi-typescript contracts/openapi.yaml -o frontend/src/domain/generated.ts
+npx openapi-typescript contracts/openapi.yaml -o nw_THYProject/frontend/src/domain/generated.ts
 ```
 
 Önerilen kullanım: üretilen `generated.ts`'ten `components["schemas"]["Ticket"]`,
@@ -43,7 +45,7 @@ export const api = createClient<paths>({ baseUrl: "/api" });
 
 ## Mock api.ts → gerçek REST geçişi
 
-Bugün `frontend/src/domain/api.ts` bellek-içi mock'tur (iş kuralı YOK — sunum
+Bugün `nw_THYProject/frontend/src/domain/api.ts` bellek-içi mock'tur (iş kuralı YOK — sunum
 adaptörü, CLAUDE.md kural 8). **Fonksiyon imzaları bilerek bu spec ile aynıdır**,
 böylece TanStack Query çağrıları ve bileşenler değişmeden kalır; sadece her
 fonksiyonun gövdesi `fetch`/`openapi-fetch` çağrısına döner. Eşleme:
@@ -71,6 +73,27 @@ fonksiyonun gövdesi `fetch`/`openapi-fetch` çağrısına döner. Eşleme:
 | `createPta`                      | `createPta`               | `POST /ptas`                                         |
 | `issueAgainstPta`                | `issueAgainstPta`         | `POST /ptas/{ptaReference}/issue`                    |
 | `listRevenueAlerts`              | `listRevenueAlerts`       | `GET /revenue/alerts`                                |
+
+### Motorun bugün uyguladığı alt küme
+
+Spec **hedef** API'dir; `backend/` bunun bir alt kümesini, bazı alan adları ve
+gövde şekilleri farklı olarak uygular. Arayüz canlı motora bağlanmadan önce iki
+tarafın hizalanması gerekir.
+
+| Backend'de olan | Not |
+| --- | --- |
+| `POST /tickets`, `GET /tickets?q=`, `GET /tickets/{n}`, `GET /tickets/{n}/receipt` | Spec'te arama `GET /tickets/search?q=`; receipt spec'te yok. Kesim gövdesi düz (`surname`, `givenName`, `coupons`, `fareAmount`…), yanıt yalnız `{ticketNumber}`. |
+| `POST /tickets/{n}/void\|refund\|exchange` | Bilet numarası yoldan okunur; spec gövdede de istiyor. `waiver` serbest metin (spec'te enum). |
+| `POST/GET /tickets/{n}/emds`, `GET /emds`, `GET /emds/{n}`, `POST /emds/{n}/refund\|void` | Spec'te EMD alanları `couponSeq`/`value`; backend `associatedCouponSeq`/`amount`. `GET /emds/{n}` ve EMD refund/void spec'te yok. |
+| `GET /fares/quote`, `GET /health`, `GET /meta/coupon-statuses` | Spec'te yok. |
+
+Spec'te olup backend'de henüz olmayanlar: `endorse`, `irrop`,
+`coupons/{seq}/status`, `dashboard/stats`, `messages`, `agreements`, `orders`,
+`ptas`, `revenue/alerts`. Diğer farklar: spec `servers: /api` der, backend kökten
+servis eder; `Money.amount` spec'te sayı, backend'de metin; hata gövdesi spec'te
+RFC 7807 `ProblemDetails`, backend'de `{"error": "…"}`; backend'in yaydığı
+`CouponsRefunded`, `CouponsExchanged`, `EmdRefunded`, `EmdVoided` olayları
+`LifecycleEventType` enum'unda yok.
 
 ### Idempotency
 
