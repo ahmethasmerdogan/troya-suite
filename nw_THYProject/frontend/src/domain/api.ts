@@ -15,6 +15,8 @@ import type { WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
 import { attachTicketToPnr, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
+import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
+import { demoNow } from "./demoClock";
 
 /** İade ve reissue tarifesi — akışlar tutarı buradan alır (personel elle yazmaz). */
 export { quoteRefund, quoteReissue };
@@ -756,6 +758,17 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
   assertControl(old, "Exchange / reissue");
   const openCoupons = old.coupons.filter((c) => c.status === "O");
   if (!openCoupons.length) throw new DomainError("Değişim için 'O' statüde kupon yok.");
+  // 12.9.1 — süresi dolan bilet yalnız iade edilir. 12.4.1 — yolculuk başladıysa
+  // reissue orijinal geçerlilik sonunu aşamaz (kullanılmamış bilette yeni
+  // yolculuktan itibaren yeniden 1 yıl işler, sınır yok).
+  const expiredMsg = changeBlockedByValidity(old, demoNow());
+  if (expiredMsg) throw new DomainError(expiredMsg);
+  if (travelCommenced(old)) {
+    for (const seg of input.newSegments) {
+      const beyond = beyondValidity(old, seg.departure, demoNow());
+      if (beyond) throw new DomainError(beyond);
+    }
+  }
 
   // 12.1.1 — değişiklik türü sistemce sınıflandırılır ve kayda geçer.
   // Yalnız rezervasyon değişikliğinde (REBOOKING) reissue ŞART DEĞİLDİR; bu
@@ -1463,6 +1476,9 @@ export async function revalidateCoupon(input: RevalidateInput): Promise<Ticket> 
   if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`);
   if (c.status !== "O" && c.status !== "A")
     throw new DomainError(`Kupon #${input.couponSeq} (${c.status}) revalidation'a uygun değil — O/A olmalı.`);
+  // Revalidation bileti yeniden kesmez: geçerlilik sonu olduğu gibi kalır.
+  const expiredMsg = changeBlockedByValidity(t, demoNow()) ?? beyondValidity(t, input.newDeparture, demoNow());
+  if (expiredMsg) throw new DomainError(expiredMsg);
   const flight = input.newFlightNumber.trim().toUpperCase();
   const old = `${c.segment.flightNumber} ${c.segment.departure.slice(0, 16).replace("T", " ")}`;
   // Rota/fiyat değişmez — yalnızca uçuş no + tarih/saat güncellenir; statü O korunur.
@@ -1597,6 +1613,37 @@ export async function endorseTicket(input: EndorseInput): Promise<Ticket> {
       detail: t.endorsement + (input.endorseToCarrier ? ` (${input.endorseToCarrier}'a ciro)` : ""),
     }),
   );
+  opKeys.set(input.idempotencyKey, t.ticketNumber);
+  return t;
+}
+
+// =====================================================================
+// 13.10 — Hastalık nedeniyle geçerlilik uzatması
+// =====================================================================
+export interface ExtendValidityInput extends IllnessInput {
+  ticketNumber: string;
+  idempotencyKey: string;
+}
+export async function extendValidity(input: ExtendValidityInput): Promise<Ticket> {
+  await delay(450);
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (opKeys.has(input.idempotencyKey)) return t;
+  // Hesap sunucuda yeniden yapılır — arayüzün önizlemesine güvenilmez.
+  const r = illnessExtension(t, input, demoNow());
+  if ("error" in r) throw new DomainError(r.error);
+  const before = ticketValidity(t, demoNow()).until.slice(0, 10);
+  t.validityExtension = {
+    reason: "illness",
+    certificateDate: input.certificateDate,
+    fitToTravelDate: input.fitToTravelDate,
+    fareKind: input.fareKind,
+    until: r.until,
+    grantedAt: new Date().toISOString(),
+  };
+  t.history.push(event("ValidityExtended", {
+    detail: `Hastalık uzatması (13.10) · rapor ${input.certificateDate} · ${before} → ${r.until.slice(0, 10)}`,
+  }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }

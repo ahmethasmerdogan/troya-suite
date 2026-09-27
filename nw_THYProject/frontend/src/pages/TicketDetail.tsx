@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
-  CreditCard, FileOutput, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
+  CreditCard, FileOutput, HeartPulse, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
 import { ssrLabel } from "@/domain/ssr";
@@ -14,6 +14,7 @@ import { ControlIndicator } from "@/components/domain/ControlIndicator";
 import { Money } from "@/components/domain/Money";
 import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
+import { ValidityCard } from "@/components/domain/ValidityCard";
 import { TicketFlows, type FlowId } from "@/components/flows";
 import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
@@ -295,6 +296,7 @@ export function TicketDetail() {
 
         {/* --- sağ sütun --- */}
         <div className="flex flex-col gap-4">
+          <ValidityCard ticket={ticket} canExtend={can("ticket.revalidate")} onExtend={() => setFlow("extend")} />
           <Card data-tour="ticket.fare" className="p-5">
             <div className="microlabel mb-3">Fare / TFC</div>
             <div className="flex items-baseline justify-between py-1.5">
@@ -442,6 +444,7 @@ function MoreMenu({
     { id: "control", icon: <KeyRound size={15} strokeWidth={1.75} />, label: t("ticket.more.control"), hint: t("ticket.more.control.hint"), perm: "ticket.exchange" },
     { id: "refundcancel", icon: <RotateCcw size={15} strokeWidth={1.75} />, label: t("ticket.more.refundcancel"), hint: t("ticket.more.refundcancel.hint"), perm: "ticket.refund" },
     { id: "suspend", icon: <PauseOctagon size={15} strokeWidth={1.75} />, label: t("ticket.more.suspend"), hint: t("ticket.more.suspend.hint"), perm: "ticket.suspend" },
+    { id: "extend", icon: <HeartPulse size={15} strokeWidth={1.75} />, label: t("ticket.more.extend"), hint: t("ticket.more.extend.hint"), perm: "ticket.revalidate" },
   ];
 
   return (

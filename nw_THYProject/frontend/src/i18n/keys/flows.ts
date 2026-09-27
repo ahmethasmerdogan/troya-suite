@@ -262,6 +262,20 @@ export const tr = {
   "flows.baggage.unitLb": "Libre (L)",
   "flows.baggage.overTitle": "{n} {u} fazla bagaj",
   "flows.baggage.overBody": "Hakkı aşan bagaj için EMD-S kesilmelidir (14.5). Kaydettikten sonra İşlemler → Fazla Bagaj adımına geçin.",
+  // --- geçerlilik uzatma (13.10)
+  "flows.extend.title": "Geçerlilik uzatma — hastalık",
+  "flows.extend.hint": "Yolculuk başladıktan sonra hastalanan yolcunun bileti bir kez uzatılır (Handbook 13.10).",
+  "flows.extend.rule": "Sağlık raporu gerekir. Normal ücrette seyahate elverişli olunan güne kadar (rapordan en çok 3 ay), kısa süreli özel ücrette elverişlilikten en çok 7 gün sonrasına kadar uzatılır. Uzatma geçerliliği kısaltmaz.",
+  "flows.extend.certificate": "Rapor tarihi",
+  "flows.extend.fit": "Seyahate elverişli olacağı gün",
+  "flows.extend.fareKind": "Ücret türü",
+  "flows.extend.fareNormal": "Normal ücret",
+  "flows.extend.fareSpecial": "Kısa süreli özel ücret",
+  "flows.extend.current": "Şu anki geçerlilik sonu",
+  "flows.extend.new": "Uzatılmış geçerlilik sonu",
+  "flows.extend.submit": "Uzat",
+  "flows.extend.toastOk": "Geçerlilik uzatıldı",
+  "flows.extend.toastFail": "Uzatma yapılamadı",
 } as const;
 
 export const en: Record<keyof typeof tr, string> = {
@@ -521,4 +535,17 @@ export const en: Record<keyof typeof tr, string> = {
   "flows.baggage.unitLb": "Pound (L)",
   "flows.baggage.overTitle": "{n} {u} excess baggage",
   "flows.baggage.overBody": "An EMD-S must be issued for baggage exceeding the allowance (14.5). After saving, go to Actions → Excess Baggage.",
+  "flows.extend.title": "Extend validity — illness",
+  "flows.extend.hint": "A ticket is extended once for a passenger who falls ill after travel has started (Handbook 13.10).",
+  "flows.extend.rule": "A medical certificate is required. Normal fares are extended until the passenger is fit to travel (at most 3 months from the certificate); short-validity special fares until at most 7 days after the fitness date. An extension never shortens validity.",
+  "flows.extend.certificate": "Certificate date",
+  "flows.extend.fit": "Fit to travel on",
+  "flows.extend.fareKind": "Fare type",
+  "flows.extend.fareNormal": "Normal fare",
+  "flows.extend.fareSpecial": "Short-validity special fare",
+  "flows.extend.current": "Current end of validity",
+  "flows.extend.new": "Extended end of validity",
+  "flows.extend.submit": "Extend",
+  "flows.extend.toastOk": "Validity extended",
+  "flows.extend.toastFail": "Extension failed",
 };

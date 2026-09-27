@@ -146,6 +146,81 @@ export const MOCK_TICKETS: Ticket[] = [
   },
 ];
 
+// Geçerlilik örnekleri (Handbook 12.4 / 12.9.1 / 13.10) — fixture günü 18 Haz 2026.
+// A: yolculuk bir yıl önce başladı, dönüş kuponu açık — geçerlilik 10 gün sonra biter.
+// B: hiç kullanılmadı, kesimden bu yana bir yıldan fazla geçti — yalnız iade.
+MOCK_TICKETS.push(
+  {
+    ticketNumber: "2356000001014",
+    pnr: "VD4K2R",
+    passenger: { surname: "AKSOY", givenName: "DERYA", title: "MS" },
+    validatingCarrier: "TK",
+    issuedAt: "2025-06-02T10:30:00Z",
+    formOfPayment: { type: "credit", detail: "VISA ····5510" },
+    control: { holder: "TK", isValidatingCarrier: true },
+    coupons: [
+      {
+        seq: 1, status: "F",
+        segment: {
+          origin: "IST", destination: "CDG", marketingCarrier: "TK", operatingCarrier: "TK",
+          flightNumber: "TK1821", rbd: "M", departure: "2025-06-28T07:35:00Z", arrival: "2025-06-28T10:05:00Z",
+          fareBasis: "MFLEX", reservationStatus: "HK",
+        },
+      },
+      {
+        seq: 2, status: "O", noShow: true,
+        segment: {
+          origin: "CDG", destination: "IST", marketingCarrier: "TK", operatingCarrier: "TK",
+          flightNumber: "TK1822", rbd: "M", departure: "2025-07-05T11:45:00Z", arrival: "2025-07-05T16:00:00Z",
+          fareBasis: "MFLEX", reservationStatus: "HK",
+        },
+      },
+    ],
+    fare: {
+      baseFare: { amount: 520, currency: "EUR" },
+      totalTfc: { amount: 96, currency: "EUR" },
+      total: { amount: 616, currency: "EUR" },
+      tfcs: [{ code: "YQ", amount: { amount: 58, currency: "EUR" } }, { code: "TR", amount: { amount: 38, currency: "EUR" } }],
+    },
+    history: [
+      { id: "e1", type: "TicketIssued", occurredAt: "2025-06-02T10:30:00Z", actor: "TK / IST-CTR", detail: "Bilet kesildi", status: "O", money: { currency: "EUR", gross: 616 } },
+      { id: "e2", type: "CouponAdded", occurredAt: "2025-06-02T10:30:00Z", actor: "TK", couponSeq: 1, detail: "IST→CDG TK1821", status: "O" },
+      { id: "e3", type: "CouponAdded", occurredAt: "2025-06-02T10:30:01Z", actor: "TK", couponSeq: 2, detail: "CDG→IST TK1822", status: "O" },
+      { id: "e4", type: "CouponFlown", occurredAt: "2025-06-28T10:05:00Z", actor: "TK", couponSeq: 1, detail: "Uçuş tamamlandı", status: "F" },
+      { id: "e5", type: "NoShowRecorded", occurredAt: "2025-07-05T12:45:00Z", actor: "TK CDG-GATE", couponSeq: 2, detail: "Yolcu dönüş uçuşuna gelmedi (no-show)", status: "O" },
+    ],
+  },
+  {
+    ticketNumber: "2356000001025",
+    pnr: "TN7H3S",
+    passenger: { surname: "TUNC", givenName: "ORHAN", title: "MR" },
+    validatingCarrier: "TK",
+    issuedAt: "2025-05-10T14:10:00Z",
+    formOfPayment: { type: "cash" },
+    control: { holder: "TK", isValidatingCarrier: true },
+    coupons: [
+      {
+        seq: 1, status: "O",
+        segment: {
+          origin: "IST", destination: "AYT", marketingCarrier: "TK", operatingCarrier: "TK",
+          flightNumber: "TK2410", rbd: "Y", departure: "2025-05-20T06:00:00Z", arrival: "2025-05-20T07:15:00Z",
+          fareBasis: "YFLEX", reservationStatus: "HK",
+        },
+      },
+    ],
+    fare: {
+      baseFare: { amount: 1650, currency: "TRY" },
+      totalTfc: { amount: 310, currency: "TRY" },
+      total: { amount: 1960, currency: "TRY" },
+      tfcs: [{ code: "VQ", amount: { amount: 310, currency: "TRY" } }],
+    },
+    history: [
+      { id: "e1", type: "TicketIssued", occurredAt: "2025-05-10T14:10:00Z", actor: "TK / IST-CTR", detail: "Bilet kesildi", status: "O", money: { currency: "TRY", gross: 1960 } },
+      { id: "e2", type: "CouponAdded", occurredAt: "2025-05-10T14:10:00Z", actor: "TK", couponSeq: 1, detail: "IST→AYT TK2410", status: "O" },
+    ],
+  },
+);
+
 // Demo saati: el yazımı biletler bugüne kayar (testte kayma yok). Üretilen
 // biletler zaten demo "bugün"üne göre üretilir — kaydırılmaz.
 shiftFixture(MOCK_TICKETS);

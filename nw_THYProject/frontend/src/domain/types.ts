@@ -187,7 +187,8 @@ export type LifecycleEventType =
   | "EmdVoided"
   | "EmdRefunded"
   | "PtaAcknowledged"
-  | "PtaRefunded";
+  | "PtaRefunded"
+  | "ValidityExtended";
 
 /**
  * Olayın parasal dökümü — raporlama bunun üzerinden yürür.
@@ -253,6 +254,8 @@ export interface Ticket {
   /** Kağıda basılan kuponlar (1.3.3 P) ve print exchange (1.3.4 X).
    *  Print exchange'de kağıt stoğun numarası ET numarasından FARKLIDIR. */
   paperDocuments?: { couponSeq: number; documentNumber: string; kind: "print" | "print_exchange"; at: string }[];
+  /** Hastalık uzatması (13.10) — bir kez verilir, geçerlilik sonunu öteler. */
+  validityExtension?: import("./validity").ValidityExtension;
   history: LifecycleEvent[];
 }
 

@@ -5,9 +5,11 @@ import {
   addEmd, endorseTicket, exchangeTicket, grantControl, irropReroute, listAgreements,
   markNoShow, newIdempotencyKey, printExchange, printToPaper, quoteRefund, recordBaggage,
   refundCancel, refundTicket, releaseCoupons, requestControl, returnControl, revalidateCoupon,
-  suspendCoupons, voidTicket,
+  suspendCoupons, voidTicket, extendValidity,
   SESSION_CARRIER,
 } from "@/domain/api";
+import { illnessExtension, ticketValidity } from "@/domain/validity";
+import { demoNow } from "@/domain/demoClock";
 import {
   INVOLUNTARY_REASON_LABEL, INVOLUNTARY_REASON_LABEL_EN, ruleOfTicket,
   type InvoluntaryReason, type RefundType,
@@ -40,7 +42,7 @@ import { cn, formatDateTime, flightCode, locale } from "@/lib/utils";
 export type FlowId =
   | "exchange" | "refund" | "void" | "irrop" | "endorse"
   | "revalidate" | "print" | "noshow" | "baggage" | "emd" | "bagrecord"
-  | "control" | "refundcancel" | "printexchange" | "suspend";
+  | "control" | "refundcancel" | "printexchange" | "suspend" | "extend";
 
 interface Props {
   ticket: Ticket;
@@ -65,6 +67,7 @@ export function TicketFlows({ ticket, flow, onClose }: Props) {
       <RefundCancelFlow ticket={ticket} open={flow === "refundcancel"} onClose={onClose} />
       <PrintExchangeFlow ticket={ticket} open={flow === "printexchange"} onClose={onClose} />
       <SuspendFlow ticket={ticket} open={flow === "suspend"} onClose={onClose} />
+      <ExtendValidityFlow ticket={ticket} open={flow === "extend"} onClose={onClose} />
     </>
   );
 }
@@ -1092,6 +1095,66 @@ function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
             {t("flows.baggage.overBody")}
           </Banner>
         )}
+      </div>
+    </Drawer>
+  );
+}
+
+/* --- geçerlilik uzatma (13.10) ------------------------------------------ */
+
+function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
+  const refresh = useRefresh();
+  const today = new Date(demoNow()).toISOString().slice(0, 10);
+  const [certificateDate, setCert] = useState(today);
+  const [fitToTravelDate, setFit] = useState(today);
+  const [fareKind, setFareKind] = useState<"normal" | "special">("normal");
+  const [key] = useState(newIdempotencyKey);
+
+  // Önizleme komutla AYNI hesaptan gelir; kayıt sunucuda yeniden hesaplanır.
+  const input = { certificateDate, fitToTravelDate, fareKind };
+  const preview = illnessExtension(ticket, input, demoNow());
+  const current = ticketValidity(ticket, demoNow()).until;
+
+  const run = useMutation({
+    mutationFn: () => extendValidity({ ticketNumber: ticket.ticketNumber, ...input, idempotencyKey: key }),
+    onSuccess: () => { toast.success(t("flows.extend.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("flows.extend.toastFail"), e.message),
+  });
+
+  return (
+    <Drawer
+      open={open} onClose={onClose} title={t("flows.extend.title")} hint={t("flows.extend.hint")}
+      footer={
+        <Button variant="success" disabled={run.isPending || "error" in preview} onClick={() => run.mutate()}>
+          {run.isPending ? t("flows.common.applying") : t("flows.extend.submit")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Banner kind="info">{t("flows.extend.rule")}</Banner>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label={t("flows.extend.certificate")}>
+            <Input type="date" value={certificateDate} max={today} onChange={(e) => setCert(e.target.value)} />
+          </Field>
+          <Field label={t("flows.extend.fit")}>
+            <Input type="date" value={fitToTravelDate} onChange={(e) => setFit(e.target.value)} />
+          </Field>
+        </div>
+        <Field label={t("flows.extend.fareKind")}>
+          <Select value={fareKind} onChange={(e) => setFareKind(e.target.value as "normal" | "special")}>
+            <option value="normal">{t("flows.extend.fareNormal")}</option>
+            <option value="special">{t("flows.extend.fareSpecial")}</option>
+          </Select>
+        </Field>
+        <Inset className="p-4">
+          <Line label={t("flows.extend.current")} value={<span className="num">{current.slice(0, 10)}</span>} />
+          <Line
+            label={t("flows.extend.new")} strong
+            value={"error" in preview ? "—" : <span className="num">{preview.until.slice(0, 10)}</span>}
+          />
+        </Inset>
+        {"error" in preview && <Banner kind="warning">{preview.error}</Banner>}
       </div>
     </Drawer>
   );

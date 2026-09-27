@@ -20,6 +20,16 @@ const IS_TEST = typeof import.meta !== "undefined" && import.meta.env?.MODE === 
 /** Demonun "şimdi"si: testte sabit gün, canlıda gerçek saat. */
 export const DEMO_NOW = IS_TEST ? FIXTURE_TODAY + 12 * 3_600_000 : Date.now();
 
+/**
+ * Kural kontrollerinin "şimdi"si — geçerlilik, süre limiti gibi tarihle
+ * karşılaştırılan kurallar bunu kullanır. Canlıda gerçek saat (her çağrıda
+ * yeni), testte sabit gün: fixture'a bağlı kural testleri takvim ilerledikçe
+ * kendiliğinden kırılmasın.
+ */
+export function demoNow(): number {
+  return IS_TEST ? DEMO_NOW : Date.now();
+}
+
 /** Fixture'lara uygulanan tam-gün kayma (geriye kaydırılmaz). */
 export const DEMO_SHIFT_MS = Math.max(0, Math.floor((DEMO_NOW - FIXTURE_TODAY) / DAY)) * DAY;
 
