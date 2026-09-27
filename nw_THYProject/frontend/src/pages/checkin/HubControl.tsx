@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, Radar } from "lucide-react";
+import { Check, Radar, Scale } from "lucide-react";
 import { OPS_STATUS_META, deriveOpsStatus, getOpsBoard, milestoneLabel, opsAlertText, opsStatusLabel, resolveAlert, type OpsFlight } from "@/domain/ops";
 import { KIND_TONE } from "@/components/domain/statusTone";
 import { Button } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Stat, Empty } from "@/components/ui/surface";
+import { RightsPanel } from "@/components/domain/RightsPanel";
+import { assessRights, payableRegime } from "@/domain/passengerRights";
 import { Tip } from "@/components/tips/Tip";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/i18n";
 import { useUI } from "@/store/ui";
-import { cn } from "@/lib/utils";
+import { cn, locale } from "@/lib/utils";
 
 /**
  * HUB Kontrol — bilet → check-in → biniş → kalkış akışının tek ekranı.
@@ -216,6 +218,8 @@ export function HubControl() {
                   ))}
                 </div>
 
+                {selected.delayed && selected.etd && <DelayRights f={selected} />}
+
                 <div>
                   <div className="microlabel mb-2">{t("checkin.hub.milestones")}</div>
                   <div className="flex flex-wrap gap-1.5">
@@ -230,5 +234,36 @@ export function HubControl() {
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * Rötarlı uçuşun tazminat maruziyeti — SHY-YOLCU/EU261/UK261 kuralıyla yolcu
+ * başı hak ediş ve kabul edilen yolcu sayısıyla üst sınır. Olağanüstü hâl
+ * değerlendirmesi yapılmadan "olası" tutar gösterilir.
+ */
+function DelayRights({ f }: { f: OpsFlight }) {
+  const t = useT();
+  const delayMin = Math.max(0, Math.round((new Date(f.etd!).getTime() - new Date(f.departure).getTime()) / 60000));
+  const base = { origin: f.origin, destination: f.destination, operatingCarrier: "TK", kind: "delay" as const, extraordinary: false };
+  const now = assessRights({ ...base, arrivalDelayMin: delayMin });
+  // Eşik henüz aşılmadıysa eşik aşıldığında doğacak tutar (planlama için).
+  const shown = now.regimes.some((r) => r.applies) ? now : assessRights({ ...base, arrivalDelayMin: Math.max(delayMin, 300) });
+  const pay = payableRegime(shown);
+  return (
+    <div className="rounded-md border border-[var(--t-amber-d)] bg-[var(--t-amber-w)] p-3">
+      <div className="mb-2 flex items-center gap-2">
+        <Scale size={14} strokeWidth={1.75} className="text-[var(--t-amber-i)]" />
+        <span className="microlabel">{t("rights.hub.title")}</span>
+        <span className="num ml-auto text-[12px] text-ink-2">{t("rights.hub.delay", { n: delayMin })}</span>
+      </div>
+      {shown !== now && <p className="mb-2 text-[12px] text-ink-2">{t("rights.hub.under")}</p>}
+      <RightsPanel a={shown} compact potential={shown !== now} />
+      {pay && (
+        <p className="num mt-2 text-[12px] text-ink-2">
+          {t("rights.hub.exposure", { n: f.accepted })}: <b className="text-ink">{(pay.amount * f.accepted).toLocaleString(locale())} {pay.currency}</b>
+        </p>
+      )}
+    </div>
   );
 }

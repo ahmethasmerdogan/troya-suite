@@ -17,6 +17,7 @@ import { quoteReissue } from "./reissueRules";
 import { attachTicketToPnr, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
 import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
 import { demoNow } from "./demoClock";
+import { assessRights, payableRegime, type DisruptionInput, type RightsAssessment } from "./passengerRights";
 
 /** İade ve reissue tarifesi — akışlar tutarı buradan alır (personel elle yazmaz). */
 export { quoteRefund, quoteReissue };
@@ -1646,6 +1647,45 @@ export async function extendValidity(input: ExtendValidityInput): Promise<Ticket
   }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
+}
+
+// =====================================================================
+// Yolcu hakları — hak ediş kaydı (EU261 · SHY-YOLCU · UK261)
+// =====================================================================
+export interface RightsInput {
+  ticketNumber: string;
+  couponSeq: number;
+  disruption: Omit<DisruptionInput, "origin" | "destination" | "operatingCarrier">;
+  idempotencyKey: string;
+}
+/**
+ * Hak edişi bilet kaydına yazar — ödeme DEĞİL, denetlenebilir karar izi.
+ * Hesap sunucuda kuponun kendi rotası ve işleten taşıyıcısıyla yeniden
+ * yapılır; arayüzün gönderdiği tutara güvenilmez.
+ */
+export async function recordRightsAssessment(input: RightsInput): Promise<{ ticket: Ticket; assessment: RightsAssessment }> {
+  await delay(400);
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  const c = t.coupons.find((x) => x.seq === input.couponSeq);
+  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`);
+  const assessment = assessRights({
+    ...input.disruption,
+    origin: c.segment.origin,
+    destination: c.segment.destination,
+    operatingCarrier: c.segment.operatingCarrier ?? c.segment.marketingCarrier,
+  });
+  if (opKeys.has(input.idempotencyKey)) return { ticket: t, assessment };
+  const pay = payableRegime(assessment);
+  const kind = { cancellation: "iptal", delay: "rötar", denied_boarding: "biniş reddi" }[input.disruption.kind];
+  t.history.push(event("RightsAssessed", {
+    couponSeq: c.seq,
+    detail: pay
+      ? `Hak ediş · ${pay.regime === "SHY" ? "SHY-YOLCU" : pay.regime} ${pay.amount} ${pay.currency}${pay.reduced ? " (%50)" : ""} · ${kind} · ${assessment.distanceKm ?? "?"} km`
+      : `Hak ediş yok · ${kind}${input.disruption.extraordinary ? " · olağanüstü hâl" : ""} · ${assessment.distanceKm ?? "?"} km`,
+  }));
+  opKeys.set(input.idempotencyKey, t.ticketNumber);
+  return { ticket: t, assessment };
 }
 
 // =====================================================================

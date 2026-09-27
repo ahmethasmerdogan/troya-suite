@@ -164,6 +164,7 @@ export const TIPS = {
   "ops.resolve": { title: "tips.b.resolve.t", body: "tips.b.resolve.b" },
   "reports.close": { title: "tips.b.close.t", body: "tips.b.close.b" },
   "res.ttl": { title: "tips.b.ttl.t", body: "tips.b.ttl.b" },
+  "irrop.compensation": { title: "tips.b.comp.t", body: "tips.b.comp.b" },
 } as const satisfies Record<string, TipDef>;
 
 export type TipId = keyof typeof TIPS;

@@ -5,10 +5,13 @@ import {
   addEmd, endorseTicket, exchangeTicket, grantControl, irropReroute, listAgreements,
   markNoShow, newIdempotencyKey, printExchange, printToPaper, quoteRefund, recordBaggage,
   refundCancel, refundTicket, releaseCoupons, requestControl, returnControl, revalidateCoupon,
-  suspendCoupons, voidTicket, extendValidity,
+  suspendCoupons, voidTicket, extendValidity, recordRightsAssessment,
   SESSION_CARRIER,
 } from "@/domain/api";
 import { illnessExtension, ticketValidity } from "@/domain/validity";
+import { assessRights, type DisruptionKind } from "@/domain/passengerRights";
+import { RightsPanel } from "@/components/domain/RightsPanel";
+import { Tip } from "@/components/tips/Tip";
 import { demoNow } from "@/domain/demoClock";
 import {
   INVOLUNTARY_REASON_LABEL, INVOLUNTARY_REASON_LABEL_EN, ruleOfTicket,
@@ -42,7 +45,7 @@ import { cn, formatDateTime, flightCode, locale } from "@/lib/utils";
 export type FlowId =
   | "exchange" | "refund" | "void" | "irrop" | "endorse"
   | "revalidate" | "print" | "noshow" | "baggage" | "emd" | "bagrecord"
-  | "control" | "refundcancel" | "printexchange" | "suspend" | "extend";
+  | "control" | "refundcancel" | "printexchange" | "suspend" | "extend" | "rights";
 
 interface Props {
   ticket: Ticket;
@@ -68,6 +71,7 @@ export function TicketFlows({ ticket, flow, onClose }: Props) {
       <PrintExchangeFlow ticket={ticket} open={flow === "printexchange"} onClose={onClose} />
       <SuspendFlow ticket={ticket} open={flow === "suspend"} onClose={onClose} />
       <ExtendValidityFlow ticket={ticket} open={flow === "extend"} onClose={onClose} />
+      <RightsFlow ticket={ticket} open={flow === "rights"} onClose={onClose} />
     </>
   );
 }
@@ -1155,6 +1159,103 @@ function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: b
           />
         </Inset>
         {"error" in preview && <Banner kind="warning">{preview.error}</Banner>}
+      </div>
+    </Drawer>
+  );
+}
+
+/* --- yolcu hakları (EU261 · SHY-YOLCU · UK261) ------------------------- */
+
+function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
+  const refresh = useRefresh();
+  // Varsayılan: uçulmamış ilk kupon — aksama çoğunlukla sıradaki uçuşta olur.
+  const first = ticket.coupons.find((c) => !["F", "V", "R", "E"].includes(c.status)) ?? ticket.coupons[0];
+  const [seq, setSeq] = useState(first.seq);
+  const [kind, setKind] = useState<DisruptionKind>("cancellation");
+  const [delayH, setDelayH] = useState("4");
+  const [notice, setNotice] = useState("2");
+  const [hasReroute, setHasReroute] = useState(false);
+  const [earlier, setEarlier] = useState("0");
+  const [later, setLater] = useState("150");
+  const [extraordinary, setExtraordinary] = useState(false);
+  const [key] = useState(newIdempotencyKey);
+
+  const c = ticket.coupons.find((x) => x.seq === seq) ?? first;
+  const num = (v: string) => Math.max(0, Number(v.replace(",", ".")) || 0);
+  const disruption = {
+    kind,
+    arrivalDelayMin: Math.round(num(delayH) * 60),
+    noticeDays: num(notice),
+    reroute: hasReroute ? { departEarlierMin: num(earlier), arriveLaterMin: num(later) } : undefined,
+    extraordinary,
+  };
+  // Önizleme komutla aynı hesap; kayıt sunucuda kuponun kendi rotasıyla yeniden yapılır.
+  const a = assessRights({
+    ...disruption,
+    origin: c.segment.origin, destination: c.segment.destination,
+    operatingCarrier: c.segment.operatingCarrier ?? c.segment.marketingCarrier,
+  });
+
+  const run = useMutation({
+    mutationFn: () => recordRightsAssessment({ ticketNumber: ticket.ticketNumber, couponSeq: seq, disruption, idempotencyKey: key }),
+    onSuccess: () => { toast.success(t("rights.toastOk")); refresh(ticket.ticketNumber); onClose(); },
+    onError: (e: Error) => toast.danger(t("rights.toastFail"), e.message),
+  });
+
+  return (
+    <Drawer
+      open={open} onClose={onClose} title={t("rights.title")} hint={t("rights.hint")} width="lg"
+      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("rights.record")}</Button>}
+    >
+      <div className="grid gap-5 md:grid-cols-2">
+        <div className="flex flex-col gap-3.5">
+          <Field label={t("rights.coupon")}>
+            <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
+              {ticket.coupons.map((x) => (
+                <option key={x.seq} value={x.seq}>
+                  {x.seq} · {x.segment.origin}→{x.segment.destination} · {flightCode(x.segment.marketingCarrier, x.segment.flightNumber)} ({x.status})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label={t("rights.kind")}>
+            <Select value={kind} onChange={(e) => setKind(e.target.value as DisruptionKind)}>
+              <option value="cancellation">{t("rights.kind.cancellation")}</option>
+              <option value="delay">{t("rights.kind.delay")}</option>
+              <option value="denied_boarding">{t("rights.kind.denied_boarding")}</option>
+            </Select>
+          </Field>
+          {kind === "delay" && (
+            <Field label={t("rights.delay")}>
+              <Input value={delayH} onChange={(e) => setDelayH(e.target.value)} inputMode="decimal" className="num" />
+            </Field>
+          )}
+          {kind === "cancellation" && (
+            <Field label={t("rights.notice")}>
+              <Input value={notice} onChange={(e) => setNotice(e.target.value)} inputMode="numeric" className="num" />
+            </Field>
+          )}
+          {kind !== "delay" && (
+            <label className="flex cursor-pointer items-center gap-2 text-[13px] text-ink">
+              <input type="checkbox" checked={hasReroute} onChange={(e) => setHasReroute(e.target.checked)} className="h-3.5 w-3.5 accent-[var(--brand)]" />
+              {t("rights.reroute")}
+            </label>
+          )}
+          {kind !== "delay" && hasReroute && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={t("rights.reroute.earlier")}><Input value={earlier} onChange={(e) => setEarlier(e.target.value)} inputMode="numeric" className="num" /></Field>
+              <Field label={t("rights.reroute.later")}><Input value={later} onChange={(e) => setLater(e.target.value)} inputMode="numeric" className="num" /></Field>
+            </div>
+          )}
+          <label className="flex cursor-pointer items-start gap-2 rounded-md border border-line p-3 text-[13px] text-ink hover:bg-raised">
+            <input type="checkbox" checked={extraordinary} onChange={(e) => setExtraordinary(e.target.checked)} className="mt-0.5 h-3.5 w-3.5 accent-[var(--brand)]" />
+            <span>{t("rights.extraordinary")}</span>
+            <Tip id="irrop.compensation" className="ml-auto" />
+          </label>
+          <p className="text-[11.5px] leading-snug text-ink-3">{t("rights.shyNote")}</p>
+        </div>
+        <RightsPanel a={a} />
       </div>
     </Drawer>
   );

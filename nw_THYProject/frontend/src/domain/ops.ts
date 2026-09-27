@@ -3,6 +3,7 @@
 // Mock: checkin FLIGHTS'tan türetilir + deterministik (seeded) operasyonel ekstralar.
 import { FLIGHTS, manualBoardedCount, type DepartureFlight } from "./checkin";
 import { airportByCode } from "./airports";
+import { assessRights, payableRegime } from "./passengerRights";
 
 /**
  * Operasyon metinlerinin dili. Arayüz store'una (`store/ui`) BAĞLANMAZ — domain
@@ -238,7 +239,8 @@ export async function getOpsBoard(): Promise<OpsBoard> {
     const connectingRisk = ["boarding", "final_call", "gate_closed"].includes(status) ? (seed % 5) : 0;
     const specialPaxPending = status === "boarding" || status === "go_to_gate" ? (seed % 3) : 0;
     const standby = status === "checkin_open" || status === "checkin_closed" ? (seed % 6) : 0;
-    const delayed = (seed % 7) === 0 && !["departed", "pushback"].includes(status);
+    // Bildirilmiş rötar önceliklidir; yoksa deterministik örnek (seed).
+    const delayed = (f.delayMin != null ? f.delayMin > 0 : (seed % 7) === 0) && !["departed", "pushback"].includes(status);
     const loadFactor = Math.round((accepted / f.capacity) * 100);
 
     return {
@@ -248,7 +250,7 @@ export async function getOpsBoard(): Promise<OpsBoard> {
       destination: f.destination,
       destCity: airportByCode(f.destination)?.city ?? f.destination,
       departure: f.departure,
-      etd: delayed ? new Date(new Date(f.departure).getTime() + (20 + (seed % 40)) * 60000).toISOString() : undefined,
+      etd: delayed ? new Date(new Date(f.departure).getTime() + (f.delayMin ?? 20 + (seed % 40)) * 60000).toISOString() : undefined,
       gate: f.gate,
       gateChanged: (seed % 11) === 0,
       aircraftType: f.aircraft.type,
@@ -304,12 +306,29 @@ export async function getOpsBoard(): Promise<OpsBoard> {
         title: "Özel yolcu asistanı bekliyor", detail: `${f.specialPaxPending} özel yolcuya (UM/WCHR vb.) asistan atanmadı.`, action: "Ön-biniş asistanı ata",
         titleEn: "Special assistance pending", detailEn: `No assistant assigned to ${f.specialPaxPending} special passenger(s) (UM/WCHR etc.).`, actionEn: "Assign pre-boarding assistant",
       });
-    if (f.delayed)
+    if (f.delayed) {
+      // Rötar 3 saati aşınca yolcu hakkı doğar (SHY-YOLCU / EU261): uyarı
+      // maruziyeti de söylesin ki operasyon "hızlandır" kararını bilerek versin.
+      const dm = f.etd ? Math.round((new Date(f.etd).getTime() - new Date(f.departure).getTime()) / 60000) : 0;
+      const pay = payableRegime(assessRights({
+        origin: f.origin, destination: f.destination, operatingCarrier: "TK",
+        kind: "delay", arrivalDelayMin: dm, extraordinary: false,
+      }));
+      const crit = !!pay;
       alerts.push({
-        id: f.flightId + "-I1", code: "I1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "warning",
-        title: "Rötar / OTP riski", detail: `ETD STD'den sonra — gecikme sebebi kodlanmalı.`, action: "Sebep kodla, turnaround hızlandır",
-        titleEn: "Delay / OTP risk", detailEn: `ETD is later than STD — the delay reason must be coded.`, actionEn: "Code the reason, speed up turnaround",
+        id: f.flightId + "-I1", code: "I1", flightId: f.flightId, flightNumber: f.flightNumber, severity: crit ? "critical" : "warning",
+        title: crit ? "Rötar — yolcu hakkı doğdu" : "Rötar / OTP riski",
+        detail: crit
+          ? `ETD STD+${dm} dk — yolcu başı ${pay!.amount} ${pay!.currency} (${pay!.regime === "SHY" ? "SHY-YOLCU" : pay!.regime}), ${f.accepted} kabul edilen yolcu. Sebep kodlanmalı.`
+          : `ETD STD+${dm} dk — gecikme sebebi kodlanmalı; 3 saati aşarsa tazminat doğar.`,
+        action: crit ? "Sebep kodla, bakım (yemek/otel) başlat" : "Sebep kodla, turnaround hızlandır",
+        titleEn: crit ? "Delay — passenger rights triggered" : "Delay / OTP risk",
+        detailEn: crit
+          ? `ETD STD+${dm} min — ${pay!.amount} ${pay!.currency} per passenger (${pay!.regime === "SHY" ? "SHY-YOLCU" : pay!.regime}), ${f.accepted} accepted passengers. The reason must be coded.`
+          : `ETD STD+${dm} min — the delay reason must be coded; compensation is due beyond 3 hours.`,
+        actionEn: crit ? "Code the reason, start care (meals/hotel)" : "Code the reason, speed up turnaround",
       });
+    }
     if (f.gateChanged)
       alerts.push({
         id: f.flightId + "-G1", code: "G1", flightId: f.flightId, flightNumber: f.flightNumber, severity: "info",

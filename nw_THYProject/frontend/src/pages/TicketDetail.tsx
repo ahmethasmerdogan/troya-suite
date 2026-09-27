@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
-  CreditCard, FileOutput, HeartPulse, Luggage, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
+  CreditCard, FileOutput, HeartPulse, Luggage, Scale, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
 import { ssrLabel } from "@/domain/ssr";
@@ -445,6 +445,7 @@ function MoreMenu({
     { id: "refundcancel", icon: <RotateCcw size={15} strokeWidth={1.75} />, label: t("ticket.more.refundcancel"), hint: t("ticket.more.refundcancel.hint"), perm: "ticket.refund" },
     { id: "suspend", icon: <PauseOctagon size={15} strokeWidth={1.75} />, label: t("ticket.more.suspend"), hint: t("ticket.more.suspend.hint"), perm: "ticket.suspend" },
     { id: "extend", icon: <HeartPulse size={15} strokeWidth={1.75} />, label: t("ticket.more.extend"), hint: t("ticket.more.extend.hint"), perm: "ticket.revalidate" },
+    { id: "rights", icon: <Scale size={15} strokeWidth={1.75} />, label: t("rights.menu"), hint: t("rights.menu.hint"), perm: "ticket.irrop" },
   ];
 
   return (

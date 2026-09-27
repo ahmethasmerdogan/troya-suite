@@ -53,6 +53,8 @@ export interface DepartureFlight {
   capacity: number;
   checkedIn: number;
   aircraft: Aircraft;
+  /** Bildirilmiş rötar (dk) — ETD = STD + rötar. HUB rötar uyarısı ve tazminat maruziyeti bunu okur. */
+  delayMin?: number;
 }
 
 export interface CheckinPassenger {
@@ -109,8 +111,8 @@ export const FLIGHTS: DepartureFlight[] = [
   { flightId: "TK2410-D", carrier: "TK", flightNumber: "TK2410", origin: "IST", destination: "AYT", departure: inMin(28), gate: "A07", status: "boarding", capacity: 180, checkedIn: 168, aircraft: { type: "Boeing 737-800", registration: "TC-JFV", config: "C12 / Y156", rows: 30, seatsPerRow: 6 } },
   { flightId: "TK198-D", carrier: "TK", flightNumber: "TK198", origin: "IST", destination: "NRT", departure: inMin(55), gate: "215", status: "boarding", capacity: 300, checkedIn: 246, aircraft: { type: "Boeing 777-300ER", registration: "TC-JJE", config: "C18 / Y282", rows: 50, seatsPerRow: 6 } },
   { flightId: "TK21-D", carrier: "TK", flightNumber: "TK21", origin: "IST", destination: "LHR", departure: inMin(95), gate: "E05", status: "checkin_open", capacity: 180, checkedIn: 96, aircraft: { type: "Airbus A321neo", registration: "TC-LSA", config: "C16 / Y164", rows: 30, seatsPerRow: 6 } },
-  { flightId: "TK1591-D", carrier: "TK", flightNumber: "TK1591", origin: "IST", destination: "FRA", departure: inMin(120), gate: "B12", status: "checkin_open", capacity: 180, checkedIn: 72, aircraft: { type: "Airbus A321neo", registration: "TC-LRA", config: "C16 / Y164", rows: 30, seatsPerRow: 6 } },
-  { flightId: "TK6-D", carrier: "TK", flightNumber: "TK6", origin: "IST", destination: "JFK", departure: inMin(185), gate: "F08", status: "checkin_open", capacity: 350, checkedIn: 41, aircraft: { type: "Airbus A350-900", registration: "TC-LGA", config: "C32 / Y283", rows: 55, seatsPerRow: 6 } },
+  { flightId: "TK1591-D", carrier: "TK", flightNumber: "TK1591", origin: "IST", destination: "FRA", departure: inMin(120), gate: "B12", status: "checkin_open", capacity: 180, checkedIn: 72, delayMin: 95, aircraft: { type: "Airbus A321neo", registration: "TC-LRA", config: "C16 / Y164", rows: 30, seatsPerRow: 6 } },
+  { flightId: "TK6-D", carrier: "TK", flightNumber: "TK6", origin: "IST", destination: "JFK", departure: inMin(185), gate: "F08", status: "checkin_open", capacity: 350, checkedIn: 41, delayMin: 205, aircraft: { type: "Airbus A350-900", registration: "TC-LGA", config: "C32 / Y283", rows: 55, seatsPerRow: 6 } },
   { flightId: "TK2128-D", carrier: "TK", flightNumber: "TK2128", origin: "IST", destination: "ESB", departure: inMin(240), gate: "A21", status: "scheduled", capacity: 150, checkedIn: 0, aircraft: { type: "Boeing 737-800", registration: "TC-JGA", config: "C12 / Y126", rows: 25, seatsPerRow: 6 } },
   // Yakın-kalkış / kalkmış uçuşlar — HUB Kontrol board'unda final call / gate closed / departed çeşitliliği için.
   { flightId: "TK1986-D", carrier: "TK", flightNumber: "TK1986", origin: "IST", destination: "FRA", departure: inMin(12), gate: "D22", status: "boarding", capacity: 180, checkedIn: 176, aircraft: { type: "Airbus A321neo", registration: "TC-LTA", config: "C16 / Y164", rows: 30, seatsPerRow: 6 } },

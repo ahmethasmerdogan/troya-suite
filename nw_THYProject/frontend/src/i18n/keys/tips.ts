@@ -167,6 +167,8 @@ export const tr = {
   "tips.b.close.b": "Dönem kapanınca o günün void ve iade geri alma hakkı düşer, kalemler settlement'a gider.",
   "tips.b.ttl.t": "Bilet kesim süresi (TTL)",
   "tips.b.ttl.b": "Rezervasyon bu süre içinde biletlenmezse koltuk bırakılır. Sarı rozet yaklaşanı, kırmızı dolanı gösterir.",
+  "tips.b.comp.t": "Olağanüstü hâl nedir",
+  "tips.b.comp.b": "Hava koşulu, hava trafik kontrolü kısıtı, güvenlik riski ya da taşıyıcı dışı grev. Teknik arıza genellikle olağanüstü SAYILMAZ; emin değilseniz işaretlemeyin, şefinize sorun.",
 
   // --- "Biliyor muydunuz?" ---
   "tips.daily.title": "Biliyor muydunuz?",
@@ -348,6 +350,8 @@ export const en: Record<keyof typeof tr, string> = {
   "tips.b.close.b": "Once a period is closed, void and refund-cancel rights for that day lapse and items go to settlement.",
   "tips.b.ttl.t": "Ticketing time limit (TTL)",
   "tips.b.ttl.b": "If the reservation isn't ticketed within this time the seat is released. Amber means soon, red means expired.",
+  "tips.b.comp.t": "What counts as extraordinary",
+  "tips.b.comp.b": "Weather, air traffic control restrictions, a security risk or a strike outside the carrier. A technical fault is usually NOT extraordinary; if unsure, leave it unticked and ask your supervisor.",
 
   "tips.daily.title": "Did you know?",
   "tips.daily.next": "Next tip",

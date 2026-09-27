@@ -188,7 +188,8 @@ export type LifecycleEventType =
   | "EmdRefunded"
   | "PtaAcknowledged"
   | "PtaRefunded"
-  | "ValidityExtended";
+  | "ValidityExtended"
+  | "RightsAssessed";
 
 /**
  * Olayın parasal dökümü — raporlama bunun üzerinden yürür.
