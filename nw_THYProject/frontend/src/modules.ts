@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BookMarked, Ticket, PlaneTakeoff,
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText,
   MessagesSquare, Handshake, Users, ScrollText, Settings,
-  CalendarSearch, Banknote, Inbox, CalendarClock, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
+  CalendarSearch, Banknote, Inbox, ReceiptText, CalendarClock, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/domain/auth";
 import type { Key } from "@/i18n/dict";
@@ -87,6 +87,7 @@ export const MODULES: ModuleDef[] = [
           { labelKey: "nav.emd", to: "/search", icon: FileText, contextual: true, perm: "ticket.emd" },
           { labelKey: "nav.emd.search", to: "/emds", icon: Search, perm: "ticket.emd" },
           { labelKey: "nav.pta", to: "/pta", icon: Banknote, perm: "pta.manage" },
+          { labelKey: "nav.memos", to: "/memos", icon: ReceiptText, perm: "adm.manage" },
         ],
       },
       {

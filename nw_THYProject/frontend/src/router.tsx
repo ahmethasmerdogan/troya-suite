@@ -59,6 +59,13 @@ const skchgRoute = createRoute({ getParentRoute: () => rootRoute, path: "/schedu
 const queuesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/queues", component: lazyRouteComponent(() => import("@/pages/Queues"), "Queues") });
 const itineraryRoute = createRoute({ getParentRoute: () => rootRoute, path: "/itinerary/$ticketNumber", component: lazyRouteComponent(() => import("@/pages/Itinerary"), "Itinerary") });
 const messagesRoute = createRoute({ getParentRoute: () => rootRoute, path: "/messages", component: lazyRouteComponent(() => import("@/pages/Messages"), "Messages") });
+// ADM / ACM — acente dekontları (`?ticket=` ile bilet ekranından gelinince kesim formu açılır).
+const memosRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/memos",
+  component: lazyRouteComponent(() => import("@/pages/Memos"), "Memos"),
+  validateSearch: (s: Record<string, unknown>): { ticket?: string } => ({ ticket: typeof s.ticket === "string" ? s.ticket : undefined }),
+});
 const agreementsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/agreements", component: lazyRouteComponent(() => import("@/pages/Agreements"), "Agreements") });
 const ptaRoute = createRoute({ getParentRoute: () => rootRoute, path: "/pta", component: lazyRouteComponent(() => import("@/pages/troya/Pta"), "PtaPage") });
 const ordersRoute = createRoute({ getParentRoute: () => rootRoute, path: "/orders", component: lazyRouteComponent(() => import("@/pages/Orders"), "Orders") });
@@ -108,7 +115,7 @@ const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", 
 const routeTree = rootRoute.addChildren([
   indexRoute,
   resSearchRoute, resNewRoute, resAvailRoute, resDetailRoute,
-  profileRoute, searchRoute, queuesRoute, skchgRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
+  profileRoute, searchRoute, queuesRoute, skchgRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, memosRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
   emdReceiptRoute, reportRoute, reportFinancialRoute, reportPeriodRoute, reportPeriodDocRoute, reportsHubRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
   adminRoute, guideRoute, docsRoute, chatRoute,

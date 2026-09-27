@@ -262,6 +262,8 @@ export interface Ticket {
   validityExtension?: import("./validity").ValidityExtension;
   /** Aynı işlemde birlikte kesilen biletlerin ortak referansı (grup/aile kesimi). */
   groupRef?: string;
+  /** Satış kanalı — acente satışıysa acentenin IATA kodu. ADM/ACM yalnız buna kesilir. */
+  agent?: { iata: string; name: string; city: string };
   /** Yolcu tipi — ADT yetişkin, CHD çocuk (2–11). Verilmezse ADT. */
   ptc?: "ADT" | "CHD";
   history: LifecycleEvent[];

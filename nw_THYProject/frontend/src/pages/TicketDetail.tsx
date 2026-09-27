@@ -2,10 +2,11 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
-  AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
+  AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, Building2, CalendarClock, ChevronDown,
   CreditCard, FileOutput, HeartPulse, Leaf, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
 import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, newIdempotencyKey } from "@/domain/api";
+import { memosForTicket } from "@/domain/memos";
 import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
 import { usePerm } from "@/lib/usePerm";
@@ -178,6 +179,7 @@ export function TicketDetail() {
               <MetaRow icon={<CalendarClock size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.issued")} value={<span className="num">{formatDateTime(ticket.issuedAt)}</span>} />
               <MetaRow icon={<User size={16} strokeWidth={1.75} />} label="FOID" value={<span className="num">{p.foid ?? "—"}</span>} />
               <MetaRow icon={<CreditCard size={16} strokeWidth={1.75} />} label={t("ticket.detail.meta.payment")} value={<span className="num">{fopLabel(ticket.formOfPayment.type)}{ticket.formOfPayment.detail ? ` · ${ticket.formOfPayment.detail}` : ""}</span>} />
+              <MetaRow icon={<Building2 size={16} strokeWidth={1.75} />} label={t("memos.ticket.sold")} value={ticket.agent ? <span>{ticket.agent.name} <span className="num text-ink-3">· IATA {ticket.agent.iata}</span></span> : t("memos.ticket.direct")} />
             </div>
 
             {(p.ssr?.length || p.infant || ticket.tourCode || ticket.conjunctionTickets?.length || ticket.endorsement || ticket.groupRef || ticket.ptc === "CHD") && (
@@ -199,6 +201,8 @@ export function TicketDetail() {
               </div>
             )}
           </Card>
+
+          {ticket.agent && <TicketMemos ticketNumber={ticket.ticketNumber} />}
 
           {/* --- kuponlar --- */}
           <Card data-tour="ticket.coupons" className="p-5">
@@ -527,5 +531,39 @@ function GroupChips({ groupRef, self }: { groupRef: string; self: string }) {
         </Link>
       ))}
     </>
+  );
+}
+
+/** Acente satışında kesilmiş ADM/ACM'ler — gelir muhasebesi bileti buradan izler. */
+function TicketMemos({ ticketNumber }: { ticketNumber: string }) {
+  const t = useT();
+  const navigate = useNavigate();
+  const { can } = usePerm();
+  const { data } = useQuery({ queryKey: ["memosFor", ticketNumber], queryFn: () => memosForTicket(ticketNumber) });
+  const list = data ?? [];
+  if (!list.length && !can("adm.manage")) return null;
+  return (
+    <Card className="p-5">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="microlabel">{t("memos.ticket.title")}</span>
+        {can("adm.manage") && (
+          <Button variant="white" size="sm" onClick={() => navigate({ to: "/memos", search: { ticket: ticketNumber } })}>{t("memos.new")}</Button>
+        )}
+      </div>
+      {list.length === 0 ? (
+        <p className="text-[13px] text-ink-3">{t("memos.empty")}</p>
+      ) : (
+        <ul className="flex flex-col">
+          {list.map((m) => (
+            <li key={m.id} className="flex items-center gap-3 border-b border-line py-2 text-[13px] last:border-0">
+              <OutlineBadge tone={m.type === "ADM" ? "red" : "green"}>{m.type}</OutlineBadge>
+              <Link to="/memos" className="num text-ink hover:underline">{m.number}</Link>
+              <span className="num ml-auto text-ink">{m.total.amount.toLocaleString()} {m.total.currency}</span>
+              <span className="text-[12px] text-ink-3">{t(`memos.status.${m.status}` as Key)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }

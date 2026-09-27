@@ -144,6 +144,15 @@ const GUIDES: { match: (path: string) => boolean; guide: ScreenGuide }[] = [
     },
   },
   {
+    match: (p) => p === "/memos",
+    guide: {
+      title: "memos.help.title",
+      what: "memos.help.what",
+      steps: ["memos.help.s1", "memos.help.s2", "memos.help.s3"],
+      watch: ["memos.help.w1", "memos.help.w2"],
+    },
+  },
+  {
     match: (p) => p === "/schedule-change",
     guide: {
       title: "skchg.help.title",

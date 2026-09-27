@@ -4,6 +4,7 @@ import type {
 } from "./types";
 import { generateTickets } from "./genTickets";
 import { shiftFixture } from "./demoClock";
+import { assignAgencies } from "./agencies";
 
 // Mock veri — backend hazır olana kadar (DESIGN_ROADMAP §10: mock veriyle tıklanabilir prototip).
 // THY = TK (validating carrier). Ticket no: 235 (TK numeric prefix) + serial + check digit.
@@ -227,6 +228,8 @@ shiftFixture(MOCK_TICKETS);
 
 // 30 örnek bilet ekle (seeded → stabil). El yazımı biletlerin ardından gelir.
 MOCK_TICKETS.push(...generateTickets(30));
+// Satış kanalı: örnek biletlerin bir kısmı acente satışıdır (ADM/ACM bunlara kesilir).
+assignAgencies(MOCK_TICKETS);
 
 function overallStatus(t: Ticket) {
   const open = t.coupons.find((c) => c.status === "O");
