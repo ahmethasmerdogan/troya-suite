@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Dot } from "@/components/ui/pill";
 import { NoticeRow, useNotices } from "@/components/layout/Notices";
 import { DailyTip } from "@/components/tips/DailyTip";
+import { WorkSummary } from "@/components/domain/WorkSummary";
 import { formatDateTime, locale } from "@/lib/utils";
 
 /** Sparkline altındaki gün kısaltmaları — pazartesiden pazara. */
@@ -76,6 +77,8 @@ export function Panel() {
       </div>
 
       <DailyTip />
+
+      <WorkSummary />
 
       <StationNotices />
 

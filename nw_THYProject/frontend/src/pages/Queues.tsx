@@ -96,7 +96,8 @@ export function Queues() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[300px_1fr]">
         {/* --- kuyruklar (QT) --- */}
-        <Panel data-tour="queues.list" className="self-start">
+        {/* Dar ekranda sıradaki iş önce gelir; kuyruk listesi altına iner. */}
+        <Panel data-tour="queues.list" className="order-2 self-start lg:order-1">
           <PanelBody className="flex flex-col gap-1 p-2">
             {(["all", ...visibleQueues.map((q) => q.id)] as (QueueId | "all")[]).map((q) => {
               const list = count(q);
@@ -131,7 +132,7 @@ export function Queues() {
           </PanelBody>
         </Panel>
 
-        <div className="flex min-w-0 flex-col gap-4">
+        <div className="order-1 flex min-w-0 flex-col gap-4 lg:order-2">
           {isLoading ? (
             <Skeleton className="h-48 w-full" />
           ) : !current ? (

@@ -36,6 +36,10 @@ export const tr = {
   "queues.toast.delayed": "İş 4 saat ertelendi",
   "queues.completedToday": "Bu oturumda tamamlanan: {n}",
   "queues.undo": "Geri al",
+  "panel.work.title": "Bugünün işleri",
+  "panel.work.hint": "Kuyruklarda {n} iş · {u} acil",
+  "panel.work.empty": "Kuyruklar boş",
+  "panel.work.clear": "Bekleyen iş yok — kuyruklar temiz.",
 } as const;
 
 export const en: Record<keyof typeof tr, string> = {
@@ -75,4 +79,8 @@ export const en: Record<keyof typeof tr, string> = {
   "queues.toast.delayed": "Item delayed by 4 hours",
   "queues.completedToday": "Completed this session: {n}",
   "queues.undo": "Undo",
+  "panel.work.title": "Today's work",
+  "panel.work.hint": "{n} items in queues · {u} urgent",
+  "panel.work.empty": "Queues are empty",
+  "panel.work.clear": "Nothing pending — queues are clear.",
 };
