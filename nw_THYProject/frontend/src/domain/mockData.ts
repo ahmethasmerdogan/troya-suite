@@ -3,6 +3,7 @@ import type {
   Pta, RevenueAlert,
 } from "./types";
 import { generateTickets } from "./genTickets";
+import { shiftFixture } from "./demoClock";
 
 // Mock veri — backend hazır olana kadar (DESIGN_ROADMAP §10: mock veriyle tıklanabilir prototip).
 // THY = TK (validating carrier). Ticket no: 235 (TK numeric prefix) + serial + check digit.
@@ -144,6 +145,10 @@ export const MOCK_TICKETS: Ticket[] = [
     ],
   },
 ];
+
+// Demo saati: el yazımı biletler bugüne kayar (testte kayma yok). Üretilen
+// biletler zaten demo "bugün"üne göre üretilir — kaydırılmaz.
+shiftFixture(MOCK_TICKETS);
 
 // 30 örnek bilet ekle (seeded → stabil). El yazımı biletlerin ardından gelir.
 MOCK_TICKETS.push(...generateTickets(30));
@@ -289,6 +294,12 @@ export const MOCK_PTAS: Pta[] = [
     issuedTicketNumber: "2355544332211",
   },
 ];
+
+// Demo saati — el yazımı EMD, mesaj, order ve PTA tarihleri bugüne kayar.
+shiftFixture(MOCK_EMDS);
+shiftFixture(MOCK_MESSAGES);
+shiftFixture(MOCK_ORDERS);
+shiftFixture(MOCK_PTAS);
 
 // ===== Revenue Protection (14.7) — sahtecilik / anomali bayrakları =====
 export const MOCK_REVENUE_ALERTS: RevenueAlert[] = [

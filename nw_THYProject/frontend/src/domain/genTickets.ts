@@ -2,6 +2,10 @@
 // Karışık statüler (O/F/V/R/E/I + no-show) → search durum filtresi anlamlı olur.
 import type { Ticket, Coupon, CouponStatus, LifecycleEvent, Segment } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
+import { DEMO_NOW } from "./demoClock";
+
+/** Üretilen verinin "bugün"ü (UTC gün başı) — canlıda gerçek gün, testte sabit. */
+const TODAY = Math.floor(DEMO_NOW / 86400000) * 86400000;
 
 function mulberry32(seed: number) {
   return () => {
@@ -59,10 +63,17 @@ export function generateTickets(count: number): Ticket[] {
     const roundTrip = rnd() > 0.5;
     const [o, d, carrier, fno, currency, base] = pick(ROUTES);
     const rbd = pick(RBDS);
-    const dayOffset = Math.floor(rnd() * 120) - 40; // -40..+80 gün
-    const dep = new Date(Date.UTC(2026, 5, 20) + dayOffset * 86400000 + Math.floor(rnd() * 18) * 3600000);
+    // Tarih statüyle TUTARLI olmalı: uçulmuş/iptal/iade/değişmiş/düzensiz ya da
+    // no-show kupon geçmişte, açık kupon gelecekte; kesim tarihi asla ileri
+    // tarihli değil. (Önceden kalkış statüden bağımsız ±80 gün dağılıyordu:
+    // gelecekteki uçuş "Uçuldu", gelecekte kesilmiş bilet görünüyordu.)
+    const u = Math.floor(rnd() * 120); // 0..119
+    const past = plan.status !== "O" || !!plan.noShow;
+    const dayOffset = past ? -(14 + (u % 40)) : 1 + (u % 60); // geçmiş: -53..-14 · açık: +1..+60
+    const dep = new Date(TODAY + dayOffset * 86400000 + Math.floor(rnd() * 18) * 3600000);
     const arr = new Date(dep.getTime() + (90 + Math.floor(rnd() * 600)) * 60000);
-    const issued = new Date(dep.getTime() - (3 + Math.floor(rnd() * 40)) * 86400000);
+    const lead = 3 + Math.floor(rnd() * 40);
+    const issued = new Date(Math.min(dep.getTime() - lead * 86400000, TODAY - (1 + (u % 5)) * 3600000));
 
     const mkSeg = (from: string, to: string, fn: string, dt: Date, at: Date): Segment => ({
       origin: from, destination: to, marketingCarrier: carrier, operatingCarrier: carrier,

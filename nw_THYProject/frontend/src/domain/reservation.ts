@@ -1,5 +1,6 @@
 // QuickRes — Rezervasyon domaini (PNR + availability). Mock; backend gelince REST'e bağlanır.
 // PNR (Passenger Name Record) → Troya'da bilet kesimine kaynak olur (PNR→ticket linkage).
+import { shiftFixture } from "./demoClock";
 import type { Passenger } from "./types";
 
 export type PnrStatus = "active" | "ticketed" | "cancelled";
@@ -111,12 +112,15 @@ const MOCK_PNRS: Pnr[] = [
     segments: [
       { origin: "IST", destination: "LHR", carrier: "TK", flightNumber: "TK21", rbd: "Y", departure: "2026-07-20T08:40:00Z", arrival: "2026-07-20T10:55:00Z", status: "HK" },
     ],
-    createdAt: "2026-07-01T11:00:00Z",
+    createdAt: "2026-06-16T11:00:00Z", // fixture günü (18 Haz) öncesi — ileri tarihli kayıt olmasın
     status: "active",
     ticketNumbers: [],
     ttl: new Date(Date.now() - 5 * 3_600_000).toISOString(), // 5 saat önce DOLDU — kuyruğa düşer
   },
 ];
+
+// Demo saati: oluşturma ve sefer tarihleri bugüne kayar; TTL zaten şimdiye göre yazıldı.
+shiftFixture(MOCK_PNRS, ["ttl"]);
 
 let rlCounter = 0;
 const RL_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
