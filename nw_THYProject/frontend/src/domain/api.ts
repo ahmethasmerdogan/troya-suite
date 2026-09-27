@@ -14,7 +14,8 @@ import { quoteRefund, type InvoluntaryReason, type RefundType } from "./refundRu
 import type { WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
-import { attachTicketToPnr, listPnrs, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
+import { attachTicketToPnr, listPnrs, paxKey, pnrByLocator, renamePnrPassenger, unticketedPassengers } from "./reservation";
+import { classifyNameChange, type NameCorrectionReason } from "./nameCorrection";
 import { buildQueueItems, type QueueItem } from "./queues";
 import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
 import { demoNow } from "./demoClock";
@@ -746,6 +747,8 @@ export interface ExchangeInput {
   waiver?: WaiverCode;
   /** 12.1.1 — sistemin çıkardığı değişiklik türü; kayda ve geçmişe yazılır. */
   changeType?: ChangeType;
+  /** Reissue'nun gerekçesi başka bir işlemse (ad düzeltme) olay metnine o yazılır. */
+  note?: string;
   idempotencyKey: string;
 }
 export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
@@ -790,7 +793,9 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
   stampSac(openCoupons); // 1.3.6: bu değişim işlemi için tek SAC
   old.history.push(event("CouponExchanged", {
     couponSeq: openCoupons[0].seq,
-    detail: `${analysis.type.toUpperCase()} — yeni bilete dönüştürüldü · ${analysis.rationale}`,
+    detail: input.note
+      ? `${input.note} — yeni bilete dönüştürüldü (eşit reissue)`
+      : `${analysis.type.toUpperCase()} — yeni bilete dönüştürüldü · ${analysis.rationale}`,
     linkedTicketNumber: newTicketNumber,
     status: "E",
   }));
@@ -832,7 +837,7 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
     },
     history: [
       event("TicketReissued", {
-        detail: `Issued in exchange for ${old.ticketNumber} · ${analysis.type.toUpperCase()}` +
+        detail: `Issued in exchange for ${old.ticketNumber} · ${input.note ?? analysis.type.toUpperCase()}` +
           ` · fiyatlama ${analysis.partiallyUsed ? "orijinal kesim tarihi (12.1.1 REISSUE)" : "güncel tarife (12.1.1 EXCHANGE)"}` +
           (quote
             ? ` · ücret farkı ${quote.fareDiff.toLocaleString("en-US")} · artan vergi ${quote.tfcAdditional.toLocaleString("en-US")}` +
@@ -1648,6 +1653,57 @@ export async function extendValidity(input: ExtendValidityInput): Promise<Ticket
   }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
+}
+
+// =====================================================================
+// Ad düzeltme — eşit reissue (Handbook Giriş 10, 2.3)
+// =====================================================================
+export interface NameCorrectionInput {
+  ticketNumber: string;
+  surname: string;
+  givenName: string;
+  title?: string;
+  reason: NameCorrectionReason;
+  legalDocRef?: string;
+  idempotencyKey: string;
+}
+/**
+ * Ad düzeltme — biletin açık kuponları EŞİT reissue ile yeni bilete taşınır
+ * (ücret aynı, ek tahsilat yok), yeni bilet düzeltilmiş adı ve "NAME
+ * CORRECTION" cirosunu taşır, PNR'daki ad da güncellenir. Devir (başka
+ * yolcu) reddedilir. Kontrol, geçerlilik ve kupon kuralları exchange
+ * komutunun kapılarından geçer.
+ */
+export async function correctName(input: NameCorrectionInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (opKeys.has(input.idempotencyKey)) {
+    const tn = opKeys.get(input.idempotencyKey)!;
+    return { oldTicket: t, newTicket: store.find((x) => x.ticketNumber === tn)! };
+  }
+  const to = { surname: input.surname.trim().toUpperCase(), givenName: input.givenName.trim().toUpperCase(), title: input.title };
+  const verdict = classifyNameChange(t.passenger, to, input.reason, input.legalDocRef);
+  if (!verdict.allowed) throw new DomainError(verdict.message);
+  const open = t.coupons.filter((c) => c.status === "O");
+  if (!open.length) throw new DomainError("Ad düzeltme için açık (O) kupon yok — kullanılmış belgenin adı değiştirilemez.");
+
+  const from = t.passenger;
+  const note = `NAME CORRECTION · ${from.surname}/${from.givenName} → ${to.surname}/${to.givenName}`;
+  const { oldTicket, newTicket } = await exchangeTicket({
+    oldTicketNumber: t.ticketNumber,
+    newSegments: open.map((c) => c.segment),
+    adc: { amount: 0, currency: t.fare.total.currency },
+    note,
+    idempotencyKey: `${input.idempotencyKey}:reissue`,
+  });
+  newTicket.passenger = { ...from, ...to, title: to.title ?? from.title };
+  newTicket.endorsement = t.endorsement ? `${t.endorsement} / NAME CORRECTION` : "NAME CORRECTION";
+  const detail = `${from.surname}/${from.givenName}${from.title ? ` ${from.title}` : ""} → ${to.surname}/${to.givenName}${to.title ? ` ${to.title}` : ""} · ${verdict.message}`;
+  newTicket.history.push(event("NameCorrected", { detail, linkedTicketNumber: t.ticketNumber }));
+  oldTicket.history.push(event("NameCorrected", { detail, linkedTicketNumber: newTicket.ticketNumber }));
+  if (t.pnr) renamePnrPassenger(t.pnr, from, newTicket.passenger);
+  opKeys.set(input.idempotencyKey, newTicket.ticketNumber);
+  return { oldTicket, newTicket };
 }
 
 // =====================================================================

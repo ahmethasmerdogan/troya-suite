@@ -229,6 +229,20 @@ export function attachTicketToPnr(
   return p;
 }
 
+/**
+ * Ad düzeltmesini PNR'a yansıt: bilet adı PNR'dakiyle birebir aynı kalmalı
+ * (Handbook 2.3). Biletlenmiş yolcu kaydı da yeni adla taşınır.
+ */
+export function renamePnrPassenger(recordLocator: string, from: Passenger, to: Passenger): void {
+  const p = pnrByLocator(recordLocator);
+  if (!p) return;
+  const k = paxKey(from);
+  const i = p.passengers.findIndex((x) => paxKey(x) === k);
+  if (i < 0) return;
+  p.passengers[i] = { ...p.passengers[i], surname: to.surname, givenName: to.givenName, title: to.title ?? p.passengers[i].title };
+  if (p.ticketedPax) p.ticketedPax = p.ticketedPax.map((x) => (x === k ? paxKey(to) : x));
+}
+
 export interface CreatePnrInput {
   passengers: Passenger[];
   segments: ReservationSegment[];

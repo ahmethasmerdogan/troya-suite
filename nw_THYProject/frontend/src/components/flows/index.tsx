@@ -5,11 +5,12 @@ import {
   addEmd, endorseTicket, exchangeTicket, grantControl, irropReroute, listAgreements,
   markNoShow, newIdempotencyKey, printExchange, printToPaper, quoteRefund, recordBaggage,
   refundCancel, refundTicket, releaseCoupons, requestControl, returnControl, revalidateCoupon,
-  suspendCoupons, voidTicket, extendValidity, recordRightsAssessment,
+  suspendCoupons, voidTicket, extendValidity, recordRightsAssessment, correctName,
   SESSION_CARRIER,
 } from "@/domain/api";
 import { illnessExtension, ticketValidity } from "@/domain/validity";
 import { assessRights, type DisruptionKind } from "@/domain/passengerRights";
+import { classifyNameChange, type NameCorrectionReason } from "@/domain/nameCorrection";
 import { RightsPanel } from "@/components/domain/RightsPanel";
 import { Tip } from "@/components/tips/Tip";
 import { demoNow } from "@/domain/demoClock";
@@ -45,7 +46,7 @@ import { cn, formatDateTime, flightCode, locale } from "@/lib/utils";
 export type FlowId =
   | "exchange" | "refund" | "void" | "irrop" | "endorse"
   | "revalidate" | "print" | "noshow" | "baggage" | "emd" | "bagrecord"
-  | "control" | "refundcancel" | "printexchange" | "suspend" | "extend" | "rights";
+  | "control" | "refundcancel" | "printexchange" | "suspend" | "extend" | "rights" | "namecorr";
 
 interface Props {
   ticket: Ticket;
@@ -72,6 +73,7 @@ export function TicketFlows({ ticket, flow, onClose }: Props) {
       <SuspendFlow ticket={ticket} open={flow === "suspend"} onClose={onClose} />
       <ExtendValidityFlow ticket={ticket} open={flow === "extend"} onClose={onClose} />
       <RightsFlow ticket={ticket} open={flow === "rights"} onClose={onClose} />
+      <NameCorrectionFlow ticket={ticket} open={flow === "namecorr"} onClose={onClose} />
     </>
   );
 }
@@ -1256,6 +1258,84 @@ function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
           <p className="text-[11.5px] leading-snug text-ink-3">{t("rights.shyNote")}</p>
         </div>
         <RightsPanel a={a} />
+      </div>
+    </Drawer>
+  );
+}
+
+/* --- ad düzeltme (eşit reissue) ------------------------------------------ */
+
+function NameCorrectionFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const t = useT();
+  const lang = useUI((s) => s.lang);
+  const navigate = useNavigate();
+  const refresh = useRefresh();
+  const p = ticket.passenger;
+  const [surname, setSurname] = useState(p.surname);
+  const [givenName, setGiven] = useState(p.givenName);
+  const [title, setTitle] = useState(p.title ?? "");
+  const [reason, setReason] = useState<NameCorrectionReason>("typo");
+  const [doc, setDoc] = useState("");
+  const [key] = useState(newIdempotencyKey);
+
+  const to = { surname: surname.trim().toUpperCase(), givenName: givenName.trim().toUpperCase(), title: title || undefined };
+  // Karar komutla AYNI kuraldan gelir; sunucu yeniden sınar.
+  const v = classifyNameChange(p, to, reason, doc);
+  const openCoupons = ticket.coupons.filter((c) => c.status === "O").length;
+
+  const run = useMutation({
+    mutationFn: () => correctName({ ticketNumber: ticket.ticketNumber, ...to, reason, legalDocRef: doc || undefined, idempotencyKey: key }),
+    onSuccess: ({ newTicket }) => {
+      toast.success(t("flows.name.toastOk"), newTicket.ticketNumber);
+      refresh(ticket.ticketNumber);
+      onClose();
+      navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: newTicket.ticketNumber } });
+    },
+    onError: (e: Error) => toast.danger(t("flows.name.toastFail"), e.message),
+  });
+
+  return (
+    <Drawer
+      open={open} onClose={onClose} title={t("flows.name.title")} hint={t("flows.name.hint")}
+      footer={
+        <Button variant="success" disabled={run.isPending || !v.allowed || openCoupons === 0} onClick={() => run.mutate()}>
+          {run.isPending ? t("flows.common.applying") : t("flows.name.submit")}
+        </Button>
+      }
+    >
+      <div className="flex flex-col gap-4">
+        <Inset className="p-3">
+          <div className="microlabel mb-1">{t("flows.name.current")}</div>
+          <div className="num text-[15px] font-semibold text-ink">{p.surname}/{p.givenName}{p.title ? ` ${p.title}` : ""}</div>
+        </Inset>
+        <Field label={t("flows.name.reason")}>
+          <Select value={reason} onChange={(e) => setReason(e.target.value as NameCorrectionReason)}>
+            <option value="typo">{t("flows.name.reason.typo")}</option>
+            <option value="swap">{t("flows.name.reason.swap")}</option>
+            <option value="title">{t("flows.name.reason.title")}</option>
+            <option value="legal">{t("flows.name.reason.legal")}</option>
+          </Select>
+        </Field>
+        <div className="grid grid-cols-[1fr_1fr_90px] gap-3">
+          <Field label={t("flows.name.surname")}><Input value={surname} onChange={(e) => setSurname(e.target.value.toUpperCase())} className="num uppercase" /></Field>
+          <Field label={t("flows.name.given")}><Input value={givenName} onChange={(e) => setGiven(e.target.value.toUpperCase())} className="num uppercase" /></Field>
+          <Field label={t("flows.name.titleLabel")}>
+            <Select value={title} onChange={(e) => setTitle(e.target.value)}>
+              <option value="">—</option>
+              {["MR", "MRS", "MS", "MSTR", "MISS", "CHD", "INF"].map((x) => <option key={x} value={x}>{x}</option>)}
+            </Select>
+          </Field>
+        </div>
+        {reason === "legal" && (
+          <Field label={t("flows.name.doc")} hint={t("flows.name.docHint")}>
+            <Input value={doc} onChange={(e) => setDoc(e.target.value)} placeholder="EVL-2026-0114" />
+          </Field>
+        )}
+        {v.kind !== "none" && (
+          <Banner kind={v.allowed ? "info" : "danger"}>{lang === "en" ? v.messageEn : v.message}</Banner>
+        )}
+        {openCoupons === 0 && <Banner kind="warning">{t("flows.name.noOpen")}</Banner>}
+        <p className="text-[12px] leading-snug text-ink-3">{t("flows.name.how")}</p>
       </div>
     </Drawer>
   );
