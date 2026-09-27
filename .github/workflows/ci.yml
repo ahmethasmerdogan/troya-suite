@@ -39,3 +39,21 @@ jobs:
       - run: npm run typecheck
       - run: npm run test
       - run: npm run build
+
+  frontend-v2:
+    name: Experience v2 (React)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: nw_THYProject/frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: nw_THYProject/frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
