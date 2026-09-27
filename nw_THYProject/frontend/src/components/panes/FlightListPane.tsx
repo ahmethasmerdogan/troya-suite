@@ -1,27 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { listFlights } from "@/domain/checkin";
+import { OPS_STATUS_META, flightLiveStatus, opsStatusLabel } from "@/domain/ops";
+import { KIND_TONE } from "@/components/domain/statusTone";
 import { SearchInput } from "@/components/ui/core";
-import { Pill, type Tone } from "@/components/ui/pill";
+import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListHead, ListBody, ListFoot, ListRow } from "@/components/layout/views";
 import { flightCode, locale } from "@/lib/utils";
-import { useT, type Key } from "@/i18n";
+import { useT } from "@/i18n";
+import { useUI } from "@/store/ui";
 
-/** Uçuş liste paneli — QuickCheck-in'in sol yarısı. */
-const TONE: Record<string, Tone> = {
-  scheduled: "gray", checkin_open: "blue", boarding: "green", departed: "gray", closed: "amber",
-};
-const LABEL: Record<string, Key> = {
-  scheduled: "checkin.status.scheduled", checkin_open: "checkin.status.checkinOpen",
-  boarding: "checkin.tab.boarding", departed: "checkin.status.departed", closed: "checkin.status.closed",
-};
+/**
+ * Uçuş liste paneli — QuickCheck-in'in sol yarısı.
+ *
+ * Durum rozeti HUB Kontrol ile aynı kaynaktan (`flightLiveStatus`) gelir ve
+ * saatle ilerler; mock'taki sabit statü "boarding" yazarken pano aynı uçuşu
+ * "Check-in Kapandı" gösteriyordu.
+ */
 const pane = { q: "" };
 
 export function FlightListPane({ selected }: { selected?: string }) {
   const t = useT();
+  const lang = useUI((x) => x.lang);
   const [q, setQState] = useState(pane.q);
+  // Dakikada bir yeniden çiz: rozet saatle kendiliğinden ilerlesin.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
   const navigate = useNavigate();
   const setQ = (v: string) => { pane.q = v; setQState(v); };
   const { data, isLoading } = useQuery({ queryKey: ["flights"], queryFn: listFlights });
@@ -44,6 +53,7 @@ export function FlightListPane({ selected }: { selected?: string }) {
         ) : (
           rows.map((f) => {
             const time = new Date(f.departure).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+            const st = flightLiveStatus(f, now);
             return (
               <ListRow
                 key={f.flightId}
@@ -53,7 +63,7 @@ export function FlightListPane({ selected }: { selected?: string }) {
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className="num text-[13px] font-medium text-ink">{flightCode(f.carrier, f.flightNumber)}</span>
-                  <Pill tone={TONE[f.status] ?? "gray"}>{LABEL[f.status] ? t(LABEL[f.status]) : f.status}</Pill>
+                  <Pill tone={KIND_TONE[OPS_STATUS_META[st].tone] ?? "gray"}>{opsStatusLabel(st, lang)}</Pill>
                 </div>
                 <div className="flex items-baseline gap-2 text-[13px] text-ink-2">
                   <span className="num text-[15px] font-semibold text-ink">{time}</span>

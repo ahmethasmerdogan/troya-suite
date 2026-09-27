@@ -200,22 +200,38 @@ function buildMilestones(status: FlightOpsStatus): OpsMilestone[] {
   return order.map((mtone) => ({ code: mtone.code, label: mtone.label, labelEn: mtone.labelEn, actual: seq.indexOf(mtone.from) <= idx }));
 }
 
+/**
+ * Uçuşun ŞU ANKİ ops durumu. Check-in listesi, uçuş detayı ve HUB panosu
+ * aynı fonksiyondan okur — önceden liste mock'taki SABİT statüyü gösteriyordu
+ * ve aynı uçuş panoda "Check-in Kapandı", listede "Biniş" görünüyordu.
+ */
+export function flightLiveStatus(f: DepartureFlight, now = Date.now()): FlightOpsStatus {
+  return deriveOpsStatus(Math.round((new Date(f.departure).getTime() - now) / 60000), f.status);
+}
+
+/**
+ * Uçuşa binmiş yolcu sayısı: ops durumuna göre sentez taban + bu oturumda
+ * QuickCheck-in'den elle bindirilenler (canlı senkron). Pano ve uçuş detayı
+ * aynı sayıyı gösterir.
+ */
+export function flightBoarded(f: DepartureFlight, status: FlightOpsStatus): number {
+  const seed = hash(f.flightId);
+  const progressByStatus: Record<FlightOpsStatus, number> = {
+    scheduled: 0, checkin_open: 0, checkin_closed: 0, go_to_gate: 0,
+    boarding: 0.35 + (seed % 40) / 100, final_call: 0.82 + (seed % 12) / 100,
+    gate_closed: 0.95, boarding_complete: 0.99, pushback: 1, departed: 1,
+  };
+  return Math.min(f.checkedIn, Math.round(f.checkedIn * progressByStatus[status]) + manualBoardedCount(f.flightId));
+}
+
 export async function getOpsBoard(): Promise<OpsBoard> {
   await new Promise((r) => setTimeout(r, 260));
   const now = Date.now();
   const flights: OpsFlight[] = FLIGHTS.map((f) => {
-    const mins = Math.round((new Date(f.departure).getTime() - now) / 60000);
-    const status = deriveOpsStatus(mins, f.status);
+    const status = flightLiveStatus(f, now);
     const seed = hash(f.flightId);
     const accepted = f.checkedIn;
-    // boarding ilerlemesi statüye göre
-    const progressByStatus: Record<FlightOpsStatus, number> = {
-      scheduled: 0, checkin_open: 0, checkin_closed: 0, go_to_gate: 0,
-      boarding: 0.35 + (seed % 40) / 100, final_call: 0.82 + (seed % 12) / 100,
-      gate_closed: 0.95, boarding_complete: 0.99, pushback: 1, departed: 1,
-    };
-    // sentezlenmiş baseline + bu oturumda QuickCheck-in'den elle bindirilenler (canlı senkron)
-    const boarded = Math.min(accepted, Math.round(accepted * progressByStatus[status]) + manualBoardedCount(f.flightId));
+    const boarded = flightBoarded(f, status);
     const gatePast = ["gate_closed", "boarding_complete", "pushback", "departed"].includes(status);
     const noShow = gatePast ? Math.max(0, accepted - boarded) : (status === "final_call" ? (seed % 4) : 0);
     const bagsOffloadPending = noShow > 0 ? Math.max(0, noShow - (seed % 2)) : 0;

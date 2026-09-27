@@ -7,6 +7,7 @@ import {
   apisMissing, boardAll, boardPassenger, closeOutFlight, getFlight, isInternational,
   listPassengers, recordApis, undoCheckIn, type CheckinPassenger,
 } from "@/domain/checkin";
+import { flightBoarded, flightLiveStatus } from "@/domain/ops";
 import { paxSeatNotes } from "@/domain/seatRules";
 import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
 import { FlightListPane } from "@/components/panes/FlightListPane";
@@ -172,9 +173,13 @@ export function CheckinFlight() {
   if (!flight) return withList(<DetailBody><p className="text-sm text-ink-2">{t("checkin.flight.notFound")}</p></DetailBody>);
 
   const intl = isInternational(flight);
-  const accepted = (pax ?? []).filter((p) => p.status !== "not_checked").length;
+  // Sayaçlar uçuşun TOPLAMINDAN gelir — HUB panosu ve uçuş listesiyle aynı
+  // kaynak. Aşağıdaki liste tam manifest değil, bu ekranda işlem yapılabilen
+  // yolcu örneğidir; önceden sayaçlar yalnız bu örnekten sayıldığı için liste
+  // "96/190" derken detay aynı uçuşa "7/190" diyordu.
+  const accepted = flight.checkedIn;
+  const boarded = flightBoarded(flight, flightLiveStatus(flight));
   const waiting = (pax ?? []).filter((p) => p.status === "not_checked").length;
-  const boarded = (pax ?? []).filter((p) => p.status === "boarded").length;
 
   return withList(
     <>
@@ -251,7 +256,7 @@ export function CheckinFlight() {
         <Panel>
           <PanelHead
             title={tab === "checkin" ? t("checkin.panel.acceptance") : t("checkin.tab.boarding")}
-            hint={flight.aircraft.type + " · " + flight.aircraft.config}
+            hint={`${flight.aircraft.type} · ${flight.aircraft.config} · ${t("checkin.panel.listed", { n: (pax ?? []).length })}`}
             action={<SearchInput className="w-64" value={q} onChange={setQ} placeholder={t("checkin.search.pax")} />}
           />
           <PanelBody className="pt-1">

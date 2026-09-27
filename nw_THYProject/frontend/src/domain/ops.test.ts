@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { getOpsBoard, deriveOpsStatus } from "./ops";
-import { boardPassenger } from "./checkin";
+import { getOpsBoard, deriveOpsStatus, flightBoarded, flightLiveStatus } from "./ops";
+import { FLIGHTS, boardPassenger } from "./checkin";
 
 describe("ops — A-CDM durum eşikleri", () => {
   it("STD'ye kalan dakikadan doğru ops durumu türetir", () => {
@@ -38,5 +38,18 @@ describe("ops — board metrikleri tutarlı", () => {
     await boardPassenger("TK198-D", "p2"); // p2 checked_in → boarded
     const after = (await getOpsBoard()).flights.find((f) => f.flightId === "TK198-D")!.boarded;
     expect(after).toBe(before + 1);
+  });
+});
+
+describe("ops — check-in ekranı ile pano aynı sayıyı söyler", () => {
+  it("uçuş listesi/detayı ile HUB panosu aynı canlı durumu ve biniş sayısını üretir", async () => {
+    const b = await getOpsBoard();
+    for (const f of FLIGHTS) {
+      const onBoard = b.flights.find((x) => x.flightId === f.flightId)!;
+      const st = flightLiveStatus(f);
+      expect(deriveOpsStatus(Math.round((new Date(f.departure).getTime() - Date.now()) / 60000), onBoard.baseStatus)).toBe(st);
+      expect(flightBoarded(f, st)).toBe(onBoard.boarded);
+      expect(onBoard.accepted).toBe(f.checkedIn);
+    }
   });
 });
