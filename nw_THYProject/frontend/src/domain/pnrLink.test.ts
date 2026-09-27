@@ -33,18 +33,37 @@ function input(pnr: string): IssueTicketInput {
 }
 
 describe("PNR → bilet linkage", () => {
-  it("kesim PNR'ı biletlendi yapar, numarayı yazar ve TTL'i düşürür", async () => {
+  it("her yolcu ayrı bilet alır; PNR ancak TÜM yolcular biletlenince 'ticketed' olur ve TTL düşer", async () => {
     const before = await getPnr("TR8N1P");
     expect(before!.status).toBe("active");
+    expect(before!.passengers).toHaveLength(2);
     expect(before!.ticketNumbers).toHaveLength(0);
     expect(ttlState(before!).kind).not.toBe("none");
 
-    const t = await issueTicket(input("TR8N1P"));
+    // 1. yolcu — PNR kısmen biletlendi: numara yazılır, TTL ikinci yolcu için sürer.
+    const t1 = await issueTicket(input("TR8N1P"));
+    const mid = await getPnr("TR8N1P");
+    expect(mid!.ticketNumbers).toContain(t1.ticketNumber);
+    expect(mid!.status).toBe("active");
+    expect(ttlState(mid!).kind).not.toBe("none");
 
+    // 2. yolcu — rezervasyon tamamen biletlendi.
+    const t2 = await issueTicket({ ...input("TR8N1P"), passenger: { surname: "DEMIR", givenName: "AYSE" } });
     const after = await getPnr("TR8N1P");
     expect(after!.status).toBe("ticketed");
-    expect(after!.ticketNumbers).toContain(t.ticketNumber);
+    expect(after!.ticketNumbers).toEqual(expect.arrayContaining([t1.ticketNumber, t2.ticketNumber]));
     expect(ttlState(after!).kind).toBe("none"); // biletlendi → süre limiti anlamsız
+  }, 20_000);
+
+  it("aynı yolcuya aynı PNR'dan ikinci bilet kesilemez (mükerrer kesim)", async () => {
+    await expect(issueTicket(input("TR8N1P"))).rejects.toThrow(/zaten kesilmiş/);
+  }, 20_000);
+
+  it("PNR'da olmayan adla kesim reddedilir — ad PNR'dakiyle birebir aynı olmalı (2.3)", async () => {
+    const i = { ...input("KQ5B7X"), passenger: { surname: "BASKA", givenName: "BIRI" } };
+    await expect(issueTicket(i)).rejects.toThrow(/rezervasyonunda yok/);
+    const untouched = await getPnr("KQ5B7X");
+    expect(untouched!.ticketNumbers).toHaveLength(0);
   }, 20_000);
 
   it("PNR'sız kesim rezervasyon tarafına dokunmaz", async () => {

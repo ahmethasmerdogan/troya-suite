@@ -5,7 +5,7 @@ import {
   Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Calendar,
 } from "lucide-react";
 import { issueTicket, newIdempotencyKey } from "@/domain/api";
-import { getPnr, type ReservationSegment } from "@/domain/reservation";
+import { getPnr, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
 import { searchAirports } from "@/domain/airports";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, type FareOffer } from "@/domain/pricing";
@@ -118,7 +118,8 @@ export function IssueWizard() {
   useEffect(() => {
     if (!srcPnr || filled.current) return;
     filled.current = true;
-    const first = srcPnr.passengers[0];
+    // Her yolcu ayrı ET alır: form, bileti henüz kesilmemiş ilk yolcuyla dolar.
+    const first = unticketedPassengers(srcPnr)[0] ?? srcPnr.passengers[0];
     if (first) setPax((p) => ({ ...p, surname: first.surname, givenName: first.givenName, title: first.title ?? p.title }));
     if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
     setPnr(srcPnr.recordLocator);
@@ -241,7 +242,11 @@ export function IssueWizard() {
           {srcPnr && (
             <Alert tone="info" title={t("issue.fromPnr.title", { rl: srcPnr.recordLocator })} className="mb-4">
               {t("issue.fromPnr.body")}
-              {srcPnr.passengers.length > 1 && ` ${t("issue.fromPnr.multi", { n: srcPnr.passengers.length })}`}
+              {srcPnr.passengers.length > 1 && ` ${t("issue.fromPnr.multi", {
+                n: srcPnr.passengers.length,
+                name: pax.surname ? `${pax.surname}/${pax.givenName}` : "—",
+                left: unticketedPassengers(srcPnr).length,
+              })}`}
             </Alert>
           )}
           {blocked && (

@@ -14,7 +14,7 @@ import { quoteRefund, type InvoluntaryReason, type RefundType } from "./refundRu
 import type { WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
-import { attachTicketToPnr } from "./reservation";
+import { attachTicketToPnr, paxKey, pnrByLocator, unticketedPassengers } from "./reservation";
 
 /** İade ve reissue tarifesi — akışlar tutarı buradan alır (personel elle yazmaz). */
 export { quoteRefund, quoteReissue };
@@ -78,6 +78,16 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
 
   // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
   assertPeriodOpen(new Date().toISOString(), "yeni satış");
+  // Rezervasyondan kesim: bilet adı PNR'daki adla birebir aynı olmalı ve her
+  // yolcu tek ET alır (Handbook 2.3) — mükerrer kesim burada durur.
+  const srcPnr = input.pnr ? pnrByLocator(input.pnr) : undefined;
+  if (srcPnr) {
+    const k = paxKey(input.passenger);
+    if (!srcPnr.passengers.some((x) => paxKey(x) === k))
+      throw new DomainError(`${input.passenger.surname}/${input.passenger.givenName} ${srcPnr.recordLocator} rezervasyonunda yok — bilet adı PNR'daki adla birebir aynı olmalı (Handbook 2.3).`);
+    if (!unticketedPassengers(srcPnr).some((x) => paxKey(x) === k))
+      throw new DomainError(`${srcPnr.recordLocator} rezervasyonunda bu yolcunun bileti zaten kesilmiş — mükerrer kesim yapılamaz.`);
+  }
   const ticketNumber = buildTicketNumber("235", String(serialCounter++));
   const now = new Date().toISOString();
   const history: LifecycleEvent[] = [
@@ -125,7 +135,7 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
   store.unshift(ticket);
   issuedKeys.set(input.idempotencyKey, ticketNumber);
   // Rezervasyon → bilet bağı: PNR "biletlendi" olur, doküman numarası oraya yazılır.
-  if (input.pnr) attachTicketToPnr(input.pnr, ticketNumber);
+  if (input.pnr) attachTicketToPnr(input.pnr, ticketNumber, input.passenger);
   return ticket;
 }
 

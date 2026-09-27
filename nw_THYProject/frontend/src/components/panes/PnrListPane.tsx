@@ -4,15 +4,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { TicketPlus } from "lucide-react";
 import { searchPnrs } from "@/domain/reservation";
 import { TtlBadge } from "@/components/domain/TtlBadge";
+import { PnrStatusPill } from "@/components/domain/PnrStatusPill";
 import { Button, SearchInput } from "@/components/ui/core";
-import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ListHead, ListBody, ListFoot, ListRow } from "@/components/layout/views";
 import { useT } from "@/i18n";
 import { formatDate } from "@/lib/utils";
 
 /** PNR liste paneli — rezervasyon retrieval. */
-const TONE: Record<string, Tone> = { active: "blue", ticketed: "green", cancelled: "red" };
 const pane = { q: "" };
 
 export function PnrListPane({ selected }: { selected?: string }) {
@@ -47,7 +46,7 @@ export function PnrListPane({ selected }: { selected?: string }) {
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="num text-[13px] font-medium text-ink">{p.recordLocator}</span>
-                <Pill tone={TONE[p.status] ?? "gray"}>{p.status}</Pill>
+                <PnrStatusPill status={p.status} done={p.ticketedCount} total={p.paxCount} />
               </div>
               <div className="truncate text-[13px] text-ink-2">{p.passengerName}</div>
               <div className="flex items-center gap-2 text-[11.5px] text-ink-3">

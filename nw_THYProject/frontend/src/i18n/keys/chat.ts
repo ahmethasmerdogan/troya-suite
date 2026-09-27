@@ -113,6 +113,13 @@ export const tr = {
   "chat.res.passengers": "Yolcular",
   "chat.res.segments": "Segmentler",
   "chat.res.issuedTickets": "Kesilmiş biletler",
+  "chat.res.status.active": "Bilet bekliyor",
+  "chat.res.status.ticketed": "Biletlendi",
+  "chat.res.status.cancelled": "İptal",
+  "chat.res.status.partial": "Kısmen biletlendi · {n}/{m}",
+  "chat.res.openTicket": "Bileti aç",
+  "chat.res.paxTicketed": "Biletlendi",
+  "chat.res.paxAwaiting": "Bilet bekliyor",
 
   /* ---------- QuickRes: PNR oluşturma ---------- */
   "chat.res.new.hint": "Yolcu ve uçuş bilgilerini girin; sistem PNR (record locator) üretir.",
@@ -264,6 +271,13 @@ export const en: Record<keyof typeof tr, string> = {
   "chat.res.passengers": "Passengers",
   "chat.res.segments": "Segments",
   "chat.res.issuedTickets": "Issued tickets",
+  "chat.res.status.active": "Awaiting ticket",
+  "chat.res.status.ticketed": "Ticketed",
+  "chat.res.status.cancelled": "Cancelled",
+  "chat.res.status.partial": "Partly ticketed · {n}/{m}",
+  "chat.res.openTicket": "Open ticket",
+  "chat.res.paxTicketed": "Ticketed",
+  "chat.res.paxAwaiting": "Awaiting ticket",
 
   /* ---------- QuickRes: create PNR ---------- */
   "chat.res.new.hint": "Enter passenger and flight details; the system generates a PNR (record locator).",

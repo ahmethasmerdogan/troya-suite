@@ -1,21 +1,21 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
-import { Plane, TicketPlus, User } from "lucide-react";
-import { getPnr, ttlState } from "@/domain/reservation";
+import { Plane, Ticket as TicketIcon, TicketPlus, User } from "lucide-react";
+import { getPnr, paxKey, ttlState } from "@/domain/reservation";
 import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
 import { PnrListPane } from "@/components/panes/PnrListPane";
 import { TtlBadge } from "@/components/domain/TtlBadge";
 import { Tip } from "@/components/tips/Tip";
+import { PnrStatusPill } from "@/components/domain/PnrStatusPill";
 import { Button } from "@/components/ui/core";
 import { Panel, PanelHead, PanelBody, Meta, MetaGrid } from "@/components/ui/surface";
-import { Pill, type Tone } from "@/components/ui/pill";
+import { Pill } from "@/components/ui/pill";
 import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useT } from "@/i18n";
 import { formatDateTime, flightCode } from "@/lib/utils";
 
 // PNR detay — yolcular, segmentler, kesilmiş biletler (Troya linkage).
-const TONE: Record<string, Tone> = { active: "blue", ticketed: "green", cancelled: "red" };
 
 export function PnrDetail() {
   const { pnr: rl } = useParams({ from: "/res/$pnr" });
@@ -29,6 +29,7 @@ export function PnrDetail() {
   if (!pnr) return withList(<DetailBody><p className="text-sm text-ink-2">{t("common.notFound")}: {rl}</p></DetailBody>);
 
   const ttl = ttlState(pnr);
+  const done = new Set(pnr.ticketedPax ?? []);
 
   return withList(
     <>
@@ -36,17 +37,23 @@ export function PnrDetail() {
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{pnr.recordLocator}</span>
-            <Pill tone={TONE[pnr.status] ?? "gray"}>{pnr.status}</Pill>
+            <PnrStatusPill status={pnr.status} done={pnr.ticketedPax?.length ?? 0} total={pnr.passengers.length} />
             <TtlBadge status={pnr.status} ttl={pnr.ttl} />
             {ttl.kind !== "none" && <Tip id="res.ttl" />}
           </>
         }
         actions={
-          pnr.status !== "cancelled" && (
+          // Biletlenmiş rezervasyonda "Bilet Kes" mükerrer kesime davetiyeydi;
+          // tüm yolcular biletlendiyse birincil aksiyon kesilmiş bileti açmaktır.
+          pnr.status === "active" ? (
             <Button onClick={() => navigate({ to: "/issue", search: { pnr: pnr.recordLocator } })}>
               <TicketPlus size={15} strokeWidth={1.75} /> {t("nav.issue")}
             </Button>
-          )
+          ) : pnr.status === "ticketed" && pnr.ticketNumbers[0] ? (
+            <Button variant="secondary" onClick={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: pnr.ticketNumbers[0] } })}>
+              <TicketIcon size={15} strokeWidth={1.75} /> {t("chat.res.openTicket")}
+            </Button>
+          ) : null
         }
       />
       <DetailBody>
@@ -81,6 +88,11 @@ export function PnrDetail() {
                 <User size={15} strokeWidth={1.75} className="text-ink-3" />
                 <span className="text-[13.5px] text-ink">{p.surname}/{p.givenName}</span>
                 {p.title && <span className="num text-[11.5px] text-ink-3">{p.title}</span>}
+                {pnr.status !== "cancelled" && (
+                  <Pill tone={done.has(paxKey(p)) ? "green" : "gray"} className="ml-auto">
+                    {done.has(paxKey(p)) ? t("chat.res.paxTicketed") : t("chat.res.paxAwaiting")}
+                  </Pill>
+                )}
               </div>
             ))}
           </PanelBody>

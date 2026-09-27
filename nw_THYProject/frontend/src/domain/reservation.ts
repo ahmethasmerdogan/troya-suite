@@ -25,6 +25,8 @@ export interface Pnr {
   status: PnrStatus;
   contact?: string;
   ticketNumbers: string[]; // kesilmiş biletler (Troya linkage)
+  /** Bileti kesilmiş yolcular ("SOYAD/AD") — her yolcuya ayrı ET (Handbook 2.3). */
+  ticketedPax?: string[];
   /** Ticketing Time Limit (SSR ADTK) — bu tarihe kadar bilet kesilmezse rezervasyon düşer. */
   ttl?: string;
 }
@@ -37,6 +39,9 @@ export interface PnrSummary {
   status: PnrStatus;
   segmentCount: number;
   ttl?: string;
+  /** Yolcu sayısı ve bileti kesilmiş olanlar — kısmi kesim listede görünsün. */
+  paxCount: number;
+  ticketedCount: number;
 }
 
 // ---- Ticketing Time Limit (TTL / ADTK) — sektör standardı: süresinde bilet kesilmeyen
@@ -83,6 +88,7 @@ const MOCK_PNRS: Pnr[] = [
     status: "ticketed",
     contact: "+90 532 000 00 00",
     ticketNumbers: ["2351234567890"],
+    ticketedPax: ["ERDOGAN/AHMET"],
   },
   {
     recordLocator: "LM4K9Z",
@@ -94,6 +100,7 @@ const MOCK_PNRS: Pnr[] = [
     createdAt: "2026-06-09T09:30:00Z",
     status: "ticketed",
     ticketNumbers: ["2359988776655"],
+    ticketedPax: ["YILMAZ/ELIF"],
   },
   {
     recordLocator: "TR8N1P",
@@ -146,6 +153,8 @@ function summary(p: Pnr): PnrSummary {
     status: p.status,
     segmentCount: p.segments.length,
     ttl: p.ttl,
+    paxCount: p.passengers.length,
+    ticketedCount: p.ticketedPax?.length ?? 0,
   };
 }
 
@@ -179,12 +188,44 @@ export async function getPnr(recordLocator: string): Promise<Pnr | undefined> {
  * Troya arasındaki tek gerçek bağdır; olmadığında kesim rezervasyonu
  * güncellemez ve PNR süresiz "bilet bekliyor" görünür.
  */
-export function attachTicketToPnr(recordLocator: string, ticketNumber: string): Pnr | undefined {
-  const p = MOCK_PNRS.find((x) => x.recordLocator === recordLocator.toUpperCase());
+/** Yolcu adı anahtarı — büyük harf, boşluksuz "SOYAD/AD". */
+export function paxKey(p: { surname: string; givenName: string }): string {
+  return `${p.surname}/${p.givenName}`.toUpperCase().replace(/\s+/g, "");
+}
+
+/** PNR'ı eşzamanlı oku (komut tarafı kontrolleri için). */
+export function pnrByLocator(recordLocator: string): Pnr | undefined {
+  return MOCK_PNRS.find((x) => x.recordLocator === recordLocator.toUpperCase());
+}
+
+/** Henüz bileti kesilmemiş yolcular — kesim formu bunların ilkiyle dolar. */
+export function unticketedPassengers(p: Pnr): Passenger[] {
+  const done = new Set(p.ticketedPax ?? []);
+  return p.passengers.filter((x) => !done.has(paxKey(x)));
+}
+
+/**
+ * Kesilen bileti PNR'a bağla. Her yolcu ayrı ET alır (Handbook 2.3); PNR ancak
+ * TÜM yolcuları biletlenince "ticketed" olur ve kesim süre limiti (ADTK) düşer.
+ * Önceden ilk bilet PNR'ı tamamen biletlenmiş sayıyordu: iki yolculu
+ * rezervasyonda ikinci yolcunun TTL'i siliniyor, koltuğu süresiz tutuluyordu.
+ */
+export function attachTicketToPnr(
+  recordLocator: string,
+  ticketNumber: string,
+  pax?: { surname: string; givenName: string },
+): Pnr | undefined {
+  const p = pnrByLocator(recordLocator);
   if (!p) return undefined;
   if (!p.ticketNumbers.includes(ticketNumber)) p.ticketNumbers.push(ticketNumber);
-  if (p.status === "active") p.status = "ticketed";
-  p.ttl = undefined; // biletlendi → kesim süre limiti anlamsız
+  if (pax) {
+    const k = paxKey(pax);
+    p.ticketedPax = [...new Set([...(p.ticketedPax ?? []), k])];
+  }
+  if (p.status === "active" && unticketedPassengers(p).length === 0) {
+    p.status = "ticketed";
+    p.ttl = undefined; // biletlendi → kesim süre limiti anlamsız
+  }
   return p;
 }
 

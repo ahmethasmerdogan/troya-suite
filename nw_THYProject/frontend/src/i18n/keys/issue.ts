@@ -44,7 +44,7 @@ export const tr = {
   // rezervasyondan dolan form
   "issue.fromPnr.title": "{rl} rezervasyonundan dolduruldu",
   "issue.fromPnr.body": "Yolcu, güzergâh ve seferler rezervasyondan geldi; kesim tamamlanınca doküman numarası PNR'a yazılır.",
-  "issue.fromPnr.multi": "PNR'da {n} yolcu var — bu kesim ilk yolcu içindir.",
+  "issue.fromPnr.multi": "PNR'da {n} yolcu var; her yolcu ayrı bilet alır. Bu kesim {name} içindir — bileti bekleyen {left} yolcu var.",
 
   // alt aksiyon şeridi
   "issue.back": "Geri",
@@ -217,7 +217,7 @@ export const en: Record<keyof typeof tr, string> = {
 
   "issue.fromPnr.title": "Filled from reservation {rl}",
   "issue.fromPnr.body": "Passenger, itinerary and flights came from the reservation; once issuance completes the document number is written back to the PNR.",
-  "issue.fromPnr.multi": "The PNR holds {n} passengers — this issuance is for the first passenger.",
+  "issue.fromPnr.multi": "The PNR holds {n} passengers; each gets their own ticket. This issuance is for {name} — {left} passenger(s) still await a ticket.",
 
   "issue.back": "Back",
   "issue.next": "Next",

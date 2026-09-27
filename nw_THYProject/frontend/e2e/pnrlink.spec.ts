@@ -21,6 +21,14 @@ test.describe("Rezervasyon → bilet", () => {
     await expect(page.getByText(/Rezervasyonda onaylı/)).toBeVisible();
   });
 
+  test("biletlenmiş PNR'da mükerrer kesim yerine bilet açılır; durum Türkçe yazar", async ({ page }) => {
+    await page.goto("/res/XQ7T2M");
+    await expect(page.getByText("Biletlendi").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Bilet Kes/i })).toHaveCount(0);
+    await page.getByRole("button", { name: "Bileti aç" }).click();
+    await expect(page).toHaveURL(/\/tickets\/2351234567890/);
+  });
+
   test("uygunluk sorgusunda sınıfa tıklayınca rezervasyon formu o seferle açılır", async ({ page }) => {
     await page.goto("/res/availability");
     await page.locator("input[type=date]").fill("2026-09-10");
