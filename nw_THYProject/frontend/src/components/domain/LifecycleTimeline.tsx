@@ -70,7 +70,10 @@ export function LifecycleTimeline({ ticket, className }: { ticket: Ticket; class
   const [all, setAll] = useState(false);
   const t = useT();
 
-  const rows = useMemo(() => build(ticket.history), [ticket.history]);
+  // Olay deposu yalnız EKLENİR (event sourcing) ve komutlar diziye yerinde
+  // ekler: dizi referansı değişmediği için bağımlılık uzunluğu da içerir —
+  // önceden işlem sonrası yeni olay çizelgede görünmüyordu (sayfa yenilenene dek).
+  const rows = useMemo(() => build(ticket.history), [ticket.history, ticket.history.length]);
   const shown = all ? rows : rows.slice(0, INITIAL);
 
   return (

@@ -23,9 +23,9 @@ test("süresi dolmak üzere olan bilet hastalık nedeniyle uzatılır (13.10)", 
   await dlg.locator('input[type="date"]').nth(1).fill(ymd(new Date(today.getTime() + 30 * 86_400_000)));
   await dlg.getByRole("button", { name: "Uzat" }).click();
 
-  await expect(page.getByText("Geçerlilik uzatıldı")).toBeVisible();
   await expect(card.getByText(/Hastalık uzatması uygulandı/)).toBeVisible();
-  await expect(page.getByText("Geçerlilik uzatıldı").first()).toBeVisible();
+  // Olay yaşam döngüsüne düşer (işlem sonrası çizelge tazelenir).
+  await expect(page.getByRole("list").getByText("Geçerlilik uzatıldı")).toBeVisible();
 });
 
 test("süresi dolmuş, hiç kullanılmamış bilet yalnız iade edilebilir (12.9.1)", async ({ page }) => {
