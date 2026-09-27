@@ -96,6 +96,19 @@ export function buildQueueItems(src: QueueSources, now: number): QueueItem[] {
     const pax = `${t.passenger.surname}/${t.passenger.givenName}`;
     const route = t.coupons.map((c) => c.segment.origin).concat(t.coupons.at(-1)?.segment.destination ?? []).join("-");
 
+    // Q7 — tarife değişikliği: yolcuya yeni saat bildirilmeli (TK)
+    const tk = t.coupons.filter((c) => UNUSED.has(c.status) && c.segment.reservationStatus === "TK");
+    if (tk.length) {
+      const soon = Date.parse(tk[0].segment.departure) - now < 2 * DAY;
+      out.push({
+        id: `skchg:${t.ticketNumber}`, queue: "irrop", ref: t.ticketNumber, refKind: "ticket", priority: soon ? "high" : "medium",
+        title: `${t.ticketNumber} · tarife değişikliği`, titleEn: `${t.ticketNumber} · schedule change`,
+        detail: `${pax} · ${route}. ${tk.map((c) => c.segment.flightNumber).join(", ")} saati değişti (TK) — yolcuya bildirin; kabul etmezse ücretsiz değişiklik ya da zorunlu iade.`,
+        detailEn: `${pax} · ${route}. ${tk.map((c) => c.segment.flightNumber).join(", ")} was retimed (TK) — notify the passenger; if they decline, a free change or an involuntary refund.`,
+        dueAt: tk[0].segment.departure, createdAt: t.issuedAt,
+      });
+    }
+
     // Q7 — IRROP / tarife değişikliği takibi
     const irr = t.coupons.filter((c) => c.status === "I");
     if (irr.length) {

@@ -38,6 +38,7 @@ const EVENT_KEY: Record<string, Key> = {
   PtaAcknowledged: "ticket.event.PtaAcknowledged", PtaRefunded: "ticket.event.PtaRefunded",
   ValidityExtended: "ticket.event.ValidityExtended", RightsAssessed: "ticket.event.RightsAssessed",
   NameCorrected: "ticket.event.NameCorrected",
+  ScheduleChanged: "ticket.event.ScheduleChanged", ScheduleChangeAcknowledged: "ticket.event.ScheduleChangeAcknowledged",
 };
 
 /** Olumsuz olaylar rayda kırmızı halka taşır — göz taramada önce bunları bulur. */

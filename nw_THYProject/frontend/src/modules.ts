@@ -3,7 +3,7 @@ import {
   LayoutDashboard, BookMarked, Ticket, PlaneTakeoff,
   TicketPlus, Search, ArrowLeftRight, Undo2, Ban, FileText,
   MessagesSquare, Handshake, Users, ScrollText, Settings,
-  CalendarSearch, Banknote, Inbox, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
+  CalendarSearch, Banknote, Inbox, CalendarClock, ShieldAlert, AlertTriangle, Stamp, Radar, Waypoints, ClipboardList, type LucideIcon,
 } from "lucide-react";
 import type { Permission } from "@/domain/auth";
 import type { Key } from "@/i18n/dict";
@@ -77,6 +77,7 @@ export const MODULES: ModuleDef[] = [
           { labelKey: "nav.refund", to: "/search", icon: Undo2, contextual: true, action: "refund", perm: "ticket.refund" },
           { labelKey: "nav.void", to: "/search", icon: Ban, contextual: true, action: "void", perm: "ticket.void" },
           { labelKey: "nav.irrop", to: "/search", icon: AlertTriangle, contextual: true, action: "irrop", perm: "ticket.irrop" },
+          { labelKey: "nav.skchg", to: "/schedule-change", icon: CalendarClock, perm: "ticket.irrop" },
           { labelKey: "nav.endorse", to: "/search", icon: Stamp, contextual: true, action: "endorse", perm: "ticket.endorse" },
         ],
       },

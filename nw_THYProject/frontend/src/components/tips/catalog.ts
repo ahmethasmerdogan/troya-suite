@@ -131,6 +131,17 @@ export const TOURS: Tour[] = [
     ],
   },
   {
+    id: "skchg",
+    name: "tips.tour.skchg",
+    match: (p) => p === "/schedule-change",
+    home: "/schedule-change",
+    perm: "ticket.irrop",
+    steps: [
+      { target: "skchg.flights", title: "tips.skchg.flights.t", body: "tips.skchg.flights.b" },
+      { target: "skchg.time", title: "tips.skchg.time.t", body: "tips.skchg.time.b" },
+    ],
+  },
+  {
     id: "reports",
     home: "/reports",
     perm: "revenue.view",

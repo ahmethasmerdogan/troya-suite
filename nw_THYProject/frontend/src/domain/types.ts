@@ -190,7 +190,9 @@ export type LifecycleEventType =
   | "PtaRefunded"
   | "ValidityExtended"
   | "RightsAssessed"
-  | "NameCorrected";
+  | "NameCorrected"
+  | "ScheduleChanged"
+  | "ScheduleChangeAcknowledged";
 
 /**
  * Olayın parasal dökümü — raporlama bunun üzerinden yürür.

@@ -16,6 +16,10 @@ import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
 import { attachTicketToPnr, listPnrs, paxKey, pnrByLocator, renamePnrPassenger, unticketedPassengers } from "./reservation";
 import { classifyNameChange, type NameCorrectionReason } from "./nameCorrection";
+import {
+  affectedTickets, classifyScheduleChange, couponOnFlight, isInternationalSegment, skchgEndorsement, upcomingFlights,
+  type ChangeSeverity, type ScheduledFlight,
+} from "./scheduleChange";
 import { buildQueueItems, type QueueItem } from "./queues";
 import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
 import { demoNow } from "./demoClock";
@@ -1704,6 +1708,95 @@ export async function correctName(input: NameCorrectionInput): Promise<{ oldTick
   if (t.pnr) renamePnrPassenger(t.pnr, from, newTicket.passenger);
   opKeys.set(input.idempotencyKey, newTicket.ticketNumber);
   return { oldTicket, newTicket };
+}
+
+// =====================================================================
+// Tarife değişikliği — toplu zorunlu işlem (SKCHG)
+// =====================================================================
+export async function listUpcomingFlights(): Promise<ScheduledFlight[]> {
+  await delay(200);
+  return upcomingFlights(store, demoNow());
+}
+
+export interface ScheduleChangeInput {
+  flightNumber: string;
+  /** Etkilenen sefer günü (YYYY-MM-DD). */
+  date: string;
+  /** Yeni kalkış (ISO). Varış aynı süre kadar kayar. */
+  newDeparture: string;
+  idempotencyKey: string;
+}
+export interface ScheduleChangeResult {
+  minutes: number;
+  applied: { ticketNumber: string; severity: ChangeSeverity }[];
+  skipped: { ticketNumber: string; reason: string }[];
+}
+/**
+ * Seferin saatini etkilenen TÜM biletlere uygular. Her bilet kendi alt
+ * anahtarıyla işlenir: yarıda kesilen bir toplu işlem tekrarlanınca
+ * uygulanmış biletler ikinci kez kaydırılmaz. Kontrolü partnerde olan bilet
+ * atlanır ve gerekçesiyle raporlanır (kuyruğa düşer).
+ */
+export async function applyScheduleChange(input: ScheduleChangeInput): Promise<ScheduleChangeResult> {
+  await delay(500);
+  const targets = affectedTickets(store, input.flightNumber, input.date);
+  const result: ScheduleChangeResult = { minutes: 0, applied: [], skipped: [] };
+  const newDep = Date.parse(input.newDeparture);
+  if (Number.isNaN(newDep)) throw new DomainError("Yeni kalkış saati geçersiz.");
+  for (const t of targets) {
+    const sub = `${input.idempotencyKey}:${t.ticketNumber}`;
+    const coupons = t.coupons.filter((c) => (c.status === "O" || c.status === "A") && couponOnFlight(c.segment, input.flightNumber, input.date));
+    const minutes = Math.round((newDep - Date.parse(coupons[0].segment.departure)) / 60000);
+    result.minutes = minutes;
+    const severity = classifyScheduleChange(minutes, isInternationalSegment(coupons[0].segment));
+    if (opKeys.has(sub)) { result.applied.push({ ticketNumber: t.ticketNumber, severity }); continue; }
+    if (t.control.holder !== SESSION_CARRIER) {
+      result.skipped.push({ ticketNumber: t.ticketNumber, reason: `Kupon kontrolü ${t.control.holder}'da (1.1.5.3)` });
+      continue;
+    }
+    for (const c of coupons) {
+      const oldDep = c.segment.departure;
+      const shift = newDep - Date.parse(oldDep);
+      c.segment = {
+        ...c.segment,
+        departure: new Date(newDep).toISOString(),
+        arrival: new Date(Date.parse(c.segment.arrival) + shift).toISOString(),
+        // Onaylı ama yolcuya yeni saat BİLDİRİLMELİ; bildirilince HK.
+        reservationStatus: severity === "minor" ? c.segment.reservationStatus : "TK",
+      };
+      t.history.push(event("ScheduleChanged", {
+        couponSeq: c.seq,
+        detail: `${c.segment.flightNumber} ${oldDep.slice(0, 16).replace("T", " ")} → ${c.segment.departure.slice(0, 16).replace("T", " ")} (${minutes > 0 ? "+" : ""}${minutes} dk) · ${severity === "minor" ? "küçük değişiklik" : severity === "significant" ? "ÖNEMLİ değişiklik — iade hakkı" : "zorunlu değişiklik"}`,
+        status: c.status,
+      }));
+    }
+    if (severity !== "minor") {
+      const e = skchgEndorsement(input.flightNumber, oldDepOf(coupons[0].segment, minutes));
+      if (!t.endorsement?.includes(e)) t.endorsement = t.endorsement ? `${t.endorsement} / ${e}` : e;
+    }
+    opKeys.set(sub, t.ticketNumber);
+    result.applied.push({ ticketNumber: t.ticketNumber, severity });
+  }
+  return result;
+}
+
+/** Kaydırılmış kalkıştan orijinal kalkışı geri bul (ciro orijinal tarihi taşır). */
+function oldDepOf(s: Segment, minutes: number): string {
+  return new Date(Date.parse(s.departure) - minutes * 60000).toISOString();
+}
+
+/** Yolcu yeni saati öğrendi/kabul etti — kuponun rezervasyon durumu TK → HK. */
+export async function acknowledgeScheduleChange(input: { ticketNumber: string; couponSeq: number; idempotencyKey: string }): Promise<Ticket> {
+  await delay(300);
+  const t = store.find((x) => x.ticketNumber === input.ticketNumber);
+  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (opKeys.has(input.idempotencyKey)) return t;
+  const c = t.coupons.find((x) => x.seq === input.couponSeq);
+  if (!c || c.segment.reservationStatus !== "TK") throw new DomainError("Bu kuponda bildirilecek tarife değişikliği yok.");
+  c.segment = { ...c.segment, reservationStatus: "HK" };
+  t.history.push(event("ScheduleChangeAcknowledged", { couponSeq: c.seq, detail: `Yolcu yeni saati kabul etti · ${c.segment.flightNumber} TK→HK`, status: c.status }));
+  opKeys.set(input.idempotencyKey, t.ticketNumber);
+  return t;
 }
 
 // =====================================================================

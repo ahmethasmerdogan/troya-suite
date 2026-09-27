@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, CalendarClock, ChevronDown,
   CreditCard, FileOutput, HeartPulse, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
-import { getTicket, isControlOverdue, listEmdsForTicket } from "@/domain/api";
+import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, newIdempotencyKey } from "@/domain/api";
+import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
 import { usePerm } from "@/lib/usePerm";
 import { STATUS_TONE } from "@/components/domain/statusTone";
@@ -46,7 +47,15 @@ export function TicketDetail() {
   const uiLang = useUI((x) => x.lang);
   const [flow, setFlow] = useState<FlowId | null>(null);
 
-  const { data: ticket, isLoading } = useQuery({ queryKey: ["ticket", ticketNumber], queryFn: () => getTicket(ticketNumber) });
+  // Mock depo komutları kaydı YERİNDE değiştirir; aynı referans dönünce React
+  // Query "değişmedi" sayıp ekranı çizmiyordu (TK→HK onayı gibi drawer'sız
+  // işlemler görünmüyordu). Her okuma yeni bir üst nesne verir, yapısal
+  // paylaşım kapalı: yenileme = yeniden çizim.
+  const { data: ticket, isLoading } = useQuery({
+    queryKey: ["ticket", ticketNumber],
+    queryFn: async () => { const t = await getTicket(ticketNumber); return t ? { ...t } : t; },
+    structuralSharing: false,
+  });
   const { data: emds } = useQuery({ queryKey: ["emdsFor", ticketNumber], queryFn: () => listEmdsForTicket(ticketNumber) });
 
   // `?flow=` tek sefer tüketilir; yoksa kapatınca yeniden açılır.
@@ -208,6 +217,7 @@ export function TicketDetail() {
                       <span className="num text-[13px] text-ink-2">{flightCode(c.segment.marketingCarrier, c.segment.flightNumber)}</span>
                       <span className="num text-[12.5px] text-ink-3">{formatDateTime(c.segment.departure)}</span>
                       <span className="ml-auto flex items-center gap-1.5">
+                        {c.segment.reservationStatus === "TK" && <AckScheduleChange ticketNumber={ticket.ticketNumber} seq={c.seq} />}
                         {c.noShow && <OutlineBadge tone="amber">No-show</OutlineBadge>}
                         <StatusPill status={c.status} code />
                       </span>
@@ -467,5 +477,27 @@ function MoreMenu({
         </Menu>
       )}
     </div>
+  );
+}
+
+/** Tarife değişikliği (TK) — yolcu yeni saati öğrendi, kupon HK'ya döner. */
+function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: number }) {
+  const t = useT();
+  const qc = useQueryClient();
+  const [key] = useState(newIdempotencyKey);
+  const run = useMutation({
+    mutationFn: () => acknowledgeScheduleChange({ ticketNumber, couponSeq: seq, idempotencyKey: key }),
+    onSuccess: () => {
+      toast.success(t("skchg.ackOk"));
+      qc.invalidateQueries({ queryKey: ["ticket", ticketNumber] });
+      qc.invalidateQueries({ queryKey: ["queues"] });
+    },
+    onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),
+  });
+  return (
+    <button type="button" onClick={() => run.mutate()} disabled={run.isPending} title={t("skchg.ackHint")}
+      className="inline-flex h-7 items-center gap-1 rounded-full border border-[var(--t-amber-d)] bg-[var(--t-amber-w)] px-2.5 text-[11.5px] font-semibold text-[var(--t-amber-i)] hover:opacity-90">
+      TK · {t("skchg.ack")}
+    </button>
   );
 }
