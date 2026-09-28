@@ -8,13 +8,16 @@ import type {
   Segment, Money, CouponStatus, Pta, RevenueAlert, Passenger, RefundRecord, Coupon, TaxFeeCharge, EventMoney,
 } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
+import { foldIncludes } from "./text";
+import { CHECKIN_TICKETS } from "./checkin";
+import { fareForPtc } from "./pricing";
 import { applyTransition, applyRefundCancel, canTransition, isRefundable } from "./couponStatusMachine";
 import { isFinal } from "./couponStatus";
-import { quoteRefund, type InvoluntaryReason, type RefundType } from "./refundRules";
-import type { WaiverCode } from "./fareRules";
+import { quoteRefund, ruleOfTicket, type InvoluntaryReason, type RefundType } from "./refundRules";
+import { isFareChangeable, waives, type WaiverCode } from "./fareRules";
 import { classifyChange, type ChangeType } from "./changeRules";
 import { quoteReissue } from "./reissueRules";
-import { attachTicketToPnr, listPnrs, paxKey, pnrByLocator, renamePnrPassenger, unticketedPassengers } from "./reservation";
+import { attachTicketToPnr, detachTicketFromPnr, listPnrs, paxKey, pnrByLocator, renamePnrPassenger, unticketedPassengers } from "./reservation";
 import { classifyNameChange, type NameCorrectionReason } from "./nameCorrection";
 import {
   affectedTickets, classifyScheduleChange, couponOnFlight, isInternationalSegment, skchgEndorsement, upcomingFlights,
@@ -23,6 +26,7 @@ import {
 import { buildQueueItems, type QueueItem } from "./queues";
 import { beyondValidity, changeBlockedByValidity, illnessExtension, ticketValidity, travelCommenced, type IllnessInput } from "./validity";
 import { demoNow } from "./demoClock";
+import { LocalizedError } from "./errors";
 import { assessRights, payableRegime, type DisruptionInput, type RightsAssessment } from "./passengerRights";
 
 /** İade ve reissue tarifesi — akışlar tutarı buradan alır (personel elle yazmaz). */
@@ -30,7 +34,7 @@ export { quoteRefund, quoteReissue };
 
 
 // Prototip durumu: bellek içi store (kesilen biletler eklenir).
-const store: Ticket[] = [...MOCK_TICKETS];
+const store: Ticket[] = [...MOCK_TICKETS, ...CHECKIN_TICKETS];
 let serialCounter = 100200300;
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -49,8 +53,9 @@ export async function searchTickets(query: string): Promise<TicketSummary[]> {
     .filter(
       (t) =>
         t.ticketNumber.includes(q) ||
-        t.passenger.surname.toUpperCase().includes(q) ||
-        t.passenger.givenName.toUpperCase().includes(q) ||
+        foldIncludes(t.passenger.surname, q) ||
+        foldIncludes(t.passenger.givenName, q) ||
+        foldIncludes(`${t.passenger.surname}/${t.passenger.givenName}`, q) ||
         t.pnr?.toUpperCase().includes(q) ||
         t.passenger.foid?.toUpperCase().includes(q) ||
         t.formOfPayment.detail?.toUpperCase().includes(q) || // kart son-4 maskeli detayda geçer
@@ -79,12 +84,17 @@ export interface IssueTicketInput {
 
 const issuedKeys = new Map<string, string>(); // idempotencyKey → ticketNumber
 
-export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
+export function issueTicket(input: IssueTicketInput): Promise<Ticket> {
+  return inFlight("issueTicket", input.idempotencyKey, () => issueTicketRun(input));
+}
+async function issueTicketRun(input: IssueTicketInput): Promise<Ticket> {
   await delay(700); // para işlemi: optimistic UI yok, sunucu beklenir
   // Idempotency: aynı key → aynı sonuç, yeni yan etki yok.
   const existing = issuedKeys.get(input.idempotencyKey);
   if (existing) return store.find((t) => t.ticketNumber === existing)!;
 
+  assertFareSane(input.fare, `${input.passenger.surname}/${input.passenger.givenName}`);
+  assertFopSane(input.formOfPayment);
   assertCanIssue([input.passenger], input.pnr);
   return writeTicket(input);
 }
@@ -96,18 +106,64 @@ export async function issueTicket(input: IssueTicketInput): Promise<Ticket> {
  */
 function assertCanIssue(passengers: Passenger[], pnr?: string) {
   // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
-  assertPeriodOpen(new Date().toISOString(), "yeni satış");
+  assertPeriodOpen(new Date().toISOString(), "yeni satış", "a new sale");
   // Rezervasyondan kesim: bilet adı PNR'daki adla birebir aynı olmalı ve her
   // yolcu tek ET alır (Handbook 2.3) — mükerrer kesim burada durur.
   const srcPnr = pnr ? pnrByLocator(pnr) : undefined;
   if (!srcPnr) return;
+  if (srcPnr.status === "cancelled" || srcPnr.segments.every((s) => s.status === "XX"))
+    throw new DomainError(`${srcPnr.recordLocator} rezervasyonu iptal edilmiş — iptal edilmiş rezervasyona bilet kesilemez.`, `Reservation ${srcPnr.recordLocator} is cancelled — a cancelled reservation cannot be ticketed.`);
   for (const p of passengers) {
     const k = paxKey(p);
     if (!srcPnr.passengers.some((x) => paxKey(x) === k))
-      throw new DomainError(`${p.surname}/${p.givenName} ${srcPnr.recordLocator} rezervasyonunda yok — bilet adı PNR'daki adla birebir aynı olmalı (Handbook 2.3).`);
+      throw new DomainError(`${p.surname}/${p.givenName} ${srcPnr.recordLocator} rezervasyonunda yok — bilet adı PNR'daki adla birebir aynı olmalı (Handbook 2.3).`, `${p.surname}/${p.givenName} is not in reservation ${srcPnr.recordLocator} — the ticket name must match the PNR name exactly (Handbook 2.3).`);
     if (!unticketedPassengers(srcPnr).some((x) => paxKey(x) === k))
-      throw new DomainError(`${srcPnr.recordLocator} rezervasyonunda ${p.surname}/${p.givenName} için bilet zaten kesilmiş — mükerrer kesim yapılamaz.`);
+      throw new DomainError(`${srcPnr.recordLocator} rezervasyonunda ${p.surname}/${p.givenName} için bilet zaten kesilmiş — mükerrer kesim yapılamaz.`, `A ticket has already been issued for ${p.surname}/${p.givenName} in reservation ${srcPnr.recordLocator} — duplicate issuance is not allowed.`);
   }
+}
+
+/**
+ * Ücret dökümü sağlam mı: tutarlar sonlu ve eksi değil, vergi kalemleri
+ * toplamı verir, çıplak ücret + vergiler toplamı verir, tek para birimi.
+ * Arayüz atlatılsa bile satış bu kapıdan geçemez.
+ */
+function assertFareSane(f: Ticket["fare"], who: string) {
+  const nums = [f.baseFare.amount, f.totalTfc.amount, f.total.amount, ...f.tfcs.map((t) => t.amount.amount)];
+  if (nums.some((n) => !Number.isFinite(n) || n < 0))
+    throw new DomainError(`${who}: ücret tutarları eksi ya da geçersiz olamaz.`, `${who}: fare amounts cannot be negative or invalid.`);
+  const cur = f.total.currency;
+  if (f.baseFare.currency !== cur || f.totalTfc.currency !== cur || f.tfcs.some((t) => t.amount.currency !== cur))
+    throw new DomainError(`${who}: ücret dökümü tek para biriminde olmalı.`, `${who}: the fare breakdown must be in a single currency.`);
+  const tfcSum = f.tfcs.reduce((s, t) => s + t.amount.amount, 0);
+  if (Math.abs(tfcSum - f.totalTfc.amount) > 0.01)
+    throw new DomainError(`${who}: vergi kalemleri toplam vergiyi vermiyor.`, `${who}: the tax lines do not add up to the total tax.`);
+  if (Math.abs(f.baseFare.amount + f.totalTfc.amount - f.total.amount) > 0.01)
+    throw new DomainError(`${who}: ücret dökümü tutarsız — çıplak ücret + vergiler toplamı vermeli.`, `${who}: fare breakdown is inconsistent — base fare + taxes must equal the total.`);
+}
+
+/** Ödeme şekli: UATP hesap numarası rakamlardan oluşur (isteğe bağlı "TP" önekiyle). */
+function assertFopSane(fop: Ticket["formOfPayment"]) {
+  if (fop.type === "uatp") {
+    const acct = (fop.detail ?? "").replace(/\s+/g, "").toUpperCase();
+    if (!/^(TP)?\d{10,15}$/.test(acct))
+      throw new DomainError("UATP hesap numarası geçersiz — 10–15 haneli numara girin (Ch 10).", "Invalid UATP account number — enter a 10–15 digit number (Ch 10).");
+  }
+}
+
+/**
+ * Aynı anahtarla UÇUŞTAKİ bir isteğe aynı söz (promise) döner. `opKeys`
+ * yalnız işlem BİTİNCE yazıldığı için hızlı bir çift tıklama iki isteği de
+ * geçiriyordu (iki bilet, iki EMD, PTA'ya iki bilet). Gerçek backend'de bunu
+ * idempotency tablosundaki benzersiz anahtar sağlar.
+ */
+const inflightOps = new Map<string, Promise<unknown>>();
+function inFlight<T>(op: string, key: string, run: () => Promise<T>): Promise<T> {
+  const k = `${op}:${key}`;
+  const cur = inflightOps.get(k);
+  if (cur) return cur as Promise<T>;
+  const p = run().finally(() => inflightOps.delete(k));
+  inflightOps.set(k, p);
+  return p;
 }
 
 /** Bileti yazar — ön koşullar ÇAĞIRANDA doğrulanmış olmalı. */
@@ -191,25 +247,42 @@ export interface GroupIssueResult { groupRef: string; tickets: Ticket[] }
 const groupKeys = new Map<string, GroupIssueResult>();
 let groupCounter = 1;
 
-export async function issueGroup(input: GroupIssueInput): Promise<GroupIssueResult> {
+export function issueGroup(input: GroupIssueInput): Promise<GroupIssueResult> {
+  return inFlight("issueGroup", input.idempotencyKey, () => issueGroupRun(input));
+}
+async function issueGroupRun(input: GroupIssueInput): Promise<GroupIssueResult> {
   await delay(900);
   const prior = groupKeys.get(input.idempotencyKey);
   if (prior) return prior;
 
   const n = input.passengers.length;
-  if (n < 2) throw new DomainError("Grup kesimi en az iki yolcu ister — tek yolcu için normal kesim yapılır.");
-  if (n > GROUP_MAX) throw new DomainError(`Tek işlemde en çok ${GROUP_MAX} yolcu kesilir — daha büyük grup için grup rezervasyonu gerekir.`);
+  if (n < 2) throw new DomainError("Grup kesimi en az iki yolcu ister — tek yolcu için normal kesim yapılır.", "Group issuance needs at least two passengers — use normal issuance for a single passenger.");
+  if (n > GROUP_MAX) throw new DomainError(`Tek işlemde en çok ${GROUP_MAX} yolcu kesilir — daha büyük grup için grup rezervasyonu gerekir.`, `At most ${GROUP_MAX} passengers can be ticketed in one transaction — a larger group needs a group booking.`);
   const keys = input.passengers.map((p) => paxKey(p.passenger));
   const dup = keys.find((k, i) => keys.indexOf(k) !== i);
-  if (dup) throw new DomainError(`${dup} iki kez yazılmış — her yolcu tek bilet alır (Handbook 2.3).`);
+  if (dup) throw new DomainError(`${dup} iki kez yazılmış — her yolcu tek bilet alır (Handbook 2.3).`, `${dup} is entered twice — each passenger gets one ticket (Handbook 2.3).`);
   if (!input.passengers.some((p) => p.ptc === "ADT"))
-    throw new DomainError("Grupta en az bir yetişkin (ADT) olmalı — refakatsiz çocuk UMNR hizmetiyle ayrı kesilir.");
+    throw new DomainError("Grupta en az bir yetişkin (ADT) olmalı — refakatsiz çocuk UMNR hizmetiyle ayrı kesilir.", "The group must include at least one adult (ADT) — an unaccompanied child is ticketed separately with the UMNR service.");
   for (const p of input.passengers) {
     if (p.passenger.surname.trim().length < 2 || !p.passenger.givenName.trim())
-      throw new DomainError("Her yolcunun soyadı ve adı zorunlu.");
-    const f = p.fare;
-    if (Math.abs(f.baseFare.amount + f.totalTfc.amount - f.total.amount) > 0.01)
-      throw new DomainError(`${paxKey(p.passenger)} ücret dökümü tutarsız — çıplak ücret + vergiler toplamı vermeli.`);
+      throw new DomainError("Her yolcunun soyadı ve adı zorunlu.", "Every passenger's surname and given name are required.");
+    assertFareSane(p.fare, paxKey(p.passenger));
+  }
+  assertFopSane(input.formOfPayment);
+  // Aynı işlem = aynı ücret: yetişkinlerin hepsi aynı ücreti öder; çocuk ücreti
+  // yetişkin ücretinden SUNUCUDA türetilir (Cat 19). İstemcinin gönderdiği
+  // tutar bundan farklıysa özet ile tahsilat ayrışmasın diye kesim yapılmaz.
+  const adult = input.passengers.find((p) => p.ptc === "ADT")!.fare;
+  const same = (a: number, b: number) => Math.abs(a - b) <= 0.01;
+  for (const p of input.passengers) {
+    const expected = p.ptc === "ADT" ? adult : fareForPtc(adult, "CHD");
+    if (!same(p.fare.total.amount, expected.total.amount) || p.fare.total.currency !== expected.total.currency)
+      throw new DomainError(
+        `${paxKey(p.passenger)} ${p.ptc} ücreti ${expected.total.amount} ${expected.total.currency} olmalı — ` +
+        `grupta yetişkinler aynı ücreti, çocuklar yetişkin ücretinin çocuk indirimli halini öder.`,
+        `${paxKey(p.passenger)} ${p.ptc} fare must be ${expected.total.amount} ${expected.total.currency} — ` +
+        `in a group adults pay the same fare and children pay the child-discounted adult fare.`,
+      );
   }
   assertCanIssue(input.passengers.map((p) => p.passenger), input.pnr);
 
@@ -278,8 +351,11 @@ export async function getDashboardStats(): Promise<DashboardStats> {
 // eder; FSM invariant'ları (ARCHITECTURE §4) burada zorlanır. İdempotent.
 // =====================================================================
 
-/** İşlem hatası — mesaj alan altında / toast'ta gösterilir. */
-export class DomainError extends Error {}
+/**
+ * İşlem hatası — mesaj alan altında / toast'ta gösterilir. Türkçe mesaj +
+ * İngilizce karşılık taşır; sunum `errorText` ile arayüz dilini seçer.
+ */
+export class DomainError extends LocalizedError {}
 
 // idempotencyKey → işlenmiş işaret (komut sonucu referansı). Mock store.
 // NOT (denetim O1): bu Map tüm komutlarca paylaşılır. Pratikte güvenli — her drawer
@@ -299,24 +375,28 @@ function event(type: LifecycleEvent["type"], partial: Partial<LifecycleEvent>): 
 }
 
 export interface VoidInput { ticketNumber: string; reason?: string; idempotencyKey: string; }
-export async function voidTicket(input: VoidInput): Promise<Ticket> {
+export function voidTicket(input: VoidInput): Promise<Ticket> {
+  return inFlight("voidTicket", input.idempotencyKey, () => voidTicketRun(input));
+}
+async function voidTicketRun(input: VoidInput): Promise<Ticket> {
   await delay(650);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
   // 1.1.5.3 — void da bir statü değişikliğidir: kuponun zilyetliği bizde olmalı.
-  assertControl(t, "Void");
-  assertPeriodOpen(t.issuedAt, "void"); // kapanmış dönemde satış iptali yok
+  assertControl(t, "Void", "Void");
+  assertPeriodOpen(t.issuedAt, "void", "void"); // kapanmış dönemde satış iptali yok
   // 1.1.5.3 / satış günü kuralı: void yalnız satışın yapıldığı raporlama
   // döneminde mümkündür. Sonrası iade işlemidir.
   if (!inCurrentReportingPeriod(t.issuedAt))
     throw new DomainError(
       `Bilet ${reportingPeriodId(t.issuedAt)} döneminde kesilmiş; void yalnız satış döneminde yapılabilir — iade (refund) kullanın.`,
+      `The ticket was issued in period ${reportingPeriodId(t.issuedAt)}; void is possible only within the sales period — use a refund.`,
     );
   // İnvariant: void için TÜM kuponlar O olmalı.
   const notOpen = t.coupons.filter((c) => c.status !== "O");
   if (notOpen.length)
-    throw new DomainError(`Void için tüm kuponlar 'O' olmalı. Engel: kupon ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")}.`);
+    throw new DomainError(`Void için tüm kuponlar 'O' olmalı. Engel: kupon ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")}.`, `Void requires all coupons to be 'O'. Blocking: coupon ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")}.`);
   t.coupons.forEach((c) => {
     c.status = applyTransition(c.status, "V");
     cascadeEmdA(t.ticketNumber, c.seq, "V"); // EMD-A senkronu (5.3)
@@ -332,6 +412,8 @@ export async function voidTicket(input: VoidInput): Promise<Ticket> {
       ...(t.fare.vat ? { vat: t.fare.vat.amount, vatRate: t.fare.vat.rate } : {}),
     },
   }));
+  // Satış hiç olmamış sayılır: yolcu rezervasyonda yeniden biletsizdir.
+  if (t.pnr) detachTicketFromPnr(t.pnr, t.ticketNumber, t.passenger, "void");
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }
@@ -416,11 +498,11 @@ export function isPeriodClosed(periodId: string): boolean {
 
 export async function closeReportingPeriod(periodId: string): Promise<string[]> {
   await delay(450);
-  if (closedPeriods.has(periodId)) throw new DomainError(`${periodId} dönemi zaten kapatılmış.`);
+  if (closedPeriods.has(periodId)) throw new DomainError(`${periodId} dönemi zaten kapatılmış.`, `Period ${periodId} is already closed.`);
   // Kapanış geri alınamaz; henüz gelmemiş bir günü kapatmak o günün tüm
   // satışlarını daha doğmadan void edilemez hâle getirirdi.
   if (periodId > reportingPeriodId(new Date().toISOString()))
-    throw new DomainError(`${periodId} gelecek bir dönem — kapatılamaz.`);
+    throw new DomainError(`${periodId} gelecek bir dönem — kapatılamaz.`, `${periodId} is a future period — it cannot be closed.`);
   closedPeriods.add(periodId);
   persistClosedPeriods();
   return [...closedPeriods].sort();
@@ -432,10 +514,13 @@ export async function listClosedPeriods(): Promise<string[]> {
 }
 
 /** Dönem kapalıysa para/statü değiştiren işlemi reddet. */
-function assertPeriodOpen(iso: string, action: string): void {
+function assertPeriodOpen(iso: string, action: string, actionEn: string): void {
   const pid = reportingPeriodId(iso);
   if (closedPeriods.has(pid))
-    throw new DomainError(`${pid} raporlama dönemi kapatıldı — ${action} yapılamaz. Kalemler settlement'a iletildi.`);
+    throw new DomainError(
+      `${pid} raporlama dönemi kapatıldı — ${action} yapılamaz. Kalemler settlement'a iletildi.`,
+      `Reporting period ${pid} is closed — ${actionEn} is not possible. The items have been passed to settlement.`,
+    );
 }
 
 /**
@@ -464,10 +549,11 @@ export function isControlOverdue(t: Ticket): boolean {
  * zilyetliğinde olmalı". Kontrol başka taşıyıcıdaysa işlem reddedilir ve
  * personel önce kontrolü istemeye yönlendirilir.
  */
-function assertControl(t: Ticket, action: string): void {
+function assertControl(t: Ticket, action: string, actionEn: string): void {
   if (t.control.holder !== SESSION_CARRIER) {
     throw new DomainError(
       `${action} için kupon kontrolü ${SESSION_CARRIER}'da olmalı — şu an ${t.control.holder}'da (1.1.5.3). Önce kontrolü isteyin.`,
+      `${actionEn} requires coupon control to be with ${SESSION_CARRIER} — it is currently with ${t.control.holder} (1.1.5.3). Request control first.`,
     );
   }
 }
@@ -515,26 +601,30 @@ export interface ControlInput {
  * ET bilateral interline anlaşması** ve anlaşmada control transfer yetkisi
  * şarttır. Kontrol verildiğinde ilgili kuponlar için "O" statüsü bildirilir.
  */
-export async function grantControl(input: ControlInput): Promise<Ticket> {
+export function grantControl(input: ControlInput): Promise<Ticket> {
+  return inFlight("grantControl", input.idempotencyKey, () => grantControlRun(input));
+}
+async function grantControlRun(input: ControlInput): Promise<Ticket> {
   await delay(450);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
   const to = (input.toCarrier ?? "").toUpperCase();
-  if (to.length !== 2) throw new DomainError("Devredilecek taşıyıcı kodu iki harf olmalı.");
+  if (to.length !== 2) throw new DomainError("Devredilecek taşıyıcı kodu iki harf olmalı.", "The carrier code to transfer to must be two letters.");
   if (t.validatingCarrier !== SESSION_CARRIER)
-    throw new DomainError(`Kontrolü yalnız Validating Carrier (${t.validatingCarrier}) devredebilir (1.1.5.1).`);
+    throw new DomainError(`Kontrolü yalnız Validating Carrier (${t.validatingCarrier}) devredebilir (1.1.5.1).`, `Only the Validating Carrier (${t.validatingCarrier}) can transfer control (1.1.5.1).`);
   if (t.control.holder !== t.validatingCarrier)
     throw new DomainError(
       `Kontrol şu an ${t.control.holder}'da. Validating Carrier önce kontrolü geri almalı, sonra başka taşıyıcıya verebilir (1.1.5.3).`,
+      `Control is currently with ${t.control.holder}. The Validating Carrier must take control back first, then it can grant it to another carrier (1.1.5.3).`,
     );
-  if (to === t.validatingCarrier) throw new DomainError("Kontrol zaten Validating Carrier'da.");
+  if (to === t.validatingCarrier) throw new DomainError("Kontrol zaten Validating Carrier'da.", "Control is already with the Validating Carrier.");
   const ag = agreementWith(to);
   if (!ag || ag.status !== "active" || !ag.controlTransfer)
-    throw new DomainError(`${to} ile aktif ve control transfer yetkili bir ET bilateral anlaşması yok (1.1.5.1(b)).`);
+    throw new DomainError(`${to} ile aktif ve control transfer yetkili bir ET bilateral anlaşması yok (1.1.5.1(b)).`, `There is no active ET bilateral agreement with ${to} authorising control transfer (1.1.5.1(b)).`);
 
   const seqs = input.couponSeqs?.length ? input.couponSeqs : t.coupons.filter((c) => !isFinal(c.status)).map((c) => c.seq);
-  if (!seqs.length) throw new DomainError("Devredilecek açık kupon yok.");
+  if (!seqs.length) throw new DomainError("Devredilecek açık kupon yok.", "No open coupon to transfer.");
   const first = t.coupons.find((c) => c.seq === seqs[0])!;
   const now = new Date().toISOString();
   t.control = {
@@ -555,12 +645,15 @@ export async function grantControl(input: ControlInput): Promise<Ticket> {
 }
 
 /** Kontrolü Validating Carrier'a geri ver (1.1.5.1: kontrol yalnız VC'ye döner). */
-export async function returnControl(input: ControlInput): Promise<Ticket> {
+export function returnControl(input: ControlInput): Promise<Ticket> {
+  return inFlight("returnControl", input.idempotencyKey, () => returnControlRun(input));
+}
+async function returnControlRun(input: ControlInput): Promise<Ticket> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
-  if (t.control.holder === t.validatingCarrier) throw new DomainError("Kontrol zaten Validating Carrier'da.");
+  if (t.control.holder === t.validatingCarrier) throw new DomainError("Kontrol zaten Validating Carrier'da.", "Control is already with the Validating Carrier.");
   const from = t.control.holder;
   t.control = { holder: t.validatingCarrier, isValidatingCarrier: true };
   t.history.push(event("ControlReturned", { detail: `Kontrol ${from} → ${t.validatingCarrier} (Validating Carrier) iade edildi`, status: "O" }));
@@ -573,12 +666,15 @@ export async function returnControl(input: ControlInput): Promise<Ticket> {
  * reissue/refund yapılabilmesi için Validating Carrier'dan kontrol istenir.
  * Talep interline kuyruğuna düşer; yanıt gelene kadar işlem açılmaz.
  */
-export async function requestControl(input: ControlInput): Promise<Ticket> {
+export function requestControl(input: ControlInput): Promise<Ticket> {
+  return inFlight("requestControl", input.idempotencyKey, () => requestControlRun(input));
+}
+async function requestControlRun(input: ControlInput): Promise<Ticket> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
-  if (t.control.holder === SESSION_CARRIER) throw new DomainError("Kontrol zaten sizde.");
+  if (t.control.holder === SESSION_CARRIER) throw new DomainError("Kontrol zaten sizde.", "You already hold control.");
   MOCK_MESSAGES.unshift({
     id: "m-" + crypto.randomUUID().slice(0, 8),
     standard: "EDIFACT",
@@ -599,12 +695,34 @@ export async function requestControl(input: ControlInput): Promise<Ticket> {
 }
 
 /** EMD-A ↔ ET kupon statü senkronu (5.2.2/5.3): bağlı ET kuponu ilerledikçe EMD-A kuponu izler. */
-function cascadeEmdA(ticketNumber: string, couponSeq: number, to: CouponStatus): void {
+/**
+ * Bağlı EMD-A kuponu ET kuponunu izler (5.2.2/5.3). Void ve iade PARA
+ * doğurur: EMD'nin değeri rapora ters kayıt / iade olarak yazılır — aksi
+ * hâlde statü V/R olurken satış brütte kalır ya da iade değeri kaybolurdu.
+ * Statüsü değişen EMD'leri döner.
+ */
+function cascadeEmdA(ticketNumber: string, couponSeq: number, to: CouponStatus, refundType?: RefundType): Emd[] {
+  const changed: Emd[] = [];
+  const t = store.find((x) => x.ticketNumber === ticketNumber);
   for (const e of emdStore) {
     if (e.type !== "A" || e.associatedTicket !== ticketNumber || e.associatedCouponSeq !== couponSeq) continue;
     const ec = e.coupons[0];
-    if (ec && canTransition(ec.status, to)) ec.status = to;
+    if (!ec || !canTransition(ec.status, to)) continue;
+    ec.status = to;
+    changed.push(e);
+    if (to === "V" || to === "R") {
+      const type = to === "V" ? "EmdVoided" as const : "EmdRefunded" as const;
+      const money: EventMoney = {
+        currency: ec.value.currency,
+        gross: ec.value.amount,
+        ...(to === "R" ? { refundType: refundType ?? "voluntary" } : {}),
+      };
+      const detail = `EMD-A ${e.emdNumber} bağlı kuponu izledi (${to}) · ${ec.value.amount.toLocaleString("en-US")} ${ec.value.currency} (5.3)`;
+      emdEvent(e, event(type, { detail, status: to, money }));
+      t?.history.push(event(type, { couponSeq, detail, status: to, money }));
+    }
   }
+  return changed;
 }
 
 export interface RefundInput {
@@ -633,41 +751,47 @@ export interface RefundInput {
   idempotencyKey: string;
 }
 
-export async function refundTicket(input: RefundInput): Promise<Ticket> {
+export function refundTicket(input: RefundInput): Promise<Ticket> {
+  return inFlight("refundTicket", input.idempotencyKey, () => refundTicketRun(input));
+}
+async function refundTicketRun(input: RefundInput): Promise<Ticket> {
   await delay(700);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
 
   // 1.1.5.3 — iade için kuponun zilyetliği bizde olmalı.
-  assertControl(t, "İade");
+  assertControl(t, "İade", "Refund");
 
   // 15.1.3.2 — belgeyi düzenleyen taşıyıcıya başvurmadan iade yapılamaz.
   if (t.validatingCarrier !== SESSION_CARRIER && !input.issuerAuthorityRef?.trim())
     throw new DomainError(
       `Bu belgeyi ${t.validatingCarrier} düzenledi; iade için düzenleyen taşıyıcının onay/referansı zorunlu (15.1.3.2).`,
+      `This document was issued by ${t.validatingCarrier}; a refund requires the issuing carrier's authority/reference (15.1.3.2).`,
     );
   // 15.1.3.2 — FOP ya da ciro iadeyi kısıtlıyorsa engelle (yetkili override edebilir).
   const restricted = /NON[- ]?REF|NONREFUNDABLE|IADE EDILEMEZ/i.test(t.endorsement ?? "");
   if (restricted && !input.restrictionOverride?.trim())
-    throw new DomainError(`Ciro/kısıtlama iadeyi engelliyor: "${t.endorsement}" — yetkili override gerekir (15.1.3.2).`);
+    throw new DomainError(`Ciro/kısıtlama iadeyi engelliyor: "${t.endorsement}" — yetkili override gerekir (15.1.3.2).`, `An endorsement/restriction blocks the refund: "${t.endorsement}" — an authorised override is required (15.1.3.2).`);
 
   for (const seq of input.couponSeqs) {
     const c = t.coupons.find((x) => x.seq === seq);
-    if (!c) throw new DomainError(`Kupon #${seq} yok.`);
+    if (!c) throw new DomainError(`Kupon #${seq} yok.`, `Coupon #${seq} does not exist.`);
     // İade uygunluğu: O, A veya Y (Handbook 1.3.5 / 15.1.7).
     if (!isRefundable(c.status))
-      throw new DomainError(`Kupon #${seq} iadeye uygun değil (${c.status}) — O/A/Y olmalı (1.3.5).`);
+      throw new DomainError(`Kupon #${seq} iadeye uygun değil (${c.status}) — O/A/Y olmalı (1.3.5).`, `Coupon #${seq} is not eligible for refund (${c.status}) — it must be O/A/Y (1.3.5).`);
   }
 
   const affected: Coupon[] = [];
+  const cascadedEmdA: Emd[] = [];
   input.couponSeqs.forEach((seq) => {
     const c = t.coupons.find((x) => x.seq === seq)!;
     // Yalnız-TFC iadesi: kupon önce Y (Refund TFC) ile işaretlenir, sonra R (1.1.4.1).
     if (input.taxOnly && c.status === "O") c.status = applyTransition(c.status, "Y");
     c.status = applyTransition(c.status, "R");
     affected.push(c);
-    cascadeEmdA(t.ticketNumber, seq, "R"); // EMD-A senkronu (5.3)
+    // EMD-A senkronu (5.3) — yalnız-vergi iadesinde ücret iade edilmediği için EMD izlemez.
+    if (!input.taxOnly) cascadedEmdA.push(...cascadeEmdA(t.ticketNumber, seq, "R", input.refundType ?? "voluntary"));
   });
   // 1.3.6 — iade de settlement doğurur: işlem başına tek SAC.
   const sac = stampSac(affected);
@@ -731,6 +855,9 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
     refundType: input.refundType ?? "voluntary",
     reason: input.involuntaryReason,
     sac,
+    money,
+    documents: [],
+    emdA: cascadedEmdA.map((e) => e.emdNumber),
   };
   t.refunds = [record, ...(t.refunds ?? [])];
 
@@ -747,6 +874,7 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
       total: input.refundAmount,
     };
     emdStore.unshift(voucher);
+    record.documents!.push(voucher.emdNumber);
     t.history.push(event("EmdIssued", { detail: `Voucher EMD-S ${voucher.emdNumber} · ${input.refundAmount.amount.toLocaleString("en-US")} ${input.refundAmount.currency}`, status: "O" }));
   }
 
@@ -766,6 +894,7 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
       endorsement: `FOR REFUND ONLY / DRAWN ON ${t.validatingCarrier}`,
     };
     emdStore.unshift(mco);
+    record.documents!.push(mco.emdNumber);
     t.history.push(event("EmdIssued", {
       detail: `Residual "For Refund Only" belgesi ${mco.emdNumber} · ${input.residual.amount.toLocaleString("en-US")} ${input.residual.currency} (15.3)`,
       status: "O",
@@ -774,6 +903,8 @@ export async function refundTicket(input: RefundInput): Promise<Ticket> {
 
   // 1.1.4.3 — iade edilen her kupon için partner veritabanına statü bildirilir.
   for (const seq of input.couponSeqs) emitStatusUpdate(t, seq, input.taxOnly ? "Y" : "R");
+  // Bilet tamamen iade edildiyse yolcu rezervasyonda yeniden biletsizdir.
+  if (t.pnr && t.coupons.every((c) => c.status === "R")) detachTicketFromPnr(t.pnr, t.ticketNumber, t.passenger, "refund");
 
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
@@ -792,20 +923,31 @@ export interface RefundCancelInput {
   reason?: string;
   idempotencyKey: string;
 }
-export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
+export function refundCancel(input: RefundCancelInput): Promise<Ticket> {
+  return inFlight("refundCancel", input.idempotencyKey, () => refundCancelRun(input));
+}
+async function refundCancelRun(input: RefundCancelInput): Promise<Ticket> {
   await delay(600);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
   const rec = t.refunds?.find((r) => r.id === input.refundId);
-  if (!rec) throw new DomainError("İade kaydı bulunamadı.");
-  if (rec.cancelledAt) throw new DomainError("Bu iade zaten geri alınmış.");
+  if (!rec) throw new DomainError("İade kaydı bulunamadı.", "Refund record not found.");
+  if (rec.cancelledAt) throw new DomainError("Bu iade zaten geri alınmış.", "This refund has already been cancelled.");
   if (!inCurrentReportingPeriod(rec.at))
     throw new DomainError(
       `İade ${reportingPeriodId(rec.at)} raporlama döneminde yapılmış; geri alma yalnız AYNI dönem içinde mümkündür (12.13.2).`,
+      `The refund was made in reporting period ${reportingPeriodId(rec.at)}; it can be cancelled only within the SAME period (12.13.2).`,
     );
-  assertPeriodOpen(rec.at, "iadeyi geri alma");
-  assertControl(t, "İadeyi geri alma");
+  assertPeriodOpen(rec.at, "iadeyi geri alma", "refund cancellation");
+  assertControl(t, "İadeyi geri alma", "Refund cancellation");
+
+  // İadeyle verilen voucher / bakiye belgesi kullanılmışsa değer yolcuya
+  // geçmiştir — iade geri alınırsa aynı değer iki kez elde kalır.
+  const docs = (rec.documents ?? []).map((n) => emdStore.find((e) => e.emdNumber === n)).filter((e): e is Emd => !!e);
+  const usedDoc = docs.find((e) => e.coupons.some((c) => c.status !== "O"));
+  if (usedDoc)
+    throw new DomainError(`İadeyle verilen ${usedDoc.emdNumber} belgesi kullanılmış — iade geri alınamaz.`, `Document ${usedDoc.emdNumber} issued with the refund has been used — the refund cannot be reversed.`);
 
   const affected: Coupon[] = [];
   for (const seq of rec.couponSeqs) {
@@ -814,19 +956,42 @@ export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
     c.status = applyRefundCancel(c.status); // R → O (yalnız bu komut)
     c.sac = undefined; // yeni settlement kodu üretilecek
     affected.push(c);
-    cascadeEmdA(t.ticketNumber, seq, "O");
   }
-  if (!affected.length) throw new DomainError("Geri alınacak kupon bulunamadı.");
+  if (!affected.length) throw new DomainError("Geri alınacak kupon bulunamadı.", "No coupon found to reverse.");
+  // Voucher / bakiye belgesi iptal edilir: değer tekrar kupona döndü.
+  for (const e of docs) {
+    e.coupons.forEach((c) => { c.status = applyTransition(c.status, "V"); });
+    emdEvent(e, event("EmdVoided", { detail: `İade geri alındı — ${e.emdNumber} iptal`, status: "V" }));
+  }
+  // Kademeyle iade edilen EMD-A'lar da açılır ve iade kayıtları ters çevrilir.
+  for (const n of rec.emdA ?? []) {
+    const e = emdStore.find((x) => x.emdNumber === n);
+    const ec = e?.coupons[0];
+    if (!e || !ec || ec.status !== "R") continue;
+    ec.status = applyRefundCancel(ec.status);
+    const back: EventMoney = { currency: ec.value.currency, gross: -ec.value.amount, refundType: rec.refundType };
+    const detail = `EMD-A ${e.emdNumber} iadesi geri alındı (5.3)`;
+    emdEvent(e, event("RefundCancelled", { detail, status: "O", money: back }));
+    t.history.push(event("RefundCancelled", { couponSeq: e.associatedCouponSeq, detail, status: "O", money: back }));
+  }
   const sac = stampSac(affected);
   rec.cancelledAt = new Date().toISOString();
   // Ters kayıt: rapor motoru yalnız toplar, bu yüzden geri alma NEGATİF bir
   // iade satırı olarak yazılır — aksi hâlde gerçekleşmemiş para çıkışı dönem
   // netini kalıcı olarak düşürürdü.
-  const reversal = {
-    currency: rec.amount.currency,
-    gross: -rec.amount.amount,
-    refundType: rec.refundType,
-  };
+  // Ters kayıt her kalemi çevirir: ceza geliri, iade edilen/yanan vergi ve
+  // KDV düzeltmesi de geri alınır (yalnız brüt çevrilirse ayakta duran bir
+  // satışın KDV'si sıfırlanmış, cezası tahsil edilmiş görünürdü).
+  const neg = (n?: number) => (n ? -n : undefined);
+  const m = rec.money;
+  const reversal: EventMoney = m
+    ? {
+        currency: m.currency, refundType: m.refundType, vatRate: m.vatRate,
+        gross: -(m.gross ?? rec.amount.amount), quotedGross: neg(m.quotedGross),
+        penalty: neg(m.penalty), noShowFee: neg(m.noShowFee), serviceCharge: neg(m.serviceCharge),
+        taxRefunded: neg(m.taxRefunded), taxForfeited: neg(m.taxForfeited), vat: neg(m.vat),
+      }
+    : { currency: rec.amount.currency, gross: -rec.amount.amount, refundType: rec.refundType };
   t.history.push(event("RefundCancelled", {
     money: reversal,
     couponSeq: rec.couponSeqs[0],
@@ -836,6 +1001,11 @@ export async function refundCancel(input: RefundCancelInput): Promise<Ticket> {
   }));
   // 1.1.4.3 — kupon yeniden kullanılabilir; partner veritabanı bunu bilmeli.
   for (const c of affected) emitStatusUpdate(t, c.seq, "O");
+  // Tam iadeyle rezervasyondan düşmüştüyse bilet yeniden bağlanır.
+  if (t.pnr) {
+    const p = pnrByLocator(t.pnr);
+    if (p && !p.ticketNumbers.includes(t.ticketNumber)) attachTicketToPnr(t.pnr, t.ticketNumber, t.passenger);
+  }
   opKeys.set(input.idempotencyKey, t.ticketNumber);
   return t;
 }
@@ -854,29 +1024,65 @@ export interface ExchangeInput {
   changeType?: ChangeType;
   /** Reissue'nun gerekçesi başka bir işlemse (ad düzeltme) olay metnine o yazılır. */
   note?: string;
+  /** Ad düzeltme eşit reissue'su — tarifenin değişiklik kısıtına tabi değildir. */
+  nameCorrection?: boolean;
   idempotencyKey: string;
 }
-export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
+
+/**
+ * Açık kuponların eski biletteki payı — uçulmuş/kullanılmış kuponların ücreti ve
+ * vergisi yeni bilete taşınmaz. Kupona bağlı vergi yalnız açık kuponunkiyse
+ * gelir (yeni biletin kupon sırası farklı olabileceği için bağ kaldırılır);
+ * dağıtılmamış kalem açık kupon oranında bölünür.
+ */
+function openShareOf(old: Ticket, openSeqs: number[]) {
+  const share = old.coupons.length ? openSeqs.length / old.coupons.length : 1;
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const tfcs: TaxFeeCharge[] = old.fare.tfcs.flatMap((t) => {
+    if (t.couponSeq != null) return openSeqs.includes(t.couponSeq) ? [{ ...t, couponSeq: undefined }] : [];
+    return [{ ...t, amount: { ...t.amount, amount: r2(t.amount.amount * share) } }];
+  });
+  const vat = old.fare.vat
+    ? { ...old.fare.vat, base: r2(old.fare.vat.base * share), amount: r2(old.fare.vat.amount * share) }
+    : undefined;
+  return { share, base: r2(old.fare.baseFare.amount * share), tfcs, vat };
+}
+export function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
+  return inFlight("exchangeTicket", input.idempotencyKey, () => exchangeTicketRun(input));
+}
+async function exchangeTicketRun(input: ExchangeInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
   await delay(800);
   const old = store.find((x) => x.ticketNumber === input.oldTicketNumber);
-  if (!old) throw new DomainError("Eski bilet bulunamadı.");
+  if (!old) throw new DomainError("Eski bilet bulunamadı.", "Original ticket not found.");
   if (opKeys.has(input.idempotencyKey)) {
     const newTn = opKeys.get(input.idempotencyKey)!;
     return { oldTicket: old, newTicket: store.find((x) => x.ticketNumber === newTn)! };
   }
   // 1.1.5.3 / 12.2.2 — reissue için kuponların zilyetliği bizde olmalı.
-  assertControl(old, "Exchange / reissue");
+  assertControl(old, "Exchange / reissue", "Exchange / reissue");
   const openCoupons = old.coupons.filter((c) => c.status === "O");
-  if (!openCoupons.length) throw new DomainError("Değişim için 'O' statüde kupon yok.");
+  if (!openCoupons.length) throw new DomainError("Değişim için 'O' statüde kupon yok.", "No coupon in 'O' status for exchange.");
+  // Cat 31 — değiştirilemez tarife (kısıt N/B) ancak kuralın tanıdığı bir
+  // muafiyetle değişir. Ad düzeltme bu kısıta tabi değildir.
+  const rule = ruleOfTicket(old);
+  if (!input.nameCorrection && !isFareChangeable(rule) && !waives(rule, input.waiver)) {
+    throw new DomainError(
+      "Bu tarife değiştirilemez (Cat 31 kısıtı) — yalnız kuralın tanıdığı bir muafiyetle ya da iade ile işlem yapılabilir.",
+      "This fare is non-changeable (Cat 31 restriction) — it can only be handled with a waiver the rule recognises, or by a refund.",
+    );
+  }
   // 12.9.1 — süresi dolan bilet yalnız iade edilir. 12.4.1 — yolculuk başladıysa
   // reissue orijinal geçerlilik sonunu aşamaz (kullanılmamış bilette yeni
   // yolculuktan itibaren yeniden 1 yıl işler, sınır yok).
   const expiredMsg = changeBlockedByValidity(old, demoNow());
-  if (expiredMsg) throw new DomainError(expiredMsg);
-  if (travelCommenced(old)) {
+  if (expiredMsg) throw new DomainError(expiredMsg, changeBlockedByValidity(old, demoNow(), "en"));
+  // 12.4.1 — yolculuk başladıysa (ya da bilet zaten bir reissue ise) yeni
+  // bilet orijinalin geçerlilik bitişini taşır ve onu aşamaz.
+  const carriedLimit = travelCommenced(old) || old.validityLimit ? ticketValidity(old, demoNow()).until : undefined;
+  if (carriedLimit) {
     for (const seg of input.newSegments) {
       const beyond = beyondValidity(old, seg.departure, demoNow());
-      if (beyond) throw new DomainError(beyond);
+      if (beyond) throw new DomainError(beyond, beyondValidity(old, seg.departure, demoNow(), "en"));
     }
   }
 
@@ -908,6 +1114,7 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
   // Para hesabı: yeni fiyatlama verildiyse SİSTEM hesaplar (12.5/12.11 + Cat 31),
   // verilmediyse elle girilen ADC kullanılır (eski akış).
   const cur = old.fare.total.currency;
+  const carried = openShareOf(old, openCoupons.map((c) => c.seq));
   const quote = input.newBaseFare != null
     ? quoteReissue({
         ticket: old,
@@ -917,8 +1124,8 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
         waiver: input.waiver,
       })
     : null;
-  const newBaseFare = quote ? quote.newFare : old.fare.baseFare.amount + input.adc.amount;
-  const newTfcs = quote ? (input.newTfcs ?? old.fare.tfcs) : old.fare.tfcs;
+  const newBaseFare = quote ? quote.newFare : carried.base + input.adc.amount;
+  const newTfcs = quote ? (input.newTfcs ?? old.fare.tfcs) : carried.tfcs;
   const newTotalTfc = newTfcs.reduce((sum, t) => sum + t.amount.amount, 0);
   const baseTotal = newBaseFare + newTotalTfc;
   const newTicket: Ticket = {
@@ -928,6 +1135,13 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
     validatingCarrier: old.validatingCarrier,
     issuedAt: now,
     formOfPayment: old.formOfPayment,
+    // Satış kanalı, yolcu tipi ve ciro/kısıt kutusu reissue'da korunur:
+    // acente satışının ADM'si, NON-REF gibi kısıtlar yeni belgeye de uygulanır.
+    agent: old.agent,
+    ptc: old.ptc,
+    endorsement: old.endorsement,
+    tourCode: old.tourCode,
+    validityLimit: carriedLimit,
     control: { holder: old.validatingCarrier, isValidatingCarrier: true },
     coupons: input.newSegments.map((segment, i) => ({ seq: i + 1, status: "O" as const, segment })),
     fare: {
@@ -939,6 +1153,9 @@ export async function exchangeTicket(input: ExchangeInput): Promise<{ oldTicket:
       fareCalcString: old.fare.fareCalcString,
       nuc: old.fare.nuc,
       roe: old.fare.roe,
+      // KDV açık kuponların payı olarak, kesim tarihindeki oranla taşınır (md.35);
+      // yeni bilet iade edilirse bu pay düzeltilir. ADC'nin KDV'si ayrıca modellenmez.
+      vat: carried.vat,
     },
     history: [
       event("TicketReissued", {
@@ -1020,6 +1237,14 @@ const EMD_PRESETS = [
   { rfisc: "0G6", desc: "Evcil hayvan (kabin, PETC)", amount: 1500 },
   { rfisc: "0IK", desc: "Wi-Fi paketi", amount: 350 },
 ];
+function seedEmdStatus(t: Ticket, type: EmdType): CouponStatus {
+  if (type === "A") {
+    const s = t.coupons[0]?.status;
+    return s === "V" || s === "R" || s === "E" || s === "F" ? s : "O";
+  }
+  return t.coupons.every((c) => c.status === "V") ? "V" : "O";
+}
+
 function seedEmds(tickets: Ticket[]): Emd[] {
   const out: Emd[] = [];
   tickets.forEach((t, i) => {
@@ -1034,7 +1259,10 @@ function seedEmds(tickets: Ticket[]): Emd[] {
       issuedAt: t.issuedAt,
       associatedTicket: t.ticketNumber,
       associatedCouponSeq: type === "A" ? 1 : undefined,
-      coupons: [{ seq: 1, status: "O", rfisc: p.rfisc, description: p.desc, value: { amount: p.amount, currency: "TRY" } }],
+      // Statü bağlı biletten türer: void/iade edilmiş biletin EMD-A'sı açık
+      // görünüyordu (5.3). EMD-A kuponu ET kuponunu izler; EMD-S ise ancak
+      // satışın tamamı void edildiyse düşer.
+      coupons: [{ seq: 1, status: seedEmdStatus(t, type), rfisc: p.rfisc, description: p.desc, value: { amount: p.amount, currency: "TRY" } }],
       total: { amount: p.amount, currency: "TRY" },
     });
   });
@@ -1064,10 +1292,10 @@ export async function searchEmds(query: string): Promise<Emd[]> {
   return emdStore.filter(
     (e) =>
       e.emdNumber.includes(q) ||
-      e.passenger.surname.toUpperCase().includes(q) ||
-      e.passenger.givenName.toUpperCase().includes(q) ||
+      foldIncludes(e.passenger.surname, q) ||
+      foldIncludes(e.passenger.givenName, q) ||
       e.associatedTicket?.includes(q) ||
-      e.coupons.some((c) => c.rfisc.toUpperCase().includes(q) || c.description.toUpperCase().includes(q)),
+      e.coupons.some((c) => c.rfisc.toUpperCase().includes(q) || foldIncludes(c.description, q)),
   );
 }
 
@@ -1154,18 +1382,25 @@ export interface AddEmdInput {
   value: Money;
   idempotencyKey: string;
 }
-export async function addEmd(input: AddEmdInput): Promise<Emd> {
+export function addEmd(input: AddEmdInput): Promise<Emd> {
+  return inFlight("addEmd", input.idempotencyKey, () => addEmdRun(input));
+}
+async function addEmdRun(input: AddEmdInput): Promise<Emd> {
   await delay(600);
   // Idempotency: aynı key → tam olarak aynı EMD (fuzzy find değil; standalone'da undefined dönüp crash etmesin).
   const priorEmd = opKeys.get(input.idempotencyKey);
   if (priorEmd) return emdStore.find((e) => e.emdNumber === priorEmd)!;
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
+  if (!Number.isFinite(input.value.amount) || input.value.amount <= 0)
+    throw new DomainError("EMD tutarı sıfırdan büyük olmalı.", "The EMD amount must be greater than zero.");
+  if (!input.rfisc.trim() || !input.description.trim())
+    throw new DomainError("EMD için hizmet kodu (RFISC) ve açıklama zorunlu (Ch 5).", "An EMD needs a service code (RFISC) and a description (Ch 5).");
   // EMD-A doğrulaması (Ch 5.8): bağlanılan ET kuponu var olmalı ve FINAL statüde OLMAMALI.
   if (input.type === "A") {
     const target = t.coupons.find((c) => c.seq === input.couponSeq);
-    if (!target) throw new DomainError(`Kupon #${input.couponSeq ?? "?"} bu bilette yok — EMD-A bağlanamaz (Ch 5).`);
-    if (isFinal(target.status)) throw new DomainError(`Kupon #${target.seq} final statüde (${target.status}) — EMD-A kesilemez (5.8).`);
+    if (!target) throw new DomainError(`Kupon #${input.couponSeq ?? "?"} bu bilette yok — EMD-A bağlanamaz (Ch 5).`, `Coupon #${input.couponSeq ?? "?"} is not on this ticket — the EMD-A cannot be associated (Ch 5).`);
+    if (isFinal(target.status)) throw new DomainError(`Kupon #${target.seq} final statüde (${target.status}) — EMD-A kesilemez (5.8).`, `Coupon #${target.seq} is in a final status (${target.status}) — an EMD-A cannot be issued (5.8).`);
   }
   const emd: Emd = {
     emdNumber: buildTicketNumber("235", String(emdSerial++)),
@@ -1205,20 +1440,24 @@ function emdEvent(e: Emd, ev: LifecycleEvent): void {
   e.history = [...(e.history ?? []), ev];
 }
 
-export async function voidEmd(input: EmdOpInput): Promise<Emd> {
+export function voidEmd(input: EmdOpInput): Promise<Emd> {
+  return inFlight("voidEmd", input.idempotencyKey, () => voidEmdRun(input));
+}
+async function voidEmdRun(input: EmdOpInput): Promise<Emd> {
   await delay(550);
   const e = emdStore.find((x) => x.emdNumber === input.emdNumber);
-  if (!e) throw new DomainError("EMD bulunamadı.");
+  if (!e) throw new DomainError("EMD bulunamadı.", "EMD not found.");
   if (opKeys.has(input.idempotencyKey)) return e;
   // 5.5 "V": TÜM satış işleminin iptali → tüm kuponlar açık olmalı.
   const notOpen = e.coupons.filter((c) => c.status !== "O");
   if (notOpen.length)
-    throw new DomainError(`Void için EMD'nin tüm kuponları 'O' olmalı. Engel: ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")} (5.5).`);
-  assertPeriodOpen(e.issuedAt, "EMD void"); // kapanmış dönemde belge statüsü değişmez
+    throw new DomainError(`Void için EMD'nin tüm kuponları 'O' olmalı. Engel: ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")} (5.5).`, `Void requires all EMD coupons to be 'O'. Blocking: ${notOpen.map((c) => `#${c.seq}(${c.status})`).join(", ")} (5.5).`);
+  assertPeriodOpen(e.issuedAt, "EMD void", "EMD void"); // kapanmış dönemde belge statüsü değişmez
   // 5.5 "V": yalnız Validating Carrier'ın raporlama dönemi içinde.
   if (!inCurrentReportingPeriod(e.issuedAt))
     throw new DomainError(
       `EMD ${reportingPeriodId(e.issuedAt)} döneminde kesilmiş; void yalnız kesim döneminde mümkündür — iade (refund) kullanın (5.5).`,
+      `The EMD was issued in period ${reportingPeriodId(e.issuedAt)}; void is possible only within the issuing period — use a refund (5.5).`,
     );
   e.coupons.forEach((c) => { c.status = applyTransition(c.status, "V"); });
   const voidMoney = { currency: e.total.currency, gross: e.total.amount };
@@ -1229,14 +1468,17 @@ export async function voidEmd(input: EmdOpInput): Promise<Emd> {
   return e;
 }
 
-export async function refundEmd(input: EmdOpInput): Promise<Emd> {
+export function refundEmd(input: EmdOpInput): Promise<Emd> {
+  return inFlight("refundEmd", input.idempotencyKey, () => refundEmdRun(input));
+}
+async function refundEmdRun(input: EmdOpInput): Promise<Emd> {
   await delay(550);
   const e = emdStore.find((x) => x.emdNumber === input.emdNumber);
-  if (!e) throw new DomainError("EMD bulunamadı.");
+  if (!e) throw new DomainError("EMD bulunamadı.", "EMD not found.");
   if (opKeys.has(input.idempotencyKey)) return e;
   const eligible = e.coupons.filter((c) => isRefundable(c.status));
   if (!eligible.length)
-    throw new DomainError(`İadeye uygun EMD kuponu yok — kuponlar O/A/Y olmalı (5.5).`);
+    throw new DomainError(`İadeye uygun EMD kuponu yok — kuponlar O/A/Y olmalı (5.5).`, `No EMD coupon is eligible for refund — coupons must be O/A/Y (5.5).`);
   eligible.forEach((c) => { c.status = applyTransition(c.status, "R"); });
   const refundedValue = eligible.reduce((sum, c) => sum + c.value.amount, 0);
   const refundMoney = { currency: e.total.currency, gross: refundedValue, refundType: "voluntary" as const };
@@ -1317,12 +1559,12 @@ export async function advanceCouponStatus(ticketNumber: string, couponSeq: numbe
   if (to === "C" || to === "L" || to === "F") {
     const openBefore = t.coupons.filter((x) => x.seq < couponSeq && x.status === "O");
     if (openBefore.length) {
-      throw new DomainError(`Kuponlar sırayla kullanılır (out of sequence) — önce kupon #${openBefore[0].seq} (O) işlem görmeli.`);
+      throw new DomainError(`Kuponlar sırayla kullanılır (out of sequence) — önce kupon #${openBefore[0].seq} (O) işlem görmeli.`, `Coupons are used in sequence (out of sequence) — coupon #${openBefore[0].seq} (O) must be processed first.`);
     }
   }
   // 1.1.4.1 "F": Flown statüsünü YALNIZ kontrolü elinde tutan taşıyıcı yazabilir.
   if (to === "F" && t.control.holder !== SESSION_CARRIER)
-    throw new DomainError(`Flown statüsünü yalnız kontrolü elinde tutan taşıyıcı yazabilir — kontrol ${t.control.holder}'da (1.1.4.1).`);
+    throw new DomainError(`Flown statüsünü yalnız kontrolü elinde tutan taşıyıcı yazabilir — kontrol ${t.control.holder}'da (1.1.4.1).`, `Only the carrier holding control can set Flown status — control is with ${t.control.holder} (1.1.4.1).`);
 
   c.status = applyTransition(c.status, to);
   // 1.1.4.1: A/C/L/I kontrol süresini başlatır ya da uzatır.
@@ -1353,12 +1595,19 @@ export async function advanceCouponStatus(ticketNumber: string, couponSeq: numbe
  * statüyü link izni beklemeden yerelde günceller. Kupon zincirinin ilk halkası
  * buydu ve hiçbir ekrandan yazılamıyordu.
  */
-export async function takeAirportControl(ticketNumber: string, couponSeq: number): Promise<void> {
+/**
+ * Havalimanı kontrolünü al (O→A). Toplu çağrıldığı için hata fırlatmaz, ne
+ * olduğunu döner: kontrol başka taşıyıcıdaysa (1.1.5.3) kupon A'ya GEÇMEZ —
+ * kontrolü yalnız o anki sahibi devredebilir.
+ */
+export type AirportControlResult = "taken" | "skipped" | "foreign";
+export async function takeAirportControl(ticketNumber: string, couponSeq: number): Promise<AirportControlResult> {
   await delay(150);
   const t = store.find((x) => x.ticketNumber === ticketNumber);
   const c = t?.coupons.find((x) => x.seq === couponSeq);
-  if (!t || !c) return;
-  if (c.status !== "O") return; // zaten kontrolde ya da ilerlemiş
+  if (!t || !c) return "skipped";
+  if (c.status !== "O") return "skipped"; // zaten kontrolde ya da ilerlemiş
+  if (t.control.holder !== SESSION_CARRIER) return "foreign";
   c.status = applyTransition(c.status, "A");
   const now = new Date().toISOString();
   t.control = {
@@ -1372,6 +1621,7 @@ export async function takeAirportControl(ticketNumber: string, couponSeq: number
     status: "A",
   }));
   emitStatusUpdate(t, couponSeq, "A");
+  return "taken";
 }
 
 // =====================================================================
@@ -1389,18 +1639,21 @@ export interface SuspendInput {
   idempotencyKey: string;
 }
 
-export async function suspendCoupons(input: SuspendInput): Promise<Ticket> {
+export function suspendCoupons(input: SuspendInput): Promise<Ticket> {
+  return inFlight("suspendCoupons", input.idempotencyKey, () => suspendCouponsRun(input));
+}
+async function suspendCouponsRun(input: SuspendInput): Promise<Ticket> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
-  assertControl(t, "Askıya alma");
-  if (!input.reason.trim()) throw new DomainError("Askıya alma gerekçesi zorunlu (denetim kaydı).");
+  assertControl(t, "Askıya alma", "Suspension");
+  if (!input.reason.trim()) throw new DomainError("Askıya alma gerekçesi zorunlu (denetim kaydı).", "A suspension reason is required (audit record).");
 
   const targets = t.coupons.filter((c) => input.couponSeqs.includes(c.seq));
-  if (!targets.length) throw new DomainError("Askıya alınacak kupon seçilmedi.");
+  if (!targets.length) throw new DomainError("Askıya alınacak kupon seçilmedi.", "No coupon selected for suspension.");
   const bad = targets.find((c) => !canTransition(c.status, "S"));
-  if (bad) throw new DomainError(`Kupon #${bad.seq} (${bad.status}) askıya alınamaz — yalnız "O" ve "A" kuponlar askıya alınır.`);
+  if (bad) throw new DomainError(`Kupon #${bad.seq} (${bad.status}) askıya alınamaz — yalnız "O" ve "A" kuponlar askıya alınır.`, `Coupon #${bad.seq} (${bad.status}) cannot be suspended — only "O" and "A" coupons can be suspended.`);
 
   for (const c of targets) {
     c.status = applyTransition(c.status, "S");
@@ -1416,17 +1669,20 @@ export async function suspendCoupons(input: SuspendInput): Promise<Ticket> {
 }
 
 /** Askıdan çıkar (S→O) — inceleme kapandı, kupon yeniden kullanılabilir. */
-export async function releaseCoupons(input: SuspendInput): Promise<Ticket> {
+export function releaseCoupons(input: SuspendInput): Promise<Ticket> {
+  return inFlight("releaseCoupons", input.idempotencyKey, () => releaseCouponsRun(input));
+}
+async function releaseCouponsRun(input: SuspendInput): Promise<Ticket> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
-  assertControl(t, "Askıdan çıkarma");
+  assertControl(t, "Askıdan çıkarma", "Release from suspension");
 
   const targets = t.coupons.filter((c) => input.couponSeqs.includes(c.seq));
-  if (!targets.length) throw new DomainError("Serbest bırakılacak kupon seçilmedi.");
+  if (!targets.length) throw new DomainError("Serbest bırakılacak kupon seçilmedi.", "No coupon selected for release.");
   const bad = targets.find((c) => c.status !== "S");
-  if (bad) throw new DomainError(`Kupon #${bad.seq} askıda değil (${bad.status}).`);
+  if (bad) throw new DomainError(`Kupon #${bad.seq} askıda değil (${bad.status}).`, `Coupon #${bad.seq} is not suspended (${bad.status}).`);
 
   for (const c of targets) {
     c.status = applyTransition(c.status, "O");
@@ -1458,14 +1714,17 @@ export interface BaggageInput {
   idempotencyKey: string;
 }
 
-export async function recordBaggage(input: BaggageInput): Promise<Ticket> {
+export function recordBaggage(input: BaggageInput): Promise<Ticket> {
+  return inFlight("recordBaggage", input.idempotencyKey, () => recordBaggageRun(input));
+}
+async function recordBaggageRun(input: BaggageInput): Promise<Ticket> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
   const c = t.coupons.find((x) => x.seq === input.couponSeq);
-  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`);
-  if (isFinal(c.status)) throw new DomainError(`Kupon #${c.seq} final statüde (${c.status}); bagaj yazılamaz.`);
+  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`, `Coupon #${input.couponSeq} does not exist.`);
+  if (isFinal(c.status)) throw new DomainError(`Kupon #${c.seq} final statüde (${c.status}); bagaj yazılamaz.`, `Coupon #${c.seq} is in a final status (${c.status}); baggage cannot be recorded.`);
 
   c.baggage = {
     ...c.baggage,
@@ -1480,7 +1739,9 @@ export async function recordBaggage(input: BaggageInput): Promise<Ticket> {
   const parts: string[] = [];
   if (input.checkedPieces != null) parts.push(`${input.checkedPieces} PCS`);
   if (input.checkedWeight != null) parts.push(`${input.checkedWeight} ${input.weightUnit ?? "K"}`);
-  t.history.push(event("CouponAdded", {
+  // Kendi olay tipi: "CouponAdded" kesim patlamasıyla birleşip zaman
+  // çizgisinde hayalet bir "Bilet kesildi" satırı üretiyordu.
+  t.history.push(event("BaggageRecorded", {
     couponSeq: c.seq,
     detail: `Bagaj kaydı: ${parts.join(" · ") || "hak güncellendi"}`,
     status: c.status,
@@ -1500,21 +1761,32 @@ export interface IrropInput {
   newFlight: { carrier: string; flightNumber: string; date: string };
   idempotencyKey: string;
 }
-export async function irropReroute(input: IrropInput): Promise<{ ticket: Ticket; fim: string }> {
+export function irropReroute(input: IrropInput): Promise<{ ticket: Ticket; fim: string }> {
+  return inFlight("irropReroute", input.idempotencyKey, () => irropRerouteRun(input));
+}
+async function irropRerouteRun(input: IrropInput): Promise<{ ticket: Ticket; fim: string }> {
   await delay(750);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   const prevFim = opKeys.get(input.idempotencyKey);
   if (prevFim) return { ticket: t, fim: prevFim };
-  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.");
+  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.", "Select at least one coupon.");
+  const carrier = (input.newFlight.carrier || input.endorseTo).trim().toUpperCase();
+  if (!/^[A-Z0-9]{2}$/.test(input.endorseTo.trim().toUpperCase()) || !/^[A-Z0-9]{2}$/.test(carrier))
+    throw new DomainError("Ciro edilen taşıyıcı 2 karakterli taşıyıcı kodu olmalı (ör. LH).", "The endorsee must be a 2-character carrier code (e.g. LH).");
+  if (!/\d{1,4}/.test(input.newFlight.flightNumber))
+    throw new DomainError("Yeni uçuş numarası girilmeli.", "Enter the new flight number.");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.newFlight.date) || Number.isNaN(Date.parse(input.newFlight.date)))
+    throw new DomainError("Yeni uçuş tarihi girilmeli.", "Enter the new flight date.");
   for (const seq of input.couponSeqs) {
     const c = t.coupons.find((x) => x.seq === seq);
-    if (!c) throw new DomainError(`Kupon #${seq} yok.`);
+    if (!c) throw new DomainError(`Kupon #${seq} yok.`, `Coupon #${seq} does not exist.`);
     if (!["O", "A", "I"].includes(c.status))
-      throw new DomainError(`Kupon #${seq} (${c.status}) IRROP'a uygun değil — O/A/I olmalı.`);
+      throw new DomainError(`Kupon #${seq} (${c.status}) IRROP'a uygun değil — O/A/I olmalı.`, `Coupon #${seq} (${c.status}) is not eligible for IRROP — it must be O/A/I.`);
   }
   const fim = "FIM-" + crypto.randomUUID().slice(0, 6).toUpperCase();
-  const flight = `${input.endorseTo}${input.newFlight.flightNumber.replace(/^\D+/, "")}`;
+  // Yeni uçuş, girilen taşıyıcı ve tarihle kayda geçer (önce ikisi de yok sayılıyordu).
+  const flight = `${carrier}${input.newFlight.flightNumber.replace(/^\D+/, "")} ${input.newFlight.date}`;
   input.couponSeqs.forEach((seq) => {
     const c = t.coupons.find((x) => x.seq === seq)!;
     if (c.status === "O" || c.status === "A") c.status = applyTransition(c.status, "I"); // önce IRROP
@@ -1542,17 +1814,20 @@ export interface NoShowInput {
   couponSeqs: number[];
   idempotencyKey: string;
 }
-export async function markNoShow(input: NoShowInput): Promise<Ticket> {
+export function markNoShow(input: NoShowInput): Promise<Ticket> {
+  return inFlight("markNoShow", input.idempotencyKey, () => markNoShowRun(input));
+}
+async function markNoShowRun(input: NoShowInput): Promise<Ticket> {
   await delay(500);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
-  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.");
+  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.", "Select at least one coupon.");
   for (const seq of input.couponSeqs) {
     const c = t.coupons.find((x) => x.seq === seq);
-    if (!c) throw new DomainError(`Kupon #${seq} yok.`);
+    if (!c) throw new DomainError(`Kupon #${seq} yok.`, `Coupon #${seq} does not exist.`);
     if (c.status !== "O" && c.status !== "A")
-      throw new DomainError(`Kupon #${seq} (${c.status}) no-show işaretine uygun değil — O/A olmalı.`);
+      throw new DomainError(`Kupon #${seq} (${c.status}) no-show işaretine uygun değil — O/A olmalı.`, `Coupon #${seq} (${c.status}) cannot be marked no-show — it must be O/A.`);
   }
   input.couponSeqs.forEach((seq) => {
     const c = t.coupons.find((x) => x.seq === seq)!;
@@ -1579,18 +1854,26 @@ export interface RevalidateInput {
   newArrival?: string; // ISO (ops.)
   idempotencyKey: string;
 }
-export async function revalidateCoupon(input: RevalidateInput): Promise<Ticket> {
+export function revalidateCoupon(input: RevalidateInput): Promise<Ticket> {
+  return inFlight("revalidateCoupon", input.idempotencyKey, () => revalidateCouponRun(input));
+}
+async function revalidateCouponRun(input: RevalidateInput): Promise<Ticket> {
   await delay(550);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
   const c = t.coupons.find((x) => x.seq === input.couponSeq);
-  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`);
+  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`, `Coupon #${input.couponSeq} does not exist.`);
   if (c.status !== "O" && c.status !== "A")
-    throw new DomainError(`Kupon #${input.couponSeq} (${c.status}) revalidation'a uygun değil — O/A olmalı.`);
+    throw new DomainError(`Kupon #${input.couponSeq} (${c.status}) revalidation'a uygun değil — O/A olmalı.`, `Coupon #${input.couponSeq} (${c.status}) is not eligible for revalidation — it must be O/A.`);
   // Revalidation bileti yeniden kesmez: geçerlilik sonu olduğu gibi kalır.
   const expiredMsg = changeBlockedByValidity(t, demoNow()) ?? beyondValidity(t, input.newDeparture, demoNow());
-  if (expiredMsg) throw new DomainError(expiredMsg);
+  if (expiredMsg) {
+    throw new DomainError(
+      expiredMsg,
+      changeBlockedByValidity(t, demoNow(), "en") ?? beyondValidity(t, input.newDeparture, demoNow(), "en"),
+    );
+  }
   const flight = input.newFlightNumber.trim().toUpperCase();
   const old = `${c.segment.flightNumber} ${c.segment.departure.slice(0, 16).replace("T", " ")}`;
   // Rota/fiyat değişmez — yalnızca uçuş no + tarih/saat güncellenir; statü O korunur.
@@ -1616,19 +1899,22 @@ export interface PrintToPaperInput {
   reason?: string;
   idempotencyKey: string;
 }
-export async function printToPaper(input: PrintToPaperInput): Promise<Ticket> {
+export function printToPaper(input: PrintToPaperInput): Promise<Ticket> {
+  return inFlight("printToPaper", input.idempotencyKey, () => printToPaperRun(input));
+}
+async function printToPaperRun(input: PrintToPaperInput): Promise<Ticket> {
   await delay(600);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t; // idempotent
-  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.");
-  assertControl(t, "Kağıda basma"); // 1.3.3/1.3.4: basan taşıyıcı kuponun kontrolünde olmalı
+  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.", "Select at least one coupon.");
+  assertControl(t, "Kağıda basma", "Print to paper"); // 1.3.3/1.3.4: basan taşıyıcı kuponun kontrolünde olmalı
   for (const seq of input.couponSeqs) {
     const c = t.coupons.find((x) => x.seq === seq);
-    if (!c) throw new DomainError(`Kupon #${seq} yok.`);
+    if (!c) throw new DomainError(`Kupon #${seq} yok.`, `Coupon #${seq} does not exist.`);
     // Handbook 1.3.3: print işlemi için kupon "open for use" olmalı — YALNIZ O.
     if (c.status !== "O")
-      throw new DomainError(`Kupon #${seq} (${c.status}) kağıda basıma uygun değil — O olmalı (1.3.3).`);
+      throw new DomainError(`Kupon #${seq} (${c.status}) kağıda basıma uygun değil — O olmalı (1.3.3).`, `Coupon #${seq} (${c.status}) is not eligible for print to paper — it must be O (1.3.3).`);
   }
   const printed: Coupon[] = [];
   input.couponSeqs.forEach((seq) => {
@@ -1665,22 +1951,29 @@ export interface PrintExchangeInput {
   reason?: string;
   idempotencyKey: string;
 }
-export async function printExchange(input: PrintExchangeInput): Promise<Ticket> {
+export function printExchange(input: PrintExchangeInput): Promise<Ticket> {
+  return inFlight("printExchange", input.idempotencyKey, () => printExchangeRun(input));
+}
+async function printExchangeRun(input: PrintExchangeInput): Promise<Ticket> {
   await delay(650);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
-  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.");
-  const doc = input.paperDocumentNumber.trim();
-  if (doc.length < 6) throw new DomainError("Kağıt belge numarası eksik.");
+  if (!input.couponSeqs.length) throw new DomainError("En az bir kupon seç.", "Select at least one coupon.");
+  const doc = input.paperDocumentNumber.replace(/[\s-]/g, "");
+  if (!/^\d{13}$/.test(doc))
+    throw new DomainError(
+      "Kağıt belge numarası geçersiz — 13 haneli belge numarası girin (taşıyıcı kodu + seri, 1.3.4).",
+      "Invalid paper document number — enter the 13-digit document number (carrier code + serial, 1.3.4).",
+    );
   if (doc === t.ticketNumber)
-    throw new DomainError("Kağıt belge numarası ET numarasıyla AYNI — bu print exchange değil, print to paper'dır (1.3.3/1.3.4).");
-  assertControl(t, "Print exchange");
+    throw new DomainError("Kağıt belge numarası ET numarasıyla AYNI — bu print exchange değil, print to paper'dır (1.3.3/1.3.4).", "The paper document number is the SAME as the ET number — this is print to paper, not print exchange (1.3.3/1.3.4).");
+  assertControl(t, "Print exchange", "Print exchange");
   for (const seq of input.couponSeqs) {
     const c = t.coupons.find((x) => x.seq === seq);
-    if (!c) throw new DomainError(`Kupon #${seq} yok.`);
+    if (!c) throw new DomainError(`Kupon #${seq} yok.`, `Coupon #${seq} does not exist.`);
     if (c.status !== "O")
-      throw new DomainError(`Kupon #${seq} (${c.status}) print exchange'e uygun değil — "open for use" olmalı (1.3.4).`);
+      throw new DomainError(`Kupon #${seq} (${c.status}) print exchange'e uygun değil — "open for use" olmalı (1.3.4).`, `Coupon #${seq} (${c.status}) is not eligible for print exchange — it must be "open for use" (1.3.4).`);
   }
   const affected: Coupon[] = [];
   input.couponSeqs.forEach((seq) => {
@@ -1714,10 +2007,13 @@ export interface EndorseInput {
   endorseToCarrier?: string;
   idempotencyKey: string;
 }
-export async function endorseTicket(input: EndorseInput): Promise<Ticket> {
+export function endorseTicket(input: EndorseInput): Promise<Ticket> {
+  return inFlight("endorseTicket", input.idempotencyKey, () => endorseTicketRun(input));
+}
+async function endorseTicketRun(input: EndorseInput): Promise<Ticket> {
   await delay(500);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
   t.endorsement = input.endorsement + (input.endorseToCarrier ? ` / ${input.endorseToCarrier}` : "");
   t.history.push(
@@ -1736,14 +2032,17 @@ export interface ExtendValidityInput extends IllnessInput {
   ticketNumber: string;
   idempotencyKey: string;
 }
-export async function extendValidity(input: ExtendValidityInput): Promise<Ticket> {
+export function extendValidity(input: ExtendValidityInput): Promise<Ticket> {
+  return inFlight("extendValidity", input.idempotencyKey, () => extendValidityRun(input));
+}
+async function extendValidityRun(input: ExtendValidityInput): Promise<Ticket> {
   await delay(450);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
   // Hesap sunucuda yeniden yapılır — arayüzün önizlemesine güvenilmez.
   const r = illnessExtension(t, input, demoNow());
-  if ("error" in r) throw new DomainError(r.error);
+  if ("error" in r) throw new DomainError(r.error, r.errorEn);
   const before = ticketValidity(t, demoNow()).until.slice(0, 10);
   t.validityExtension = {
     reason: "illness",
@@ -1779,18 +2078,21 @@ export interface NameCorrectionInput {
  * yolcu) reddedilir. Kontrol, geçerlilik ve kupon kuralları exchange
  * komutunun kapılarından geçer.
  */
-export async function correctName(input: NameCorrectionInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
+export function correctName(input: NameCorrectionInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
+  return inFlight("correctName", input.idempotencyKey, () => correctNameRun(input));
+}
+async function correctNameRun(input: NameCorrectionInput): Promise<{ oldTicket: Ticket; newTicket: Ticket }> {
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) {
     const tn = opKeys.get(input.idempotencyKey)!;
     return { oldTicket: t, newTicket: store.find((x) => x.ticketNumber === tn)! };
   }
   const to = { surname: input.surname.trim().toUpperCase(), givenName: input.givenName.trim().toUpperCase(), title: input.title };
   const verdict = classifyNameChange(t.passenger, to, input.reason, input.legalDocRef);
-  if (!verdict.allowed) throw new DomainError(verdict.message);
+  if (!verdict.allowed) throw new DomainError(verdict.message, verdict.messageEn);
   const open = t.coupons.filter((c) => c.status === "O");
-  if (!open.length) throw new DomainError("Ad düzeltme için açık (O) kupon yok — kullanılmış belgenin adı değiştirilemez.");
+  if (!open.length) throw new DomainError("Ad düzeltme için açık (O) kupon yok — kullanılmış belgenin adı değiştirilemez.", "No open (O) coupon for a name correction — the name on a used document cannot be changed.");
 
   const from = t.passenger;
   const note = `NAME CORRECTION · ${from.surname}/${from.givenName} → ${to.surname}/${to.givenName}`;
@@ -1799,6 +2101,7 @@ export async function correctName(input: NameCorrectionInput): Promise<{ oldTick
     newSegments: open.map((c) => c.segment),
     adc: { amount: 0, currency: t.fare.total.currency },
     note,
+    nameCorrection: true,
     idempotencyKey: `${input.idempotencyKey}:reissue`,
   });
   newTicket.passenger = { ...from, ...to, title: to.title ?? from.title };
@@ -1830,7 +2133,7 @@ export interface ScheduleChangeInput {
 export interface ScheduleChangeResult {
   minutes: number;
   applied: { ticketNumber: string; severity: ChangeSeverity }[];
-  skipped: { ticketNumber: string; reason: string }[];
+  skipped: { ticketNumber: string; reason: string; reasonEn: string }[];
 }
 /**
  * Seferin saatini etkilenen TÜM biletlere uygular. Her bilet kendi alt
@@ -1838,12 +2141,19 @@ export interface ScheduleChangeResult {
  * uygulanmış biletler ikinci kez kaydırılmaz. Kontrolü partnerde olan bilet
  * atlanır ve gerekçesiyle raporlanır (kuyruğa düşer).
  */
-export async function applyScheduleChange(input: ScheduleChangeInput): Promise<ScheduleChangeResult> {
+/** Aynı işlem anahtarı → aynı sonuç: tekrar çağrıda kuponlar zaten kaymış olduğu için yeniden hesaplanmaz. */
+const skchgResults = new Map<string, ScheduleChangeResult>();
+export function applyScheduleChange(input: ScheduleChangeInput): Promise<ScheduleChangeResult> {
+  return inFlight("applyScheduleChange", input.idempotencyKey, () => applyScheduleChangeRun(input));
+}
+async function applyScheduleChangeRun(input: ScheduleChangeInput): Promise<ScheduleChangeResult> {
   await delay(500);
+  const prior = skchgResults.get(input.idempotencyKey);
+  if (prior) return prior;
   const targets = affectedTickets(store, input.flightNumber, input.date);
   const result: ScheduleChangeResult = { minutes: 0, applied: [], skipped: [] };
   const newDep = Date.parse(input.newDeparture);
-  if (Number.isNaN(newDep)) throw new DomainError("Yeni kalkış saati geçersiz.");
+  if (Number.isNaN(newDep)) throw new DomainError("Yeni kalkış saati geçersiz.", "The new departure time is invalid.");
   for (const t of targets) {
     const sub = `${input.idempotencyKey}:${t.ticketNumber}`;
     const coupons = t.coupons.filter((c) => (c.status === "O" || c.status === "A") && couponOnFlight(c.segment, input.flightNumber, input.date));
@@ -1852,7 +2162,11 @@ export async function applyScheduleChange(input: ScheduleChangeInput): Promise<S
     const severity = classifyScheduleChange(minutes, isInternationalSegment(coupons[0].segment));
     if (opKeys.has(sub)) { result.applied.push({ ticketNumber: t.ticketNumber, severity }); continue; }
     if (t.control.holder !== SESSION_CARRIER) {
-      result.skipped.push({ ticketNumber: t.ticketNumber, reason: `Kupon kontrolü ${t.control.holder}'da (1.1.5.3)` });
+      result.skipped.push({
+        ticketNumber: t.ticketNumber,
+        reason: `Kupon kontrolü ${t.control.holder}'da (1.1.5.3)`,
+        reasonEn: `Coupon control is with ${t.control.holder} (1.1.5.3)`,
+      });
       continue;
     }
     for (const c of coupons) {
@@ -1878,6 +2192,7 @@ export async function applyScheduleChange(input: ScheduleChangeInput): Promise<S
     opKeys.set(sub, t.ticketNumber);
     result.applied.push({ ticketNumber: t.ticketNumber, severity });
   }
+  skchgResults.set(input.idempotencyKey, result);
   return result;
 }
 
@@ -1890,10 +2205,10 @@ function oldDepOf(s: Segment, minutes: number): string {
 export async function acknowledgeScheduleChange(input: { ticketNumber: string; couponSeq: number; idempotencyKey: string }): Promise<Ticket> {
   await delay(300);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   if (opKeys.has(input.idempotencyKey)) return t;
   const c = t.coupons.find((x) => x.seq === input.couponSeq);
-  if (!c || c.segment.reservationStatus !== "TK") throw new DomainError("Bu kuponda bildirilecek tarife değişikliği yok.");
+  if (!c || c.segment.reservationStatus !== "TK") throw new DomainError("Bu kuponda bildirilecek tarife değişikliği yok.", "There is no schedule change to acknowledge on this coupon.");
   c.segment = { ...c.segment, reservationStatus: "HK" };
   t.history.push(event("ScheduleChangeAcknowledged", { couponSeq: c.seq, detail: `Yolcu yeni saati kabul etti · ${c.segment.flightNumber} TK→HK`, status: c.status }));
   opKeys.set(input.idempotencyKey, t.ticketNumber);
@@ -1923,12 +2238,15 @@ export interface RightsInput {
  * Hesap sunucuda kuponun kendi rotası ve işleten taşıyıcısıyla yeniden
  * yapılır; arayüzün gönderdiği tutara güvenilmez.
  */
-export async function recordRightsAssessment(input: RightsInput): Promise<{ ticket: Ticket; assessment: RightsAssessment }> {
+export function recordRightsAssessment(input: RightsInput): Promise<{ ticket: Ticket; assessment: RightsAssessment }> {
+  return inFlight("recordRightsAssessment", input.idempotencyKey, () => recordRightsAssessmentRun(input));
+}
+async function recordRightsAssessmentRun(input: RightsInput): Promise<{ ticket: Ticket; assessment: RightsAssessment }> {
   await delay(400);
   const t = store.find((x) => x.ticketNumber === input.ticketNumber);
-  if (!t) throw new DomainError("Bilet bulunamadı.");
+  if (!t) throw new DomainError("Bilet bulunamadı.", "Ticket not found.");
   const c = t.coupons.find((x) => x.seq === input.couponSeq);
-  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`);
+  if (!c) throw new DomainError(`Kupon #${input.couponSeq} yok.`, `Coupon #${input.couponSeq} does not exist.`);
   const assessment = assessRights({
     ...input.disruption,
     origin: c.segment.origin,
@@ -1969,10 +2287,17 @@ export interface CreatePtaInput {
   formOfPayment: Pta["formOfPayment"];
   idempotencyKey: string;
 }
-export async function createPta(input: CreatePtaInput): Promise<Pta> {
+export function createPta(input: CreatePtaInput): Promise<Pta> {
+  return inFlight("createPta", input.idempotencyKey, () => createPtaRun(input));
+}
+async function createPtaRun(input: CreatePtaInput): Promise<Pta> {
   await delay(600);
   const prev = opKeys.get(input.idempotencyKey);
   if (prev) return ptaStore.find((p) => p.ptaReference === prev)!;
+  if (!Number.isFinite(input.amount.amount) || input.amount.amount <= 0)
+    throw new DomainError("PTA tutarı sıfırdan büyük olmalı (Ch 9).", "The PTA amount must be greater than zero (Ch 9).");
+  if (!input.sponsorName.trim() || !input.beneficiaryName.trim() || !input.route.trim())
+    throw new DomainError("PTA için sponsor, yolcu ve güzergâh zorunlu (Ch 9).", "A PTA needs a sponsor, a passenger and a route (Ch 9).");
   const pta: Pta = {
     ptaReference: "PTA" + ptaSerial++,
     sponsorName: input.sponsorName,
@@ -1994,10 +2319,13 @@ export interface IssueAgainstPtaInput {
   ptaReference: string;
   idempotencyKey: string;
 }
-export async function issueAgainstPta(input: IssueAgainstPtaInput): Promise<{ pta: Pta; ticket: Ticket }> {
+export function issueAgainstPta(input: IssueAgainstPtaInput): Promise<{ pta: Pta; ticket: Ticket }> {
+  return inFlight("issueAgainstPta", input.idempotencyKey, () => issueAgainstPtaRun(input));
+}
+async function issueAgainstPtaRun(input: IssueAgainstPtaInput): Promise<{ pta: Pta; ticket: Ticket }> {
   const pta = ptaStore.find((p) => p.ptaReference === input.ptaReference);
-  if (!pta) throw new DomainError("PTA bulunamadı.");
-  if (pta.status !== "open") throw new DomainError(`PTA durumu '${pta.status}' — bilet kesilemez.`);
+  if (!pta) throw new DomainError("PTA bulunamadı.", "PTA not found.");
+  if (pta.status !== "open") throw new DomainError(`PTA durumu '${pta.status}' — bilet kesilemez.`, `PTA status is '${pta.status}' — a ticket cannot be issued.`);
 
   const [origin, destination] = pta.route.split(/\s*→\s*/);
   const [surname, givenName] = pta.beneficiaryName.split("/");
@@ -2042,9 +2370,9 @@ export async function issueAgainstPta(input: IssueAgainstPtaInput): Promise<{ pt
 export async function acknowledgePta(input: { ptaReference: string; by?: string; idempotencyKey: string }): Promise<Pta> {
   await delay(350);
   const pta = ptaStore.find((p) => p.ptaReference === input.ptaReference);
-  if (!pta) throw new DomainError("PTA bulunamadı.");
+  if (!pta) throw new DomainError("PTA bulunamadı.", "PTA not found.");
   if (opKeys.has(input.idempotencyKey)) return pta;
-  if (pta.acknowledgedAt) throw new DomainError("PTA zaten teslim alındı olarak işaretli.");
+  if (pta.acknowledgedAt) throw new DomainError("PTA zaten teslim alındı olarak işaretli.", "The PTA is already marked as received.");
   pta.acknowledgedAt = new Date().toISOString();
   pta.acknowledgedBy = input.by ?? `${pta.pickupLocation} ofisi`;
   opKeys.set(input.idempotencyKey, pta.ptaReference);
@@ -2070,20 +2398,23 @@ export interface RefundPtaInput {
   reason?: string;
   idempotencyKey: string;
 }
-export async function refundPta(input: RefundPtaInput): Promise<Pta> {
+export function refundPta(input: RefundPtaInput): Promise<Pta> {
+  return inFlight("refundPta", input.idempotencyKey, () => refundPtaRun(input));
+}
+async function refundPtaRun(input: RefundPtaInput): Promise<Pta> {
   await delay(600);
   const pta = ptaStore.find((p) => p.ptaReference === input.ptaReference);
-  if (!pta) throw new DomainError("PTA bulunamadı.");
+  if (!pta) throw new DomainError("PTA bulunamadı.", "PTA not found.");
   if (opKeys.has(input.idempotencyKey)) return pta;
-  if (pta.refund) throw new DomainError("Bu PTA için zaten iade belgesi düzenlenmiş.");
-  if (pta.status === "refunded") throw new DomainError("PTA zaten iade edilmiş.");
+  if (pta.refund) throw new DomainError("Bu PTA için zaten iade belgesi düzenlenmiş.", "A refund document has already been issued for this PTA.");
+  if (pta.status === "refunded") throw new DomainError("PTA zaten iade edilmiş.", "The PTA has already been refunded.");
 
   const used = Math.max(0, input.usedValue ?? 0);
-  if (used > pta.amount.amount) throw new DomainError("Kullanılan değer PTA tutarını aşamaz.");
+  if (used > pta.amount.amount) throw new DomainError("Kullanılan değer PTA tutarını aşamaz.", "The used value cannot exceed the PTA amount.");
   const diff = input.amount != null ? input.amount : pta.amount.amount - used;
-  if (diff <= 0) throw new DomainError("İade edilecek fark yok.");
+  if (diff <= 0) throw new DomainError("İade edilecek fark yok.", "There is no difference to refund.");
   if (diff > pta.amount.amount - used)
-    throw new DomainError(`İade farkı kalan değeri aşamaz (kalan ${pta.amount.amount - used} ${pta.amount.currency}).`);
+    throw new DomainError(`İade farkı kalan değeri aşamaz (kalan ${pta.amount.amount - used} ${pta.amount.currency}).`, `The refund difference cannot exceed the remaining value (remaining ${pta.amount.amount - used} ${pta.amount.currency}).`);
 
   const documentType = input.documentType ?? "MCO";
   pta.refund = {

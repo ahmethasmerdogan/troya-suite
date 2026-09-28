@@ -13,6 +13,14 @@ describe("kart numarası maskeleme", () => {
     expect(maskCardInput("42425")).toBe("X2425");
   });
 
+  // Düzeltme (gece denetimi): alan her tuşta maskelenmiş değeri geri alır;
+  // X'ler atılırsa numara tek tek yazılınca "X1234"e çöküyordu.
+  it("tek tek yazıldığında maskelenmiş haneler kaybolmaz", () => {
+    let v = "";
+    for (const d of "4242424242424242") v = maskCardInput(v + d);
+    expect(v).toBe("XXXXXXXXXXXX4242");
+  });
+
   it("rakam olmayan karakterler atılır", () => {
     expect(maskCardInput("4242-4242 4242 4242")).toBe("XXXXXXXXXXXX4242");
   });

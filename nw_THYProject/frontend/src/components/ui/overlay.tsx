@@ -1,7 +1,8 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useDialog } from "@/lib/useDialog";
+import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 import { IconButton } from "./core";
 
@@ -32,6 +33,7 @@ export function Modal({
   footer?: ReactNode;
   width?: "sm" | "md" | "lg";
 }) {
+  const t = useT();
   const panel = useRef<HTMLDivElement>(null);
   useDialog(open, panel, onClose);
   if (!open) return null;
@@ -50,7 +52,7 @@ export function Modal({
             <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-ink">{title}</h2>
             {hint && <p className="mt-0.5 text-[13px] text-ink-2">{hint}</p>}
           </div>
-          <IconButton label="Kapat" size="sm" onClick={onClose}><X size={16} strokeWidth={1.75} /></IconButton>
+          <IconButton label={t("shell.close")} size="sm" onClick={onClose}><X size={16} strokeWidth={1.75} /></IconButton>
         </div>
         <div className="max-h-[70vh] overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
@@ -78,6 +80,7 @@ export function Drawer({
   footer?: ReactNode;
   width?: "md" | "lg";
 }) {
+  const t = useT();
   const panel = useRef<HTMLDivElement>(null);
   useDialog(open, panel, onClose);
   if (!open) return null;
@@ -98,7 +101,7 @@ export function Drawer({
             <h2 className="text-[16px] font-semibold tracking-[-0.01em] text-ink">{title}</h2>
             {hint && <p className="mt-0.5 text-[13px] leading-snug text-ink-2">{hint}</p>}
           </div>
-          <IconButton label="Kapat" size="sm" onClick={onClose}><X size={16} strokeWidth={1.75} /></IconButton>
+          <IconButton label={t("shell.close")} size="sm" onClick={onClose}><X size={16} strokeWidth={1.75} /></IconButton>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">{children}</div>
         {footer && <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3.5">{footer}</div>}
@@ -110,10 +113,31 @@ export function Drawer({
 
 /** Açılır menü kabı — tetikleyiciyi çağıran taraf yerleştirir. */
 export function Menu({ children, align = "right", className }: { children: ReactNode; align?: "left" | "right"; className?: string }) {
+  // Dar ekranda tetikleyici kenara yakınsa menü ekran dışına taşar; açılınca
+  // ölçülür ve 8px kenar payı içine kaydırılır.
+  const ref = useRef<HTMLDivElement>(null);
+  const [shift, setShift] = useState(0);
+  const [maxH, setMaxH] = useState<number>();
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    // Açılış animasyonu ölçeklediği için genişlik offsetWidth'ten alınır.
+    const r = el.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const left = r.left + r.width / 2 - w / 2;
+    const vw = document.documentElement.clientWidth;
+    if (left < 8) setShift(8 - left);
+    else if (left + w > vw - 8) setShift(vw - 8 - (left + w));
+    // Uzun menü ekranın altına taşmaz; kalan yükseklikte kendi içinde kayar.
+    const room = window.innerHeight - r.top - 8;
+    if (el.scrollHeight > room) setMaxH(Math.max(160, room));
+  }, []);
   return (
     <div
+      ref={ref}
+      style={{ translate: shift ? `${shift}px 0` : undefined, maxHeight: maxH }}
       className={cn(
-        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 rounded-lg border border-line bg-panel p-1",
+        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-line bg-panel p-1",
         align === "right" ? "right-0" : "left-0",
         className,
       )}

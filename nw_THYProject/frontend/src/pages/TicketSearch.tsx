@@ -7,6 +7,7 @@ import { searchTickets } from "@/domain/api";
 import type { TicketSummary } from "@/domain/types";
 import { STATUS_META } from "@/domain/couponStatus";
 import { isValidTicketNumber } from "@/domain/ticketNumber";
+import { foldIncludes } from "@/domain/text";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import { RouteCell } from "@/components/domain/RouteCell";
@@ -49,7 +50,7 @@ const FILTERS: { id: string; labelKey: Key; hit: (t: TicketSummary) => boolean }
 
 const ACTION: Record<string, Key> = {
   exchange: "nav.exchange", refund: "nav.refund", void: "nav.void",
-  irrop: "nav.irrop", endorse: "search.action.endorse",
+  irrop: "nav.irrop", endorse: "search.action.endorse", emd: "nav.emd",
 };
 
 const col = createColumnHelper<TicketSummary>();
@@ -80,7 +81,7 @@ export function TicketSearch() {
   const rows = useMemo(() => {
     let r = data ?? [];
     const U = (s: string) => s.trim().toUpperCase();
-    if (adv.surname.trim()) r = r.filter((x) => x.passengerName.toUpperCase().includes(U(adv.surname)));
+    if (adv.surname.trim()) r = r.filter((x) => foldIncludes(x.passengerName, adv.surname));
     if (adv.pnr.trim()) r = r.filter((x) => x.pnr?.toUpperCase().includes(U(adv.pnr)));
     if (adv.origin.trim()) r = r.filter((x) => x.route.split(" → ")[0]?.toUpperCase() === U(adv.origin));
     if (adv.destination.trim()) r = r.filter((x) => x.route.split(" → ").pop()?.toUpperCase() === U(adv.destination));

@@ -29,6 +29,8 @@ export interface FareOffer {
   seatSelection: "included" | "paid";
   /** Personele gösterilecek koltuk hakkı özeti. */
   seatNote: string;
+  /** Aynı özetin İngilizcesi (sunum dili seçer). */
+  seatNoteEn: string;
   /** Bagaj hakkı (kg) — checked baggage. */
   baggageKg: number;
   cabinBaggageKg: number;
@@ -104,7 +106,12 @@ export function routeDistanceKm(legs: QuoteLeg[]): number {
   return legs.filter((l) => l.origin && l.destination).reduce((sum, l) => sum + legDistanceKm(l.origin, l.destination), 0);
 }
 
-function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: number): FareOffer {
+/** Güzergâhın tüm noktaları Türkiye'de mi? KDV md.14: uçlardan biri yurt dışındaysa taşıma istisnadır. */
+function isDomesticRoute(legs: QuoteLeg[]): boolean {
+  return legs.every((l) => airportByCode(l.origin)?.countryCode === "TR" && airportByCode(l.destination)?.countryCode === "TR");
+}
+
+function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: number, domestic: boolean): FareOffer {
   const ecoRef = distanceKm * perKm(distanceKm); // ekonomi referans fiyatı (tek bacak)
   const familyMult = FAMILY_MULT[ft.id] ?? 1;
   const baseOneLeg = ecoRef * CABIN_MULT[ft.cabin] * familyMult;
@@ -113,7 +120,9 @@ function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: 
   // TFC — Handbook 14.2 ülke/kod tablosuna göre (Türkiye: iç hat VQ, dış hat TR)
   // + taşıyıcı kaynaklı YQ + yurt içinde KDV. Kalem bazlı iade edilebilirlik
   // domain/taxCodes.ts'te tanımlıdır; iade hesabı oradan okur.
-  const domesticish = distanceKm < 1500;
+  // İç hat / dış hat ayrımı mesafeden DEĞİL ülkeden gelir: iç hat gidiş-dönüşün
+  // toplam mesafesi 1500 km'yi aşsa da taşıma yurt içidir (VQ + KDV).
+  const domesticish = domestic;
   const cur = "TRY";
   const airportCharge = round((domesticish ? 120 : 520) * legs, 10); // havalimanı hizmet ücreti
   const yqFee = round(base * 0.045, 10); // taşıyıcı ek ücreti (YQ)
@@ -136,6 +145,11 @@ function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: 
     : classicish
       ? "Standart koltuk ücretsiz seçilir"
       : "Koltuk seçimi ücretli (EMD ile)";
+  const seatNoteEn = flexish
+    ? "Whole cabin — front rows & extra legroom included"
+    : classicish
+      ? "Standard seat selection is free"
+      : "Seat selection is paid (via EMD)";
   const milesPct = flexish ? (ft.cabin === "Business" ? 150 : 125) : classicish ? 100 : ft.id.endsWith("-saver") ? 70 : 50;
 
   // Kalan koltuk: ucuz ücretlerde daha az (aciliyet). Deterministik.
@@ -156,6 +170,7 @@ function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: 
     changeable: ft.changeable,
     seatSelection,
     seatNote,
+    seatNoteEn,
     baggageKg: BAGGAGE_KG[ft.id] ?? 20,
     cabinBaggageKg: ft.cabin === "Business" ? 8 : 8,
     milesPct,
@@ -176,7 +191,8 @@ export function computeFareOffers(legs: QuoteLeg[], demandFactor = 1): FareOffer
   const valid = legs.filter((l) => l.origin && l.destination);
   if (valid.length === 0) return [];
   const distanceKm = routeDistanceKm(valid);
-  const offers = FARE_TYPES.map((ft) => offerFor(ft, distanceKm, valid.length, demandFactor));
+  const domestic = isDomesticRoute(valid);
+  const offers = FARE_TYPES.map((ft) => offerFor(ft, distanceKm, valid.length, demandFactor, domestic));
   return offers.sort((a, b) => {
     const ci = CABIN_ORDER.indexOf(a.cabin) - CABIN_ORDER.indexOf(b.cabin);
     if (ci !== 0) return ci;
@@ -219,9 +235,16 @@ export interface PaxFare {
 }
 
 /** Seçilen teklifin bu yolcu tipine düşen ücreti — `base + ΣTFC == total` korunur. */
-export function fareForPtc(offer: FareOffer, ptc: Ptc, issueDateIso = new Date().toISOString()): PaxFare {
+export function fareForPtc(
+  offer: Pick<FareOffer, "baseFare" | "totalTfc" | "total" | "tfcs"> & { vat?: VatBreakdown },
+  ptc: Ptc,
+  issueDateIso = new Date().toISOString(),
+): PaxFare {
   if (ptc === "ADT") {
-    return { baseFare: offer.baseFare, totalTfc: offer.totalTfc, total: offer.total, tfcs: offer.tfcs, vat: offer.vat };
+    return {
+      baseFare: offer.baseFare, totalTfc: offer.totalTfc, total: offer.total, tfcs: offer.tfcs,
+      vat: offer.vat ?? computeVat(0, false, issueDateIso),
+    };
   }
   const cur = offer.baseFare.currency;
   const base = round(offer.baseFare.amount * (1 - CHILD_DISCOUNT), 10);
@@ -229,7 +252,7 @@ export function fareForPtc(offer: FareOffer, ptc: Ptc, issueDateIso = new Date()
     t.code === "YQ" ? { ...t, amount: { amount: round(base * 0.045, 10), currency: cur } } : t);
   const tfcTotal = tfcs.reduce((n, t) => n + t.amount.amount, 0);
   const yq = tfcs.find((t) => t.code === "YQ")?.amount.amount ?? 0;
-  const domestic = offer.vat.regime === "taxable";
+  const domestic = offer.vat?.regime === "taxable";
   return {
     baseFare: { amount: base, currency: cur },
     totalTfc: { amount: tfcTotal, currency: cur },

@@ -7,7 +7,9 @@ import {
   billingBlock, billMemo, disputeMemo, listMemos, memoReasonText, memoTotals, raiseMemo, resolveDispute, withdrawMemo,
   MEMO_REASONS, REVIEW_DAYS, type Memo, type MemoAmounts, type MemoReason, type MemoType,
 } from "@/domain/memos";
-import { getTicket, newIdempotencyKey } from "@/domain/api";
+import { getTicket } from "@/domain/api";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 import { Money } from "@/components/domain/Money";
 import { Chip } from "@/components/layout/views";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/core";
@@ -19,9 +21,10 @@ import { Banner } from "@/components/ui/banner";
 import { toast } from "@/components/ui/toast";
 import { usePerm } from "@/lib/usePerm";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { csvNumber } from "@/lib/csv";
-import { cn, formatDate, formatDateTime } from "@/lib/utils";
+import { cn, formatDate, formatDateTime, parseAmount } from "@/lib/utils";
 
 type Filter = "all" | "review" | "disputed" | "billable" | "billed" | "withdrawn";
 const FILTER_KEY: Record<Filter, Key> = {
@@ -148,6 +151,7 @@ export function Memos() {
 /* --- ayrıntı + akış -------------------------------------------------- */
 function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const { can } = usePerm();
@@ -157,12 +161,12 @@ function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
   const [withdrawText, setWithdrawText] = useState("");
   const by = user?.name ?? "—";
   const done = () => { toast.success(t("memos.toast.done"), m.number); qc.invalidateQueries({ queryKey: ["memos"] }); qc.invalidateQueries({ queryKey: ["memosFor", m.ticketNumber] }); };
-  const fail = (e: Error) => toast.danger(t("memos.toast.failed"), e.message);
+  const fail = (e: Error) => toast.danger(t("memos.toast.failed"), errText(e));
   const dispute = useMutation({ mutationFn: () => disputeMemo(m.id, disputeText), onSuccess: done, onError: fail });
   const resolve = useMutation({ mutationFn: (accept: boolean) => resolveDispute(m.id, accept, by), onSuccess: done, onError: fail });
   const bill = useMutation({ mutationFn: () => billMemo(m.id, by), onSuccess: done, onError: fail });
   const withdraw = useMutation({ mutationFn: () => withdrawMemo(m.id, by, withdrawText), onSuccess: done, onError: fail });
-  const block = billingBlock(m);
+  const block = billingBlock(m, Date.now(), lang);
   const manage = can("adm.manage");
   const cur = m.total.currency;
 
@@ -262,6 +266,7 @@ function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
 /* --- dekont kes ------------------------------------------------------ */
 function RaiseMemoModal({ initialTicket, onClose, onDone }: { initialTicket?: string; onClose: () => void; onDone: (m: Memo) => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const qc = useQueryClient();
@@ -271,17 +276,18 @@ function RaiseMemoModal({ initialTicket, onClose, onDone }: { initialTicket?: st
   const [amounts, setAmounts] = useState<Record<keyof MemoAmounts, string>>({ fare: "", tax: "", commission: "", adminFee: "150" });
   const [note, setNote] = useState("");
   const { data: ticket, isFetching } = useQuery({
-    queryKey: ["ticket", tn], queryFn: () => getTicket(tn), enabled: /^\d{13}$/.test(tn),
+    queryKey: ["ticket", tn], queryFn: async () => (await getTicket(tn)) ?? null, enabled: /^\d{13}$/.test(tn),
   });
-  const num = (v: string) => (v.trim() === "" ? 0 : Number(v.replace(",", ".")));
+  const num = (v: string) => parseAmount(v);
   const parsed: MemoAmounts = { fare: num(amounts.fare), tax: num(amounts.tax), commission: num(amounts.commission), adminFee: type === "ADM" ? num(amounts.adminFee) : 0 };
   const total = parsed.fare + parsed.tax + parsed.commission + parsed.adminFee;
   const setType2 = (x: MemoType) => { setType(x); setReason(MEMO_REASONS[x][0].code); };
 
+  const op = useOpKey();
   const m = useMutation({
-    mutationFn: () => raiseMemo({ type, ticketNumber: tn, reason, amounts: parsed, note, by: user?.name ?? "—", idempotencyKey: newIdempotencyKey() }),
-    onSuccess: (memo) => { toast.success(t("memos.toast.raised"), memo.number); qc.invalidateQueries({ queryKey: ["memos"] }); onDone(memo); },
-    onError: (e: Error) => toast.danger(t("memos.toast.failed"), e.message),
+    mutationFn: () => raiseMemo({ type, ticketNumber: tn, reason, amounts: parsed, note, by: user?.name ?? "—", idempotencyKey: op.key() }),
+    onSuccess: (memo) => { op.rotate(); toast.success(t("memos.toast.raised"), memo.number); invalidateRecords(qc); onDone(memo); },
+    onError: (e: Error) => toast.danger(t("memos.toast.failed"), errText(e)),
   });
 
   const amountField = (k: keyof MemoAmounts, label: Key) => (

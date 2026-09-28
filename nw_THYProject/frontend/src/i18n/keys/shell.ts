@@ -7,12 +7,16 @@
 export const tr = {
   // kabuk — topbar / mobil gezinme
   "shell.menu": "Menü",
+  "shell.denied.title": "Bu ekrana erişim yetkiniz yok",
+  "shell.denied.body": "Bu ekran için gereken yetki rolünüzde yok.",
+  "shell.denied.hint": "Erişim için yöneticinizden rol güncellemesi isteyin.",
   "shell.modules": "Modüller",
   "shell.theme.light": "Açık tema",
   "shell.theme.dark": "Koyu tema",
   "shell.notices.empty": "Açık duyuru yok.",
   "shell.role.demo": "Rol (demo)",
   "shell.recordList": "Kayıt listesi",
+  "shell.close": "Kapat",
 
   // duyuru şeridi + zil
   "shell.notice.critical": "Kritik",
@@ -75,12 +79,16 @@ export const tr = {
 
 export const en: Record<keyof typeof tr, string> = {
   "shell.menu": "Menu",
+  "shell.denied.title": "You are not authorised to open this screen",
+  "shell.denied.body": "Your role does not include the permission this screen requires.",
+  "shell.denied.hint": "Ask your manager for a role update to get access.",
   "shell.modules": "Modules",
   "shell.theme.light": "Light theme",
   "shell.theme.dark": "Dark theme",
   "shell.notices.empty": "No open announcements.",
   "shell.role.demo": "Role (demo)",
   "shell.recordList": "Record list",
+  "shell.close": "Close",
 
   "shell.notice.critical": "Critical",
   "shell.notice.warning": "Warning",

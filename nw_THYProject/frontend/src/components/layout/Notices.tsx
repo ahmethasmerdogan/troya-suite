@@ -9,6 +9,7 @@ import { useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
 import { TONE_DOT, TONE_INK, TONE_WASH, type Tone } from "@/components/ui/pill";
 import { translate, useT } from "@/i18n";
+import { usePerm } from "@/lib/usePerm";
 import { cn } from "@/lib/utils";
 
 /**
@@ -48,10 +49,13 @@ export function useNotices(): Notice[] {
   const { data: revenue = [] } = useQuery({ queryKey: ["revenueAlerts"], queryFn: listRevenueAlerts });
   // Kanal listesi artık dinamik; duyuru şeridi sabit id ile bağlanır.
   const opsChannel = useChat((s) => s.messages[OPS_CHANNEL_ID]);
+  // Uyarı, açtığı ekranı görebilen role gösterilir: HUB uyarıları operasyon,
+  // gelir koruma bulguları gelir görüntüleme yetkisi ister.
+  const { can } = usePerm();
 
   const out: Notice[] = [];
 
-  for (const a of board?.alerts ?? []) {
+  for (const a of can("ops.view") ? board?.alerts ?? [] : []) {
     const txt = opsAlertText(a, lang);
     out.push({
       id: `ops-${a.id}`,
@@ -62,7 +66,7 @@ export function useNotices(): Notice[] {
     });
   }
 
-  for (const r of revenue) {
+  for (const r of can("revenue.view") ? revenue : []) {
     out.push({
       id: `rev-${r.id}`,
       severity: r.severity === "high" ? "critical" : r.severity === "medium" ? "warning" : "info",

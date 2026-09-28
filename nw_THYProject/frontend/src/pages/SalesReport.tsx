@@ -154,6 +154,11 @@ export function SalesReport() {
         return <Money value={r.amount} size="sm" tone={sign < 0 ? "out" : undefined} />;
       },
     }),
+    // Tutar sütunu karışık para birimlidir (JPY, EUR, TRY): dosyada sayı
+    // kalsın diye para birimi ayrı sütunda (ekranda tutarın yanında yazar).
+    col.accessor((r) => r.money?.currency ?? r.amount?.currency ?? "", {
+      id: "currency", header: t("search.col.currency"), meta: { exportOnly: true },
+    }),
   ] as ColumnDef<TransactionRow, unknown>[];
 
   return (
@@ -246,9 +251,10 @@ export function SalesReport() {
             <div className="microlabel mb-2">{t("report.byActor")}</div>
             <div className="flex flex-col gap-1">
               {byActor.map(([actor, v]) => (
-                <div key={actor} className="flex items-baseline justify-between gap-3 text-[12.5px]">
-                  <span className="truncate text-ink-2">{actor}</span>
-                  <span className="num flex-shrink-0 text-ink-3">
+                <div key={actor} className="flex flex-wrap items-baseline justify-between gap-x-3 text-[12.5px]">
+                  <span className="min-w-0 truncate text-ink-2">{actor}</span>
+                  {/* Çok para birimli toplam dar ekranda alt satıra iner, yana taşmaz. */}
+                  <span className="num min-w-0 text-right text-ink-3">
                     {t("report.txCount", { n: v.n })}
                     {[...v.gross.entries()].map(([cur, amt]) => ` · ${amt.toLocaleString(locale())} ${cur}`).join("")}
                   </span>

@@ -24,16 +24,21 @@ import { classifyChange, changeTypeLabel } from "@/domain/changeRules";
 import { quoteReissue } from "@/domain/reissueRules";
 import { RFISC_CATALOG } from "@/domain/mockData";
 import type { Coupon, Segment, Ticket } from "@/domain/types";
+import type { Permission } from "@/domain/auth";
 import { StatusPill } from "@/components/domain/StatusPill";
 import { Money } from "@/components/domain/Money";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/core";
 import { Drawer } from "@/components/ui/overlay";
+import { DayPicker } from "@/components/ui/pickers";
 import { Banner } from "@/components/ui/banner";
 import { Inset, Line, Rule } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
-import { cn, formatDateTime, flightCode, locale } from "@/lib/utils";
+import { cn, formatDateTime, flightCode, locale, parseAmount, toLocalInput } from "@/lib/utils";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 
 /* ====================================================================
    İşlem katmanları — kayıt üzerinde çalışan akışlar.
@@ -48,6 +53,21 @@ export type FlowId =
   | "revalidate" | "print" | "noshow" | "baggage" | "emd" | "bagrecord"
   | "control" | "refundcancel" | "printexchange" | "suspend" | "extend" | "rights" | "namecorr";
 
+/**
+ * Her akışın gerektirdiği yetki — araç çubuğu, "İşlemler" menüsü ve adres
+ * parametresi (`?flow=`) AYNI tablodan okur. Önce `?flow=refund` yetkisiz
+ * personele iade penceresini açıyordu.
+ */
+export const FLOW_PERM: Record<FlowId, Permission> = {
+  exchange: "ticket.exchange", refund: "ticket.refund", void: "ticket.void",
+  irrop: "ticket.irrop", endorse: "ticket.endorse", revalidate: "ticket.revalidate",
+  print: "ticket.print", noshow: "ticket.exchange", baggage: "ticket.emd", emd: "ticket.emd",
+  bagrecord: "ticket.emd", control: "ticket.exchange", refundcancel: "ticket.refund",
+  printexchange: "ticket.print", suspend: "ticket.suspend", extend: "ticket.revalidate",
+  rights: "ticket.irrop", namecorr: "ticket.exchange",
+};
+export const isFlowId = (s: string): s is FlowId => s in FLOW_PERM;
+
 interface Props {
   ticket: Ticket;
   flow: FlowId | null;
@@ -55,27 +75,32 @@ interface Props {
 }
 
 export function TicketFlows({ ticket, flow, onClose }: Props) {
-  return (
-    <>
-      <ExchangeFlow ticket={ticket} open={flow === "exchange"} onClose={onClose} />
-      <RefundFlow ticket={ticket} open={flow === "refund"} onClose={onClose} />
-      <VoidFlow ticket={ticket} open={flow === "void"} onClose={onClose} />
-      <IrropFlow ticket={ticket} open={flow === "irrop"} onClose={onClose} />
-      <EndorseFlow ticket={ticket} open={flow === "endorse"} onClose={onClose} />
-      <RevalidateFlow ticket={ticket} open={flow === "revalidate"} onClose={onClose} />
-      <PrintFlow ticket={ticket} open={flow === "print"} onClose={onClose} />
-      <NoShowFlow ticket={ticket} open={flow === "noshow"} onClose={onClose} />
-      <EmdFlow ticket={ticket} open={flow === "emd" || flow === "baggage"} baggage={flow === "baggage"} onClose={onClose} />
-      <BaggageFlow ticket={ticket} open={flow === "bagrecord"} onClose={onClose} />
-      <ControlFlow ticket={ticket} open={flow === "control"} onClose={onClose} />
-      <RefundCancelFlow ticket={ticket} open={flow === "refundcancel"} onClose={onClose} />
-      <PrintExchangeFlow ticket={ticket} open={flow === "printexchange"} onClose={onClose} />
-      <SuspendFlow ticket={ticket} open={flow === "suspend"} onClose={onClose} />
-      <ExtendValidityFlow ticket={ticket} open={flow === "extend"} onClose={onClose} />
-      <RightsFlow ticket={ticket} open={flow === "rights"} onClose={onClose} />
-      <NameCorrectionFlow ticket={ticket} open={flow === "namecorr"} onClose={onClose} />
-    </>
-  );
+  // YALNIZ açık akış takılır: her açılış güncel biletten taze durumla başlar.
+  // Önce 17 akış hep takılı duruyordu; formlar ilk açılıştaki kuponları
+  // tutuyordu (iade edilmiş kupon exchange'e taşınıyor, revalidation ilk
+  // kuponun uçuşunu ikinciye yazıyordu, ciro IRROP sonrası boş açılıyordu).
+  if (!flow) return null;
+  const p = { ticket, open: true, onClose };
+  switch (flow) {
+    case "exchange": return <ExchangeFlow {...p} />;
+    case "refund": return <RefundFlow {...p} />;
+    case "void": return <VoidFlow {...p} />;
+    case "irrop": return <IrropFlow {...p} />;
+    case "endorse": return <EndorseFlow {...p} />;
+    case "revalidate": return <RevalidateFlow {...p} />;
+    case "print": return <PrintFlow {...p} />;
+    case "noshow": return <NoShowFlow {...p} />;
+    case "emd": case "baggage": return <EmdFlow {...p} baggage={flow === "baggage"} />;
+    case "bagrecord": return <BaggageFlow {...p} />;
+    case "control": return <ControlFlow {...p} />;
+    case "refundcancel": return <RefundCancelFlow {...p} />;
+    case "printexchange": return <PrintExchangeFlow {...p} />;
+    case "suspend": return <SuspendFlow {...p} />;
+    case "extend": return <ExtendValidityFlow {...p} />;
+    case "rights": return <RightsFlow {...p} />;
+    case "namecorr": return <NameCorrectionFlow {...p} />;
+    default: return null;
+  }
 }
 
 // Sözlük anahtarı tutulur, metin değil: dil değişince satır da döner.
@@ -129,21 +154,17 @@ function useToggle(initial: number[] = []) {
 
 function useRefresh() {
   const qc = useQueryClient();
-  return (tn: string) => {
-    qc.invalidateQueries({ queryKey: ["ticket", tn] });
-    qc.invalidateQueries({ queryKey: ["tickets"] });
-    qc.invalidateQueries({ queryKey: ["ticketsAll"] });
-    qc.invalidateQueries({ queryKey: ["emds"] });
-    // Uyarılar artık store'dan türetiliyor — komut sonrası taranmalı.
-    qc.invalidateQueries({ queryKey: ["revenueAlerts"] });
-    qc.invalidateQueries({ queryKey: ["orders"] });
-  };
+  // Bilet ekranının EMD kartı, order detayı, raporlar ve kuyruklar dahil
+  // kayıttan türeyen her şey tazelenir (lib/invalidate).
+  return (_tn: string) => invalidateRecords(qc);
 }
 
 /* --- exchange --------------------------------------------------------- */
 
 function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang); // değişiklik türü ve gerekçesi domainden gelir, dili burada seçilir
   const navigate = useNavigate();
   const refresh = useRefresh();
@@ -154,7 +175,7 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
   // Para hesabını sistem yapar; personel yalnız yeni ücreti girer ve onaylar.
   const rq = quoteReissue({
     ticket,
-    newBaseFare: Number(newFare) || 0,
+    newBaseFare: parseAmount(newFare) || 0,
     newTfcs: ticket.fare.tfcs,
     newSegments: segs,
   });
@@ -164,10 +185,10 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
       oldTicketNumber: ticket.ticketNumber,
       newSegments: segs,
       adc: { amount: rq.adc, currency: ticket.fare.total.currency },
-      newBaseFare: Number(newFare) || 0,
+      newBaseFare: parseAmount(newFare) || 0,
       newTfcs: ticket.fare.tfcs,
       changeType: analysis.type,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
     onSuccess: ({ newTicket }) => {
       toast.success(t("flows.exchange.toastOk"), t("flows.exchange.toastOkBody", { n: newTicket.ticketNumber }));
@@ -176,7 +197,7 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
       setStep(1);
       navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: newTicket.ticketNumber } });
     },
-    onError: (e: Error) => toast.danger(t("flows.exchange.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.exchange.toastFail"), errText(e)),
   });
 
   const setSeg = (i: number, patch: Partial<Segment>) => setSegs((a) => a.map((s, j) => (i === j ? { ...s, ...patch } : s)));
@@ -223,7 +244,7 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
                 <Field label={t("flows.common.newDeparture")}>
                   <Input
                     type="datetime-local"
-                    value={s.departure ? s.departure.slice(0, 16) : ""}
+                    value={s.departure ? toLocalInput(s.departure) : ""}
                     onChange={(e) => {
                       // Boş/yarım değer Date'i patlatır — yok say, eski kalkışı koru.
                       const v = e.target.value;
@@ -322,7 +343,9 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
  * sapma yapacaksa gerekçesini görerek yapar.
  */
 function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang); // vergi adı/gerekçesi domainden gelir, dili burada seçilir
   const refresh = useRefresh();
   const [sel, toggle] = useToggle(ticket.coupons.filter((c) => c.status === "O").map((c) => c.seq));
@@ -344,12 +367,12 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
     couponSeqs: sel,
     refundType,
     reason: refundType === "involuntary" ? reason : undefined,
-    serviceCharge: Number(serviceCharge) || 0,
-    communicationExpenses: Number(comms) || 0,
+    serviceCharge: parseAmount(serviceCharge) || 0,
+    communicationExpenses: parseAmount(comms) || 0,
     taxOnly,
     waiver: waiver || undefined,
   });
-  const amount = manual != null ? Number(manual) || 0 : quote.amount.amount;
+  const amount = manual != null ? parseAmount(manual) || 0 : quote.amount.amount;
   const deviates = manual != null && Math.abs(amount - quote.amount.amount) > 0.5;
   const restricted = /NON[- ]?REF|NONREFUNDABLE/i.test(ticket.endorsement ?? "");
 
@@ -360,15 +383,15 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
       refundAmount: { amount, currency: quote.amount.currency },
       refundType,
       involuntaryReason: refundType === "involuntary" ? reason : undefined,
-      serviceCharge: refundType === "voluntary" ? Number(serviceCharge) || 0 : undefined,
-      communicationExpenses: refundType === "voluntary" ? Number(comms) || 0 : undefined,
-      residual: Number(residual) > 0 ? { amount: Number(residual), currency: quote.amount.currency } : undefined,
+      serviceCharge: refundType === "voluntary" ? parseAmount(serviceCharge) || 0 : undefined,
+      communicationExpenses: refundType === "voluntary" ? parseAmount(comms) || 0 : undefined,
+      residual: parseAmount(residual) > 0 ? { amount: parseAmount(residual), currency: quote.amount.currency } : undefined,
       taxOnly, method, waiver: waiver || undefined,
       restrictionOverride: override || undefined,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
     onSuccess: () => { toast.success(t("flows.refund.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.refund.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.refund.toastFail"), errText(e)),
   });
 
   return (
@@ -544,16 +567,18 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 /* --- iadeyi geri al (12.13.2) ----------------------------------------- */
 
 function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const cancellable = (ticket.refunds ?? []).filter((r) => !r.cancelledAt);
   const [sel, setSel] = useState<string>(cancellable[0]?.id ?? "");
   const [reason, setReason] = useState("");
 
   const run = useMutation({
-    mutationFn: () => refundCancel({ ticketNumber: ticket.ticketNumber, refundId: sel, reason, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => refundCancel({ ticketNumber: ticket.ticketNumber, refundId: sel, reason, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.refundcancel.toastOk"), t("flows.refundcancel.toastOkBody")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.refundcancel.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.refundcancel.toastFail"), errText(e)),
   });
 
   return (
@@ -596,7 +621,9 @@ function RefundCancelFlow({ ticket, open, onClose }: { ticket: Ticket; open: boo
 /* --- kontrol devri (1.1.5.1) ------------------------------------------ */
 
 function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const { data: agreements = [] } = useQuery({ queryKey: ["agreements"], queryFn: listAgreements });
   const [to, setTo] = useState("");
@@ -606,19 +633,19 @@ function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
   const eligible = agreements.filter((a) => a.status === "active" && a.controlTransfer && a.partnerCarrier !== ticket.validatingCarrier);
 
   const grant = useMutation({
-    mutationFn: () => grantControl({ ticketNumber: ticket.ticketNumber, toCarrier: to || eligible[0]?.partnerCarrier, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => grantControl({ ticketNumber: ticket.ticketNumber, toCarrier: to || eligible[0]?.partnerCarrier, idempotencyKey: op.key() }),
     onSuccess: (res) => { toast.success(t("flows.control.grantedTitle"), t("flows.control.grantedBody", { n: res.control.holder })); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.control.grantFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.control.grantFail"), errText(e)),
   });
   const back = useMutation({
-    mutationFn: () => returnControl({ ticketNumber: ticket.ticketNumber, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => returnControl({ ticketNumber: ticket.ticketNumber, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.control.returned")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.control.returnFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.control.returnFail"), errText(e)),
   });
   const ask = useMutation({
-    mutationFn: () => requestControl({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => requestControl({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.control.requested"), t("flows.control.requestedBody")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.control.requestFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.control.requestFail"), errText(e)),
   });
 
   return (
@@ -675,7 +702,9 @@ function ControlFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- print exchange (1.3.4) ------------------------------------------- */
 
 function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [doc, setDoc] = useState("");
@@ -683,10 +712,10 @@ function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: bo
   const run = useMutation({
     mutationFn: () => printExchange({
       ticketNumber: ticket.ticketNumber, couponSeqs: sel,
-      paperDocumentNumber: doc, reason, idempotencyKey: newIdempotencyKey(),
+      paperDocumentNumber: doc, reason, idempotencyKey: op.key(),
     }),
     onSuccess: () => { toast.success(t("flows.printex.toastOk"), t("flows.printex.toastOkBody")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.printex.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.printex.toastFail"), errText(e)),
   });
   return (
     <Drawer
@@ -711,15 +740,17 @@ function PrintExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: bo
 /* --- void ------------------------------------------------------------- */
 
 function VoidFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [reason, setReason] = useState("");
   const [ack, setAck] = useState(false);
 
   const run = useMutation({
-    mutationFn: () => voidTicket({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => voidTicket({ ticketNumber: ticket.ticketNumber, reason, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.void.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.void.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.void.toastFail"), errText(e)),
   });
 
   return (
@@ -748,29 +779,32 @@ function VoidFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; on
 /* --- IRROP ------------------------------------------------------------ */
 
 function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("weather");
   const [endorseTo, setEndorseTo] = useState("LH");
   const [carrier, setCarrier] = useState("LH");
   const [flightNumber, setFlightNumber] = useState("1304");
-  const [date, setDate] = useState("");
+  // Yeni uçuş günü ilk açık kuponun günüyle başlar; boş gönderilemez.
+  const [date, setDate] = useState(() => ticket.coupons.find((c) => ["O", "A", "I"].includes(c.status))?.segment.departure.slice(0, 10) ?? "");
 
   const run = useMutation({
     mutationFn: () => irropReroute({
       ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, endorseTo,
-      newFlight: { carrier, flightNumber, date }, idempotencyKey: newIdempotencyKey(),
+      newFlight: { carrier, flightNumber, date }, idempotencyKey: op.key(),
     }),
     onSuccess: ({ fim }) => { toast.success(t("flows.irrop.toastOk"), `FIM ${fim}`); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.irrop.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.irrop.toastFail"), errText(e)),
   });
 
   return (
     <Drawer
       open={open} onClose={onClose} title={t("flows.irrop.title")}
       hint={t("flows.irrop.hint")}
-      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.irrop.submit")}</Button>}
+      footer={<Button disabled={!sel.length || !date || !/^[A-Z0-9]{2}$/.test(endorseTo) || !/\d/.test(flightNumber) || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.irrop.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <div>
@@ -786,7 +820,7 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
           <Field label={t("flows.irrop.endorseTo")}><Input value={endorseTo} onChange={(e) => setEndorseTo(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
           <Field label={t("flows.irrop.newCarrier")}><Input value={carrier} onChange={(e) => setCarrier(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
           <Field label={t("flows.common.newFlightNo")}><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} /></Field>
-          <Field label={t("flows.irrop.date")} className="col-span-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label={t("flows.irrop.date")} className="col-span-2"><DayPicker value={date} onChange={setDate} quick={false} /></Field>
         </div>
       </div>
     </Drawer>
@@ -796,13 +830,15 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
 /* --- endorsement ------------------------------------------------------ */
 
 function EndorseFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [text, setText] = useState(ticket.endorsement ?? "");
   const run = useMutation({
-    mutationFn: () => endorseTicket({ ticketNumber: ticket.ticketNumber, endorsement: text, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => endorseTicket({ ticketNumber: ticket.ticketNumber, endorsement: text, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.endorse.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.endorse.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.endorse.toastFail"), errText(e)),
   });
   return (
     <Drawer
@@ -820,20 +856,30 @@ function EndorseFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- revalidation ----------------------------------------------------- */
 
 function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const first = ticket.coupons.find((c) => c.status === "O");
   const [seq, setSeq] = useState(first?.seq ?? 1);
   const [flightNumber, setFlightNumber] = useState(first?.segment.flightNumber ?? "");
   const [departure, setDeparture] = useState(first?.segment.departure ?? "");
+  // Kupon değişince form o kuponun seferiyle yeniden dolar — aksi hâlde ilk
+  // kuponun uçuşu seçilen kupona yazılır.
+  const pick = (s: number) => {
+    const c = ticket.coupons.find((x) => x.seq === s);
+    setSeq(s);
+    setFlightNumber(c?.segment.flightNumber ?? "");
+    setDeparture(c?.segment.departure ?? "");
+  };
 
   const run = useMutation({
     mutationFn: () => revalidateCoupon({
       ticketNumber: ticket.ticketNumber, couponSeq: seq,
-      newFlightNumber: flightNumber, newDeparture: departure, idempotencyKey: newIdempotencyKey(),
+      newFlightNumber: flightNumber, newDeparture: departure, idempotencyKey: op.key(),
     }),
     onSuccess: () => { toast.success(t("flows.revalidate.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.revalidate.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.revalidate.toastFail"), errText(e)),
   });
 
   return (
@@ -845,7 +891,7 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
       <div className="flex flex-col gap-4">
         <Banner kind="info">{t("flows.revalidate.banner")}</Banner>
         <Field label={t("flows.common.coupon")}>
-          <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
+          <Select value={seq} onChange={(e) => pick(Number(e.target.value))}>
             {ticket.coupons.filter((c) => c.status === "O").map((c) => (
               <option key={c.seq} value={c.seq}>#{c.seq} · {c.segment.origin} → {c.segment.destination}</option>
             ))}
@@ -855,7 +901,7 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
         <Field label={t("flows.common.newDeparture")}>
           <Input
             type="datetime-local"
-            value={departure ? departure.slice(0, 16) : ""}
+            value={departure ? toLocalInput(departure) : ""}
             onChange={(e) => { const v = e.target.value; if (!v) return; const d = new Date(v); if (!Number.isNaN(d.getTime())) setDeparture(d.toISOString()); }}
           />
         </Field>
@@ -867,14 +913,16 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
 /* --- kağıda bas ------------------------------------------------------- */
 
 function PrintFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("");
   const run = useMutation({
-    mutationFn: () => printToPaper({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => printToPaper({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.print.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.print.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.print.toastFail"), errText(e)),
   });
   return (
     <Drawer
@@ -894,7 +942,9 @@ function PrintFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
 /* --- askıya alma / serbest bırakma (S, 1.1.4) ------------------------- */
 
 function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const [reason, setReason] = useState("");
@@ -904,7 +954,7 @@ function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 
   const run = useMutation({
     mutationFn: () => {
-      const input = { ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: newIdempotencyKey() };
+      const input = { ticketNumber: ticket.ticketNumber, couponSeqs: sel, reason, idempotencyKey: op.key() };
       return releasing ? releaseCoupons(input) : suspendCoupons(input);
     },
     onSuccess: () => {
@@ -912,7 +962,7 @@ function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
       refresh(ticket.ticketNumber);
       onClose();
     },
-    onError: (e: Error) => toast.danger(releasing ? t("flows.suspend.failRelease") : t("flows.suspend.failSuspend"), e.message),
+    onError: (e: Error) => toast.danger(releasing ? t("flows.suspend.failRelease") : t("flows.suspend.failSuspend"), errText(e)),
   });
 
   return (
@@ -946,13 +996,15 @@ function SuspendFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 /* --- no-show ---------------------------------------------------------- */
 
 function NoShowFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [sel, toggle] = useToggle();
   const run = useMutation({
-    mutationFn: () => markNoShow({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => markNoShow({ ticketNumber: ticket.ticketNumber, couponSeqs: sel, idempotencyKey: op.key() }),
     onSuccess: () => { toast.success(t("flows.noshow.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), errText(e)),
   });
   return (
     <Drawer
@@ -971,7 +1023,9 @@ function NoShowFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 /* --- EMD / fazla bagaj ------------------------------------------------ */
 
 function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boolean; baggage: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const [type, setType] = useState<"A" | "S">("A");
   const [seq, setSeq] = useState(ticket.coupons.find((c) => c.status === "O")?.seq ?? 1);
@@ -985,11 +1039,11 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
       couponSeq: type === "A" ? seq : undefined,
       type, rfisc,
       description: desc || RFISC_CATALOG.find((r) => r.rfisc === rfisc)?.label || t("flows.emd.serviceFallback"),
-      value: { amount: Number(amount) || 0, currency: ticket.fare.total.currency },
-      idempotencyKey: newIdempotencyKey(),
+      value: { amount: parseAmount(amount) || 0, currency: ticket.fare.total.currency },
+      idempotencyKey: op.key(),
     }),
     onSuccess: (e) => { toast.success(t("flows.emd.toastOk"), e.emdNumber); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.emd.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.emd.toastFail"), errText(e)),
   });
 
   return (
@@ -997,7 +1051,7 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
       open={open} onClose={onClose}
       title={baggage ? t("flows.emd.titleBaggage") : t("flows.emd.title")}
       hint={t("flows.emd.hint")}
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.issuing") : t("flows.emd.submit")}</Button>}
+      footer={<Button variant="success" disabled={run.isPending || !(parseAmount(amount) > 0)} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.issuing") : t("flows.emd.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <Field label={t("flows.emd.typeLabel")} hint={t("flows.emd.typeHint")}>
@@ -1031,7 +1085,9 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
 /* --- bagaj kaydı (14.4) ----------------------------------------------- */
 
 function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
+  const op = useOpKey();
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   const first = ticket.coupons.find((c) => c.status === "O") ?? ticket.coupons[0];
   const [seq, setSeq] = useState(first?.seq ?? 1);
@@ -1051,10 +1107,10 @@ function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
       checkedPieces: pieces ? Number(pieces) : undefined,
       checkedWeight: weight ? Number(weight) : undefined,
       weightUnit: unit,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
     onSuccess: () => { toast.success(t("flows.baggage.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.common.notRecorded"), errText(e)),
   });
 
   return (
@@ -1110,6 +1166,8 @@ function BaggageFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean;
 
 function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
   const t = useT();
+  const errText = useErrorText();
+  const lang = useUI((s) => s.lang);
   const refresh = useRefresh();
   const today = new Date(demoNow()).toISOString().slice(0, 10);
   const [certificateDate, setCert] = useState(today);
@@ -1125,7 +1183,7 @@ function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: b
   const run = useMutation({
     mutationFn: () => extendValidity({ ticketNumber: ticket.ticketNumber, ...input, idempotencyKey: key }),
     onSuccess: () => { toast.success(t("flows.extend.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("flows.extend.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.extend.toastFail"), errText(e)),
   });
 
   return (
@@ -1160,7 +1218,7 @@ function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: b
             value={"error" in preview ? "—" : <span className="num">{preview.until.slice(0, 10)}</span>}
           />
         </Inset>
-        {"error" in preview && <Banner kind="warning">{preview.error}</Banner>}
+        {"error" in preview && <Banner kind="warning">{lang === "en" ? preview.errorEn : preview.error}</Banner>}
       </div>
     </Drawer>
   );
@@ -1170,6 +1228,7 @@ function ExtendValidityFlow({ ticket, open, onClose }: { ticket: Ticket; open: b
 
 function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const refresh = useRefresh();
   // Varsayılan: uçulmamış ilk kupon — aksama çoğunlukla sıradaki uçuşta olur.
   const first = ticket.coupons.find((c) => !["F", "V", "R", "E"].includes(c.status)) ?? ticket.coupons[0];
@@ -1184,7 +1243,7 @@ function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
   const [key] = useState(newIdempotencyKey);
 
   const c = ticket.coupons.find((x) => x.seq === seq) ?? first;
-  const num = (v: string) => Math.max(0, Number(v.replace(",", ".")) || 0);
+  const num = (v: string) => Math.max(0, parseAmount(v) || 0);
   const disruption = {
     kind,
     arrivalDelayMin: Math.round(num(delayH) * 60),
@@ -1202,7 +1261,7 @@ function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
   const run = useMutation({
     mutationFn: () => recordRightsAssessment({ ticketNumber: ticket.ticketNumber, couponSeq: seq, disruption, idempotencyKey: key }),
     onSuccess: () => { toast.success(t("rights.toastOk")); refresh(ticket.ticketNumber); onClose(); },
-    onError: (e: Error) => toast.danger(t("rights.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("rights.toastFail"), errText(e)),
   });
 
   return (
@@ -1267,6 +1326,7 @@ function RightsFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
 
 function NameCorrectionFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; onClose: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
   const refresh = useRefresh();
@@ -1291,7 +1351,7 @@ function NameCorrectionFlow({ ticket, open, onClose }: { ticket: Ticket; open: b
       onClose();
       navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: newTicket.ticketNumber } });
     },
-    onError: (e: Error) => toast.danger(t("flows.name.toastFail"), e.message),
+    onError: (e: Error) => toast.danger(t("flows.name.toastFail"), errText(e)),
   });
 
   return (

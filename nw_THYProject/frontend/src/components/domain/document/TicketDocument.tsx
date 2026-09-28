@@ -70,7 +70,8 @@ export function TicketDocument({
       <div className="flex flex-col sm:flex-row">
         {/* ---------- gövde ---------- */}
         <div className="min-w-0 flex-1">
-          <DocBand title="Elektronik Bilet · E-Ticket" note={ticket.ticketNumber} />
+          {/* Her parça kendi diliyle büyütülür: Türkçe kural "Ticket"ı "TİCKET" yapıyordu. */}
+          <DocBand title={<><span lang="tr">Elektronik Bilet</span> · <span lang="en">E-Ticket</span></>} note={ticket.ticketNumber} />
 
           <div className="px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -99,7 +100,7 @@ export function TicketDocument({
               <div className="mt-5 flex items-center gap-4">
                 <div className="min-w-0">
                   <div className="num text-[30px] font-semibold leading-none tracking-tight text-ink">{seg.origin}</div>
-                  <div className="mt-1 truncate text-[11.5px] text-ink-3">{from?.city ?? ""}</div>
+                  <div className="mt-1 truncate text-[11.5px] text-ink-3">{(tr ? from?.city : from?.cityEn) ?? ""}</div>
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col items-center">
                   <span className="num text-[11px] text-ink-3">{flightCode(seg.marketingCarrier, seg.flightNumber)}</span>
@@ -114,7 +115,7 @@ export function TicketDocument({
                 </div>
                 <div className="min-w-0 text-right">
                   <div className="num text-[30px] font-semibold leading-none tracking-tight text-ink">{seg.destination}</div>
-                  <div className="mt-1 truncate text-[11.5px] text-ink-3">{to?.city ?? ""}</div>
+                  <div className="mt-1 truncate text-[11.5px] text-ink-3">{(tr ? to?.city : to?.cityEn) ?? ""}</div>
                 </div>
               </div>
             )}
@@ -144,7 +145,7 @@ export function TicketDocument({
                   {mins < 0 ? d("ticket.doc.departed") : d("ticket.doc.timeLeft", { v: fmtLeft(mins, lang) })}
                 </span>
               )}
-              <span className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
+              <span lang="en" className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
             </div>
           </div>
         </div>

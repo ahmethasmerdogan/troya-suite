@@ -45,29 +45,31 @@ Proje tek bir ilke etrafında kurgulanır — **"tek komut, iki yüzey"**: bir a
 
 Üstte modül seçici bulunan, bir havayolu PSS operasyon modelini yansıtan tek bir birleşik çalışma alanı:
 
-- **QuickRes** — rezervasyon (PNR): arama, detay, PNR oluşturma sihirbazı, uygunluk.
-- **Troya** — biletleme: bilet kesim sihirbazı, bilet detayı (statü pill'leri, control göstergesi, yaşam döngüsü timeline'ı, fare/TFC dökümü), akıllı arama, itinerary/receipt (TR/EN, yazdırılabilir), exchange / refund / void, EMD, interline mesajları, order'lar.
-- **QuickCheck-in** — kalkış kontrolü (DCS): uçuş listesi, yolcu kabulü, 3D kabin koltuk seçimi, biniş.
-- **Panel** & **Yönetim** — birleşik dashboard; kullanıcılar, roller & yetkiler, denetim logları, ayarlar.
-- **İki dilli (TR/EN)**, rol-tabanlı erişim (kümülatif roller), komut paleti (⌘K) ve baştan sona klavye kısayolları.
+- **QuickRes** — rezervasyon (PNR): arama, detay, PNR oluşturma sihirbazı, sefer programından uygunluk, PNR komutları (güzergâh / segment iptali, TTL uzatma, notlar, geçmiş), PNR'dan doğrudan yolcu başına bilet.
+- **Troya** — biletleme: sistem ücret tarifesiyle (elle ücret yazılmaz) 5 adımlı kesim sihirbazı ve grup/aile kesimi, bilet detayı (statü pill'leri, control göstergesi, yaşam döngüsü timeline'ı, fare / TFC / KDV dökümü), akıllı arama, itinerary/receipt (TR/EN, yazdırılabilir), ceza ve vergi iade edilebilirliği kurallarıyla exchange / refund / void, EMD, PTA, ADM/ACM, interline mesajları ve anlaşmaları, order'lar, iş kuyrukları, tarife değişikliği, yolcu hakları tazminatı ve rapor merkezi (satış, mali, dönem kapanışı).
+- **QuickCheck-in** — kalkış kontrolü (DCS): uçuşlar arası yolcu aramalı kontuar ekranı, süpervizör onaylı geç kabullü kabul penceresi, seyahat belgesi ve APIS kontrolleri, koltuk uygunluk kurallı uçak tipine özgü koltuk haritaları, biniş, uçuş kapanışı (kuponlar Flown'a) ve HUB kontrol panosu.
+- **Panel**, **Yönetim** & **Mesajlaşma** — istasyon duyurulu dashboard; kullanıcılar, roller & yetkiler, denetim kaydı; bilet iliştirilebilen gerçek zamanlı personel sohbeti.
+- **İki dilli (TR/EN)**, rol-tabanlı erişim (kümülatif roller), komut paleti (⌘K), klavye kısayolları, ekran turları ve bağlamsal ipuçları.
 
 ## Teknoloji yığını
 
 **Engine (backend)** — Kotlin · Spring Boot 3 (Java 21) · Gradle (Kotlin DSL) çok-modüllü (`domain` · `application` · `infrastructure` · `api`) · PostgreSQL 16 (event store + read model'ler, Flyway) · Redis (control lease) · Kafka / Redpanda (outbox) · Keycloak (OIDC) · Kotest + JUnit 5 · ktlint + detekt · OpenTelemetry.
 
-**Experience (frontend)** — Vite · React 18 · TypeScript · Tailwind CSS + shadcn-tarzı token'lar · TanStack Router / Query / Table · Zustand · React Hook Form + Zod · cmdk · Lucide · react-three-fiber (3D kabin) · Vitest + Playwright.
+**Experience (frontend)** — Vite · React 18 · TypeScript · Tailwind CSS + shadcn-tarzı token'lar · TanStack Router / Query / Table · Zustand · React Hook Form + Zod · cmdk · Lucide · HashUI bileşen kiti · Vitest + Playwright.
 
-**Contracts** — bir OpenAPI 3.1 spec tek doğruluk kaynağıdır; frontend TypeScript tipleri buradan üretilir (`openapi-typescript`).
+**Contracts** — bir OpenAPI 3.1 spec hedef REST API'yi tanımlar. Frontend prototipi hâlâ bellek-içi mock domain üzerinde, spec'e göre elle yazılmış tiplerle çalışır; arayüz canlı motora bağlandığında tipler spec'ten üretilecek (`openapi-typescript`). Motorun bugün neyi uyguladığı [`contracts/README.md`](contracts/README.md) içinde.
 
-**Yerel altyapı & CI** — Docker Compose (PostgreSQL · Redpanda · Redis · Keycloak); GitHub Actions (backend: build + ktlint + detekt · frontend: typecheck + test + build).
+**Yerel altyapı & CI** — Docker Compose (PostgreSQL · Redpanda · Redis · Keycloak); GitHub Actions (backend: build + ktlint + detekt · frontend v1 ve v2: typecheck + test + build). Vercel `main`'i canlıya, diğer dalları önizleme adresine yayınlar.
 
 ## Depo yapısı
 
 ```
 troya-suite/
 ├── backend/        Kotlin çok-modüllü motor: domain · application · infrastructure · api
-├── frontend/       Vite + React + TypeScript deneyimi (birleşik panel)
-├── contracts/      OpenAPI 3.1 spec (tek doğruluk kaynağı → TS tipi üretir)
+├── nw_THYProject/  Güncel frontend (v2): nw_THYProject/frontend — Vite + React + TypeScript birleşik panel, Vercel'de yayında
+├── frontend/       Önceki frontend (v1), referans olarak duruyor
+├── contracts/      OpenAPI 3.1 spec (hedef REST API)
+├── vercel.json     Vercel derleme ayarı (nw_THYProject/frontend'i derler)
 ├── docker-compose.yml       Yerel geliştirme altyapısı (Postgres · Redpanda · Redis · Keycloak)
 ├── ARCHITECTURE.md          Mimari kararlar & gerekçe
 ├── GLOSSARY.md              Ortak dil (IATA + mühendislik terimleri)
@@ -83,7 +85,7 @@ troya-suite/
 **Frontend** — mock veriyle çalışan tıklanabilir prototip:
 
 ```bash
-cd frontend
+cd nw_THYProject/frontend
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # tsc + vite build
@@ -104,11 +106,13 @@ cd backend
 
 Klasik Gradle akışı için host'ta Java 21 gerekir; tamamen Docker-tabanlı bir build/test/çalıştırma akışı (host'ta Java gerekmez) [`backend/README.md`](backend/README.md) içinde belgelenmiştir.
 
+**Yayın** — Vercel projesi bu depoya bağlıdır. `main`'e her push canlıya çıkar, diğer dallar önizleme adresi alır. Kökteki [`vercel.json`](vercel.json) `nw_THYProject/frontend`'i derler; Root Directory ayarı gerekmez.
+
 ## Durum
 
 Aktif geliştirilen, **özel / kurum içi** bir proje. Dürüst bir anlık görüntü:
 
-- **Experience (frontend)** — birleşik panel (QuickRes + Troya + QuickCheck-in + Panel + Yönetim), TR/EN olarak **mock veriyle uçtan uca çalışan tıklanabilir bir prototip**; typecheck, testler ve build yeşil. API çağrı imzaları gerçek REST kontratına uyacak şekilde tasarlandı; böylece arayüzü yeniden şekillendirmeden canlı endpoint'lerle değiştirilebilir.
+- **Experience (frontend)** — birleşik panel (v2, `nw_THYProject/frontend`: QuickRes + Troya + QuickCheck-in + Panel + Yönetim + Mesajlaşma), TR/EN olarak **mock veriyle uçtan uca çalışan, Vercel'de yayında tıklanabilir bir prototip**; typecheck, birim testleri, uçtan uca testler ve build yeşil. API çağrı imzaları gerçek REST kontratına uyacak şekilde tasarlandı; böylece arayüzü yeniden şekillendirmeden canlı endpoint'lerle değiştirilebilir.
 - **Engine (backend)** — Docker'da uçtan uca doğrulandı: **F0 temel**, **F1 bilet + kupon** (issue / get / idempotency / event store) ve **F2 arama + receipt** (CQRS read model + projeksiyon) tamamlandı; **F3 void/exchange/refund**, **F4 fare/TFC**, **F5 EMD** ve **F6 interline** çekirdek komutları uygulanıp doğrulandı, ileri parçalar (IRROP/FIM saga, ROE/banker's yuvarlama, vMPD/legacy eşleme, EDIFACT/NDC gateway) hâlâ açık. **F7 order-native** planlanıyor.
 
 Canlı kimlik doğrulama (Keycloak/OIDC) ve SSE/WebSocket canlı güncellemeler, backend **Order-native (ONE Order)** geleceğine ilerledikçe eklenir.

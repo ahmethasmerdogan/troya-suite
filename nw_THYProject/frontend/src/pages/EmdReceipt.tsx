@@ -29,7 +29,7 @@ export function EmdReceipt() {
   const t = useT();
   const { emdNumber } = useParams({ from: "/emds/$emdNumber/receipt" });
   const navigate = useNavigate();
-  const { data: emd, isLoading } = useQuery({ queryKey: ["emd", emdNumber], queryFn: () => getEmd(emdNumber) });
+  const { data: emd, isLoading } = useQuery({ queryKey: ["emd", emdNumber], queryFn: async () => (await getEmd(emdNumber)) ?? null });
 
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (!emd) return <Banner kind="warning">{t("misc.emd.notFound", { n: emdNumber })}</Banner>;
@@ -56,9 +56,9 @@ export function EmdReceipt() {
       <div className="overflow-hidden rounded-2xl border border-line bg-surface">
         <div className="flex items-center gap-2.5 bg-[var(--brand)] px-5 py-2.5 text-white">
           <BrandMark size={18} variant="bare" className="text-white" />
-          <span className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
+          <span lang="en" className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
           <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
-            EMD Receipt · Elektronik Muhtelif Belge
+            <span lang="en">EMD Receipt</span> · <span lang="tr">Elektronik Muhtelif Belge</span>
           </span>
         </div>
         <div className="grid gap-x-8 px-5 py-4 sm:grid-cols-2">

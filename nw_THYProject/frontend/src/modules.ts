@@ -84,7 +84,7 @@ export const MODULES: ModuleDef[] = [
       {
         titleKey: "nav.section.documents",
         items: [
-          { labelKey: "nav.emd", to: "/search", icon: FileText, contextual: true, perm: "ticket.emd" },
+          { labelKey: "nav.emd", to: "/search", icon: FileText, contextual: true, action: "emd", perm: "ticket.emd" },
           { labelKey: "nav.emd.search", to: "/emds", icon: Search, perm: "ticket.emd" },
           { labelKey: "nav.pta", to: "/pta", icon: Banknote, perm: "pta.manage" },
           { labelKey: "nav.memos", to: "/memos", icon: ReceiptText, perm: "adm.manage" },

@@ -187,6 +187,7 @@ export const useChat = create<ChatState>((set, get) => {
       const { myId, channels } = get();
       const trimmed = name.trim();
       if (!myId || !trimmed) return null;
+      if (channels.some((c) => c.name.trim().toLocaleLowerCase("tr-TR") === trimmed.toLocaleLowerCase("tr-TR"))) return null;
       const channel: ChannelDef = {
         id: channelIdFrom(trimmed, channels),
         name: trimmed,

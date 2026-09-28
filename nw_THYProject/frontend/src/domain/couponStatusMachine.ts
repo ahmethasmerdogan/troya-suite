@@ -1,5 +1,6 @@
 import type { CouponStatus } from "./types";
 import { isFinal } from "./couponStatus";
+import { LocalizedError } from "./errors";
 
 // Coupon Status FSM — IATA Handbook 1.1.4 / ROADMAP Faz 1 / ARCHITECTURE §4.
 // Bu, sunum tarafı aynası; OTORİTE backend'dir (CLAUDE.md §8). Backend Kotlin
@@ -42,12 +43,15 @@ export function canTransition(from: CouponStatus, to: CouponStatus): boolean {
   return ALLOWED[from].includes(to);
 }
 
-export class InvalidTransitionError extends Error {
+export class InvalidTransitionError extends LocalizedError {
   constructor(public from: CouponStatus, public to: CouponStatus) {
     super(
       isFinal(from)
         ? `Kupon ${from} final statüde — değiştirilemez (→ ${to}).`
         : `Geçersiz kupon geçişi: ${from} → ${to}.`,
+      isFinal(from)
+        ? `Coupon ${from} is in a final status — it cannot be changed (→ ${to}).`
+        : `Invalid coupon transition: ${from} → ${to}.`,
     );
     this.name = "InvalidTransitionError";
   }

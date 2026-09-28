@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { createColumnHelper, type ColumnDef } from "@tanstack/react-table";
 import { Plus } from "lucide-react";
-import { acknowledgePta, createPta, issueAgainstPta, listPtas, newIdempotencyKey, refundPta } from "@/domain/api";
+import { acknowledgePta, createPta, issueAgainstPta, listPtas, refundPta } from "@/domain/api";
 import type { Pta } from "@/domain/types";
 import { Money } from "@/components/domain/Money";
 import { Banner } from "@/components/ui/banner";
@@ -14,8 +14,11 @@ import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { csvNumber } from "@/lib/csv";
-import { formatDate } from "@/lib/utils";
+import { formatDate, parseAmount } from "@/lib/utils";
+import { useOpKey, useOpKeys } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 
 /**
  * PTA — Prepaid Ticket Advice (Handbook Ch 9).
@@ -29,6 +32,7 @@ const col = createColumnHelper<Pta>();
 
 export function PtaPage() {
   const t = useT();
+  const errText = useErrorText();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -42,52 +46,59 @@ export function PtaPage() {
   });
 
   const { data, isLoading } = useQuery({ queryKey: ["ptas"], queryFn: listPtas });
+  // İşlem anahtarları: çift tıklama tek işlem (bir PTA'ya iki bilet kesilmez).
+  const createOp = useOpKey();
+  const rowOps = useOpKeys();
+  const refundOp = useOpKey();
 
   const create = useMutation({
     mutationFn: () => createPta({
       sponsorName: form.sponsorName, sponsorLocation: form.sponsorLocation,
       beneficiaryName: form.beneficiaryName, pickupLocation: form.pickupLocation,
-      route: form.route, amount: { amount: Number(form.amount), currency: form.currency },
+      route: form.route, amount: { amount: parseAmount(form.amount) || 0, currency: form.currency },
       formOfPayment: { type: form.fop },
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: createOp.key(),
     }),
     onSuccess: (p) => {
+      createOp.rotate();
       toast.success(t("misc.pta.createOk"), p.ptaReference);
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["ptas"] });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.createFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.createFail"), errText(e)),
   });
 
   const issue = useMutation({
-    mutationFn: (p: Pta) => issueAgainstPta({ ptaReference: p.ptaReference, idempotencyKey: newIdempotencyKey() }),
-    onSuccess: ({ ticket }) => {
+    mutationFn: (p: Pta) => issueAgainstPta({ ptaReference: p.ptaReference, idempotencyKey: rowOps.key(`issue:${p.ptaReference}`) }),
+    onSuccess: ({ ticket, pta }) => {
+      rowOps.rotate(`issue:${pta.ptaReference}`);
       toast.success(t("misc.pta.issueOk"), ticket.ticketNumber);
-      qc.invalidateQueries({ queryKey: ["ptas"] });
+      invalidateRecords(qc);
       navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: ticket.ticketNumber } });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.issueFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.issueFail"), errText(e)),
   });
 
   const ack = useMutation({
-    mutationFn: (p: Pta) => acknowledgePta({ ptaReference: p.ptaReference, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: (p: Pta) => acknowledgePta({ ptaReference: p.ptaReference, idempotencyKey: rowOps.key(`ack:${p.ptaReference}`) }),
     onSuccess: (p) => { toast.success(t("misc.pta.ackOk"), p.ptaReference); qc.invalidateQueries({ queryKey: ["ptas"] }); },
-    onError: (e: Error) => toast.danger(t("misc.pta.ackFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.ackFail"), errText(e)),
   });
 
   const refund = useMutation({
     mutationFn: () => refundPta({
       ptaReference: refundFor!.ptaReference,
-      usedValue: Number(usedValue) || 0,
+      usedValue: parseAmount(usedValue) || 0,
       documentType: docType,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: refundOp.key(),
     }),
     onSuccess: (p) => {
+      refundOp.rotate();
       toast.success(t("misc.pta.refundOk"), `${p.refund?.documentType} ${p.refund?.documentNumber}`);
       setRefundFor(null);
       qc.invalidateQueries({ queryKey: ["ptas"] });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.refundFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.refundFail"), errText(e)),
   });
 
   const columns = [
@@ -213,7 +224,7 @@ export function PtaPage() {
               <Input value={usedValue} onChange={(e) => setUsedValue(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />
             </Field>
             <Field label={t("misc.pta.f.difference")}>
-              <Input value={String(Math.max(0, refundFor.amount.amount - (Number(usedValue) || 0)))} readOnly className="num" />
+              <Input value={String(Math.max(0, refundFor.amount.amount - (parseAmount(usedValue) || 0)))} readOnly className="num" />
             </Field>
             <Field label={t("misc.pta.f.docType")}>
               <Select value={docType} onChange={(e) => setDocType(e.target.value as "MCO" | "AgentsRefundVoucher")}>

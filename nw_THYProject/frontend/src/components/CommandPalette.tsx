@@ -69,8 +69,31 @@ export function CommandPalette() {
 
   // Etiketleri sözlükten okur; her render'da yeniden çalışması dil değişince
   // rozetin de dönmesini sağlar (hesap zaten bir regex kadar ucuz).
-  const shape = detect(q);
+  const raw = detect(q);
+  // Biçim tek başına hedefi söylemez: 13 hane EMD de olabilir, 6 harf soyad
+  // da olabilir. Doğrudan hedef ARAMA SONUCUYLA teyit edilir — EMD numarası
+  // "bilet bulunamadı"ya, "YILDIZ" olmayan bir PNR'a gitmez.
+  const term = q.trim().toUpperCase();
+  const emdHit = /^\d{13}$/.test(term) && emds.some((e) => e.emdNumber === term) && !tickets.some((x) => x.ticketNumber === term);
+  const pnrShape = raw?.direct && /^[A-Z0-9]{6}$/.test(term) && !/^\d{13}$/.test(term) && !/^ORD/.test(term);
+  const shape = raw && {
+    ...raw,
+    direct: emdHit
+      ? { icon: <Package size={15} strokeWidth={1.75} />, label: term, hint: t("search.cmd.group.emds"),
+          go: (n: Nav) => () => n({ to: "/emds/$emdNumber", params: { emdNumber: term } }) }
+      : pnrShape && !pnrs.some((p) => p.recordLocator === term) ? undefined : raw.direct,
+  };
   const go = (fn: () => void) => { setOpen(false); fn(); };
+
+  // Seçili öğe sonuçlar gelince ilk SONUCA taşınır; aksi hâlde cmdk ilk
+  // açılıştaki "Bilet Kes"i tutuyor, Enter aramayı değil kesimi açıyordu.
+  const firstValue = shape?.direct ? rowValue(shape.direct.label, shape.direct.hint)
+    : tickets[0] ? rowValue(tickets[0].ticketNumber, `${tickets[0].passengerName} · ${tickets[0].route}`)
+      : emds[0] ? rowValue(emds[0].emdNumber, emds[0].coupons[0]?.description)
+        : pnrs[0] ? rowValue(pnrs[0].recordLocator, `${pnrs[0].passengerName} · ${pnrs[0].route}`)
+          : "";
+  const [selected, setSelected] = useState("");
+  useEffect(() => { if (firstValue) setSelected(firstValue); }, [firstValue]);
 
   if (!open) return null;
 
@@ -80,6 +103,8 @@ export function CommandPalette() {
       <Command
         label={t("search.cmd.label")}
         shouldFilter={false}
+        value={selected}
+        onValueChange={setSelected}
         className="anim-pop absolute left-1/2 top-[14vh] w-full max-w-xl -translate-x-1/2 overflow-hidden rounded-lg border border-line bg-panel"
       >
         <div className="flex items-center gap-2.5 border-b border-line px-4">
@@ -212,6 +237,10 @@ function detect(raw: string): { hint: string; direct?: { icon: React.ReactNode; 
   return { hint: translate("search.shape.text") };
 }
 
+function rowValue(label: string, hint?: string): string {
+  return `${label} ${hint ?? ""}`;
+}
+
 function Group({ heading, children }: { heading: string; children: React.ReactNode }) {
   return (
     <Command.Group
@@ -228,7 +257,7 @@ function Row({
 }: { icon: React.ReactNode; label: string; hint?: string; mono?: boolean; onSelect: () => void }) {
   return (
     <Command.Item
-      value={`${label} ${hint ?? ""}`}
+      value={rowValue(label, hint)}
       onSelect={onSelect}
       className="flex cursor-pointer items-center gap-2.5 rounded-md px-2.5 py-2 text-[13px] text-ink aria-selected:bg-brand-wash aria-selected:text-brand"
     >

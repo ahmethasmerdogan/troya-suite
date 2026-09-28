@@ -235,7 +235,10 @@ function countReversible(rows: TransactionRow[]): { voidable: number; refundCanc
   return { voidable, refundCancellable: Math.max(0, refunds - reversed) };
 }
 
-export function summarizePeriod(periodId: string, rows: TransactionRow[], closed: boolean): PeriodSummary {
+export function summarizePeriod(
+  periodId: string, rows: TransactionRow[], closed: boolean,
+  currentPeriodId = new Date().toISOString().slice(0, 10),
+): PeriodSummary {
   const issues = rows.filter((r) => r.category === "issue").length;
   const refunds = rows.filter((r) => r.category === "refund").length;
   const voids = rows.filter((r) => r.category === "void").length;
@@ -256,7 +259,12 @@ export function summarizePeriod(periodId: string, rows: TransactionRow[], closed
     closing: closingByCurrency(rows),
     settlementItems,
     // Dönem kapandığında bu haklar düşer.
-    reversible: closed ? { voidable: 0, refundCancellable: 0 } : countReversible(rows),
+    // Void ve iade geri alma YALNIZ içinde bulunulan raporlama döneminde
+    // mümkündür (satış günü kuralı / 12.13.2); geçmiş dönemin kalemleri
+    // açık dursa bile artık geri alınamaz.
+    reversible: closed || periodId !== currentPeriodId
+      ? { voidable: 0, refundCancellable: 0 }
+      : countReversible(rows),
   };
 }
 

@@ -70,7 +70,7 @@ export const tr = {
   "memos.help.s1": "Dekont kes: bilet numarasını girin — yalnız acente satışı kabul edilir; gerekçe ve kalem tutarlarını yazın.",
   "memos.help.s2": "ADM kesilince acentenin 15 gün inceleme süresi başlar; itiraz gelirse dekont \"İtirazda\" olur ve karara bağlanır.",
   "memos.help.s3": "Süre dolan ya da itirazı reddedilen ADM ile ACM'ler \"BSP faturasına al\" ile dönemin faturasına girer.",
-  "memos.help.w1": "ADM son uçuş ya da iade tarihinden itibaren en geç 9 ay içinde kesilir; aynı bilete aynı gerekçeyle ikinci açık ADM kesilmez.",
+  "memos.help.w1": "ADM son uçuş ya da iade tarihinden itibaren en geç 9 ay içinde kesilir; aynı bilete aynı gerekçeyle ikinci ADM (açık ya da faturalanmış) kesilmez.",
   "memos.help.w2": "Faturalanmış dekont geri çekilmez — ters kayıt için ACM kesilir.",
 };
 
@@ -145,6 +145,6 @@ export const en: Record<keyof typeof tr, string> = {
   "memos.help.s1": "Issue memo: enter the ticket number — only agency sales are accepted; enter the reason and the amount lines.",
   "memos.help.s2": "Once an ADM is issued the agent's 15-day review period starts; if a dispute arrives the memo becomes \"Disputed\" and is decided.",
   "memos.help.s3": "ADMs whose period has ended or whose dispute was rejected, and ACMs, go to the period's billing with \"Include in BSP billing\".",
-  "memos.help.w1": "An ADM must be issued within 9 months of the last flight or refund date; a second open ADM for the same ticket and reason is not allowed.",
+  "memos.help.w1": "An ADM must be issued within 9 months of the last flight or refund date; a second ADM (open or billed) for the same ticket and reason is not allowed.",
   "memos.help.w2": "A billed memo cannot be withdrawn — issue an ACM to reverse it.",
 };

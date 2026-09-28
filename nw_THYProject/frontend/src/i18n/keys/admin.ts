@@ -62,6 +62,7 @@ export const tr = {
   "admin.form.name": "Ad Soyad",
   "admin.form.email": "E-posta",
   "admin.form.emailHint": "Kullanıcı adı buradan türer.",
+  "admin.form.emailTaken": "Bu e-posta başka bir personelde kayıtlı.",
   "admin.form.jobTitle": "Unvan",
   "admin.form.jobTitlePh": "Bilet Satış Uzmanı",
   "admin.form.unit": "Birim",
@@ -110,6 +111,9 @@ export const tr = {
   "admin.revenue.hint": "Sıra dışı kupon kullanımı, çift belge, statü uyuşmazlığı (Handbook 14.7).",
   "admin.revenue.empty": "Uyarı yok",
   "admin.revenue.emptyHint": "Şu an gelir koruma uyarısı bulunmuyor.",
+  "admin.revenue.sev.high": "Yüksek",
+  "admin.revenue.sev.medium": "Orta",
+  "admin.revenue.sev.low": "Düşük",
 
   // ---- Ayarlar ----
   "admin.settings.title": "Ayarlar",
@@ -131,6 +135,8 @@ export const tr = {
   "admin.profile.chainHint": "Onay ve yetki devri bu hat üzerinden yürür.",
   "admin.profile.team": "Bana bağlı personel",
   "admin.profile.teamHint": "{n} kişi",
+  // Tekil biçim — Türkçede sayıdan sonra çoğul eki yok, İngilizcede "1 person".
+  "admin.profile.teamHint.one": "{n} kişi",
   "admin.profile.perms": "Rolüm ve yetkilerim",
   "admin.profile.permCount": "{n} / {total} yetki",
   "admin.profile.needRole": "{role} ve üzeri gerekir",
@@ -153,6 +159,7 @@ export const tr = {
   "admin.person.manager": "Bağlı olduğu",
   "admin.person.team": "Ekibi",
   "admin.person.teamValue": "{n} kişi · {names}",
+  "admin.person.teamValue.one": "{n} kişi · {names}",
   "admin.person.message": "Mesaj gönder",
 
   // ---- Ekran yardımı (kabuk) ----
@@ -305,6 +312,7 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.form.name": "Full Name",
   "admin.form.email": "E-mail",
   "admin.form.emailHint": "The username is derived from this.",
+  "admin.form.emailTaken": "This e-mail is already registered to another staff member.",
   "admin.form.jobTitle": "Job Title",
   "admin.form.jobTitlePh": "Ticket Sales Agent",
   "admin.form.unit": "Unit",
@@ -353,6 +361,9 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.revenue.hint": "Out-of-sequence coupon usage, duplicate documents, status mismatch (Handbook 14.7).",
   "admin.revenue.empty": "No alerts",
   "admin.revenue.emptyHint": "There is no revenue protection alert at the moment.",
+  "admin.revenue.sev.high": "High",
+  "admin.revenue.sev.medium": "Medium",
+  "admin.revenue.sev.low": "Low",
 
   // ---- Ayarlar ----
   "admin.settings.title": "Settings",
@@ -374,6 +385,7 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.profile.chainHint": "Approvals and delegation of authority follow this line.",
   "admin.profile.team": "My direct reports",
   "admin.profile.teamHint": "{n} people",
+  "admin.profile.teamHint.one": "{n} person",
   "admin.profile.perms": "My role and permissions",
   "admin.profile.permCount": "{n} / {total} permissions",
   "admin.profile.needRole": "{role} or above required",
@@ -396,6 +408,7 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.person.manager": "Reports to",
   "admin.person.team": "Team",
   "admin.person.teamValue": "{n} people · {names}",
+  "admin.person.teamValue.one": "{n} person · {names}",
   "admin.person.message": "Send message",
 
   // ---- Ekran yardımı (kabuk) ----

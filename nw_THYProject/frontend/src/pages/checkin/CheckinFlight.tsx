@@ -23,6 +23,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, translate, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
@@ -51,6 +52,7 @@ const FILTER_LABEL: Record<Filter, Key> = {
 export function CheckinFlight() {
   const { flightId } = useParams({ from: "/checkin/$flightId" });
   const t = useT();
+  const errText = useErrorText();
   // Koltuk kısıt notları domainden iki dilli gelir; okunacak dili arayüz seçer.
   const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
@@ -75,7 +77,7 @@ export function CheckinFlight() {
   /** APIS bilgisi girilecek yolcu (uluslararası uçuşta zorunlu). */
   const [apisFor, setApisFor] = useState<CheckinPassenger | null>(null);
 
-  const { data: flight, isLoading } = useQuery({ queryKey: ["flight", flightId], queryFn: () => getFlight(flightId) });
+  const { data: flight, isLoading } = useQuery({ queryKey: ["flight", flightId], queryFn: async () => (await getFlight(flightId)) ?? null });
   const { data: pax } = useQuery({ queryKey: ["pax", flightId], queryFn: () => listPassengers(flightId) });
 
   const refreshAll = (tn?: string) => {
@@ -97,7 +99,7 @@ export function CheckinFlight() {
         try {
           await advanceCouponStatus(done.ticketNumber, done.couponSeq, "L");
         } catch (e) {
-          couponWarning = (e as Error).message;
+          couponWarning = errText(e);
         }
       }
       return { pax: done, couponWarning };
@@ -114,7 +116,7 @@ export function CheckinFlight() {
       qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), errText(e)),
   });
 
   /** Kabulü geri al: koltuk boşalır, kupon havalimanı kontrolüne (A) çekilir. */
@@ -130,7 +132,7 @@ export function CheckinFlight() {
       toast.success(t("checkin.toast.undone.title"), t("checkin.toast.undone.body", { name: `${p.surname}/${p.givenName}` }));
       refreshAll(p.ticketNumber);
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), errText(e)),
   });
 
   /** Kabul edilmiş herkesi tek işlemde bindir. */
@@ -145,7 +147,7 @@ export function CheckinFlight() {
       return done;
     },
     onSuccess: (list) => { toast.success(t("checkin.toast.boardAll.title"), t("checkin.toast.boardAll.body", { n: list.length })); refreshAll(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), errText(e)),
   });
 
   /**
@@ -168,7 +170,7 @@ export function CheckinFlight() {
       toast.success(t("checkin.toast.closed.title"), t("checkin.toast.closed.body", { flown: r.flown, noshow: r.noShow.length }));
       refreshAll();
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.closeFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.closeFailed"), errText(e)),
   });
 
   /** Kabul öncesi havalimanı kontrolü al (O→A). */
@@ -176,13 +178,21 @@ export function CheckinFlight() {
     mutationFn: async () => {
       const list = pax ?? [];
       let n = 0;
+      let foreign = 0;
       for (const p of list) {
-        if (p.ticketNumber && p.couponSeq != null) { await takeAirportControl(p.ticketNumber, p.couponSeq); n++; }
+        if (!p.ticketNumber || p.couponSeq == null) continue;
+        const r = await takeAirportControl(p.ticketNumber, p.couponSeq);
+        if (r === "taken") n++;
+        else if (r === "foreign") foreign++;
       }
-      return n;
+      return { n, foreign };
     },
-    onSuccess: (n) => { toast.success(t("checkin.toast.control.title"), t("checkin.toast.control.body", { n })); refreshAll(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), e.message),
+    onSuccess: ({ n, foreign }) => {
+      const body = t("checkin.toast.control.body", { n }) + (foreign ? " " + t("checkin.toast.control.foreign", { n: foreign }) : "");
+      toast.success(t("checkin.toast.control.title"), body);
+      refreshAll();
+    },
+    onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), errText(e)),
   });
 
   const intlFlight = flight ? isInternational(flight) : false;
@@ -227,6 +237,7 @@ export function CheckinFlight() {
   return withList(
     <>
       <DetailHead
+        back="/checkin"
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{flightCode(flight.carrier, flight.flightNumber)}</span>
@@ -245,7 +256,7 @@ export function CheckinFlight() {
                   <LockKeyhole size={15} strokeWidth={1.75} /> {t("checkin.flight.takeControl")}
                 </Button>
                 {tab === "boarding" && (
-                  <Button variant="secondary" size="sm" disabled={boardEveryone.isPending}
+                  <Button variant="secondary" size="sm" disabled={!can("checkin.board") || boardEveryone.isPending}
                     onClick={() => boardEveryone.mutate()}>
                     <Users size={15} strokeWidth={1.75} /> {t("checkin.flight.boardAll")}
                   </Button>
@@ -398,7 +409,7 @@ export function CheckinFlight() {
                       {tab === "checkin" ? (
                         <Button
                           size="sm"
-                          disabled={gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
+                          disabled={!can("checkin.accept") || gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
                           title={
                             gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") })
                               : docsBlocked ? t("desk.action.docsBlocked")
@@ -415,7 +426,7 @@ export function CheckinFlight() {
                           {!firstTime ? t("checkin.action.changeSeat") : late ? t("desk.action.late") : t("checkin.action.accept")}
                         </Button>
                       ) : (
-                        <Button variant="success" size="sm" disabled={p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
+                        <Button variant="success" size="sm" disabled={!can("checkin.board") || p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
                           {p.status === "boarded" ? t("checkin.pax.boarded") : t("checkin.action.board")}
                         </Button>
                       )}
@@ -486,13 +497,14 @@ function ApisModal({
   pax, flightId, onClose, onSaved,
 }: { pax: CheckinPassenger; flightId: string; onClose: () => void; onSaved: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const [passport, setPassport] = useState(pax.passport ?? "");
   const [nationality, setNationality] = useState(pax.nationality ?? "");
 
   const save = useMutation({
     mutationFn: () => recordApis(flightId, pax.id, { passport, nationality }),
     onSuccess: (p) => { toast.success(t("checkin.toast.apis.title"), `${p.surname}/${p.givenName} · ${p.nationality} ${p.passport}`); onSaved(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.apisFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.apisFailed"), errText(e)),
   });
 
   return (

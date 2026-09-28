@@ -74,7 +74,8 @@ export function co2PerPax(origin: string, destination: string, cabin: CabinName 
 /** RBD → kabin (THY alışkanlığı: J C D Z Business, W Premium, gerisi Economy). */
 export function cabinOfRbd(rbd: string): CabinName {
   const r = rbd.toUpperCase();
-  if ("JCDZ".includes(r)) return "Business";
-  if (r === "W") return "Premium";
+  // Satış tarafıyla aynı eşleme (fareTypes: C/J/D Business, W/P Premium).
+  if ("JCDIZ".includes(r)) return "Business";
+  if ("WPS".includes(r)) return "Premium";
   return "Economy";
 }

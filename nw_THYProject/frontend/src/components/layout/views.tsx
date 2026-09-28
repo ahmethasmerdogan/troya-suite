@@ -1,4 +1,6 @@
 import type { ReactNode } from "react";
+import { Link } from "@tanstack/react-router";
+import { ChevronLeft } from "lucide-react";
 import { useT } from "@/i18n";
 import { cn } from "@/lib/utils";
 
@@ -127,12 +129,16 @@ export function Chip({
 export function DetailHead({
   title,
   actions,
+  back,
   className,
 }: {
   title: ReactNode;
   actions?: ReactNode;
+  /** Telefonda liste paneli gizlidir; bu bağlantı listeye döndürür. */
+  back?: "/checkin" | "/res" | "/orders" | "/emds";
   className?: string;
 }) {
+  const t = useT();
   return (
     <div
       className={cn(
@@ -140,7 +146,17 @@ export function DetailHead({
         className,
       )}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-3">{title}</div>
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {back && (
+          <Link
+            to={back} aria-label={t("shell.recordList")} title={t("shell.recordList")}
+            className="-ml-2 grid h-8 w-8 flex-shrink-0 place-items-center rounded-md text-ink-2 hover:bg-sunken md:hidden"
+          >
+            <ChevronLeft size={18} strokeWidth={1.75} />
+          </Link>
+        )}
+        {title}
+      </div>
       {actions && <div data-tour="detail.actions" className="flex flex-wrap items-center gap-1.5">{actions}</div>}
     </div>
   );

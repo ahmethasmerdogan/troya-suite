@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, CalendarClock, Inbox } from "lucide-react";
-import { applyScheduleChange, listTickets, listUpcomingFlights, newIdempotencyKey, type ScheduleChangeResult } from "@/domain/api";
+import { applyScheduleChange, listTickets, listUpcomingFlights, type ScheduleChangeResult } from "@/domain/api";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 import { classifyScheduleChange, isInternationalSegment, type ChangeSeverity, type ScheduledFlight } from "@/domain/scheduleChange";
 import { Button, Field, Input } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/surface";
@@ -11,17 +13,13 @@ import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
-import { cn, formatDateTime } from "@/lib/utils";
+import { PermGate } from "@/components/layout/PermGate";
+import { useErrorText } from "@/lib/useErrorText";
+import { useUI } from "@/store/ui";
+import { cn, formatDateTime, toLocalInput } from "@/lib/utils";
 
 const SEV_TONE: Record<ChangeSeverity, Tone> = { minor: "gray", involuntary: "amber", significant: "red" };
 const SEV_KEY: Record<ChangeSeverity, Key> = { minor: "skchg.sev.minor", involuntary: "skchg.sev.involuntary", significant: "skchg.sev.significant" };
-
-/** ISO → datetime-local (yerel saat). */
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 /**
  * Tarife değişikliği — üç adım tek ekranda: etkilenen seferi seç, yeni
@@ -29,7 +27,13 @@ function toLocalInput(iso: string): string {
  * Sonuç kuyruğa düşer: her bilet için yolcuya bildirim işi (Q7).
  */
 export function ScheduleChange() {
+  return <PermGate perm="ticket.irrop" titleKey="nav.skchg"><ScheduleChangeScreen /></PermGate>;
+}
+
+function ScheduleChangeScreen() {
   const t = useT();
+  const errText = useErrorText();
+  const lang = useUI((s) => s.lang);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { data: flights, isLoading } = useQuery({ queryKey: ["upcomingFlights"], queryFn: listUpcomingFlights, staleTime: 0 });
@@ -52,15 +56,17 @@ export function ScheduleChange() {
     [sel, summaries],
   );
 
+  const op = useOpKey();
   const run = useMutation({
-    mutationFn: () => applyScheduleChange({ flightNumber: sel!.flightNumber, date: sel!.date, newDeparture: newIso, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => applyScheduleChange({ flightNumber: sel!.flightNumber, date: sel!.date, newDeparture: newIso, idempotencyKey: op.key() }),
     onSuccess: (r) => {
+      op.rotate();
       setResult(r);
       toast.success(t("skchg.done"), t("skchg.doneBody", { a: r.applied.length, s: r.skipped.length }));
-      for (const k of ["upcomingFlights", "ticketsAll", "tickets", "queues"]) qc.invalidateQueries({ queryKey: [k] });
+      invalidateRecords(qc);
       setSel(null);
     },
-    onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),
+    onError: (e: Error) => toast.danger(t("skchg.fail"), errText(e)),
   });
 
   return (
@@ -72,7 +78,7 @@ export function ScheduleChange() {
           {t("skchg.doneBody", { a: result.applied.length, s: result.skipped.length })}
           {result.skipped.length > 0 && (
             <ul className="mt-1.5 list-disc pl-4 text-[12.5px]">
-              {result.skipped.map((x) => <li key={x.ticketNumber}><span className="num">{x.ticketNumber}</span> — {x.reason}</li>)}
+              {result.skipped.map((x) => <li key={x.ticketNumber}><span className="num">{x.ticketNumber}</span> — {lang === "en" ? x.reasonEn : x.reason}</li>)}
             </ul>
           )}
           <button type="button" onClick={() => navigate({ to: "/queues" })} className="mt-2 flex items-center gap-1.5 font-semibold underline underline-offset-2">
@@ -89,8 +95,11 @@ export function ScheduleChange() {
               <Empty title={t("skchg.none")} />
             ) : (
               <div className="flex flex-col">
-                <div className="grid grid-cols-[110px_1fr_170px_60px] gap-3 border-b border-line py-2 microlabel">
-                  <span>{t("skchg.col.flight")}</span><span>{t("skchg.col.route")}</span><span>{t("skchg.col.dep")}</span><span className="text-right">{t("skchg.col.tickets")}</span>
+                {/* Telefonda güzergâh ile kalkış tek sütunda alt alta; geniş ekranda ayrı sütunlar (sm:contents). */}
+                <div className="grid grid-cols-[72px_minmax(0,1fr)_44px] gap-3 border-b border-line py-2 microlabel sm:grid-cols-[110px_1fr_170px_60px]">
+                  <span>{t("skchg.col.flight")}</span>
+                  <span className="sm:contents"><span>{t("skchg.col.route")}</span><span className="hidden sm:inline">{t("skchg.col.dep")}</span></span>
+                  <span className="text-right">{t("skchg.col.tickets")}</span>
                 </div>
                 {flights.slice(0, 14).map((f) => {
                   const on = sel?.flightNumber === f.flightNumber && sel.date === f.date;
@@ -101,12 +110,14 @@ export function ScheduleChange() {
                       onClick={() => pick(f)}
                       aria-label={`${f.flightNumber} ${f.date}`}
                       aria-pressed={on}
-                      className={cn("grid grid-cols-[110px_1fr_170px_60px] items-center gap-3 border-b border-hair py-2.5 text-left text-[13px] transition-colors last:border-0",
+                      className={cn("grid grid-cols-[72px_minmax(0,1fr)_44px] items-center gap-3 border-b border-hair py-2.5 text-left text-[13px] transition-colors last:border-0 sm:grid-cols-[110px_1fr_170px_60px]",
                         on ? "bg-brand-wash" : "hover:bg-sunken")}
                     >
                       <span className="num font-semibold text-ink">{f.flightNumber}</span>
-                      <span className="num text-ink-2">{f.origin} → {f.destination}</span>
-                      <span className="num text-ink-2">{formatDateTime(f.departure)}</span>
+                      <span className="flex min-w-0 flex-col sm:contents">
+                        <span className="num whitespace-nowrap text-ink-2">{f.origin} → {f.destination}</span>
+                        <span className="num text-[12px] text-ink-3 sm:text-[13px] sm:text-ink-2">{formatDateTime(f.departure)}</span>
+                      </span>
                       <span className="num text-right text-ink">{f.tickets}</span>
                     </button>
                   );
@@ -121,7 +132,7 @@ export function ScheduleChange() {
             <PanelHead title={t("skchg.newTime")} hint={t("skchg.newTimeHint")} />
             <PanelBody className="flex flex-col gap-3">
               {!sel ? (
-                <p className="text-[13px] text-ink-3">{t("skchg.pickHint")}</p>
+                <p className="text-[13px] text-ink-3">{t("skchg.pickFirst")}</p>
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-[13px]">

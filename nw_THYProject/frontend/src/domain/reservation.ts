@@ -1,10 +1,13 @@
 // QuickRes — Rezervasyon domaini (PNR + availability). Mock; backend gelince REST'e bağlanır.
 // PNR (Passenger Name Record) → Troya'da bilet kesimine kaynak olur (PNR→ticket linkage).
 import { shiftFixture } from "./demoClock";
+import { LocalizedError } from "./errors";
 import { searchFlights } from "./flights";
 import { computeFareOffers } from "./pricing";
 import type { CabinName } from "./fareTypes";
 import type { Passenger } from "./types";
+import { airportByCode } from "./airports";
+import { foldIncludes } from "./text";
 
 export type PnrStatus = "active" | "ticketed" | "cancelled";
 /**
@@ -49,7 +52,7 @@ export interface PnrRemark {
   at: string;
 }
 
-export type PnrAction = "created" | "ticketed" | "renamed" | "ttl_extended" | "segment_cancelled" | "cancelled" | "remark";
+export type PnrAction = "created" | "ticketed" | "unticketed" | "renamed" | "ttl_extended" | "segment_cancelled" | "cancelled" | "remark";
 export interface PnrHistoryEntry {
   at: string;
   by: string;
@@ -211,7 +214,7 @@ export async function searchPnrs(query: string): Promise<PnrSummary[]> {
   return MOCK_PNRS.filter(
     (p) =>
       p.recordLocator.includes(q) ||
-      p.passengers.some((pax) => pax.surname.toUpperCase().includes(q) || pax.givenName.toUpperCase().includes(q)) ||
+      p.passengers.some((pax) => foldIncludes(pax.surname, q) || foldIncludes(pax.givenName, q) || foldIncludes(`${pax.surname}/${pax.givenName}`, q)) ||
       p.segments.some((s) => s.origin === q || s.destination === q),
   ).map(summary);
 }
@@ -281,6 +284,44 @@ function log(p: Pnr, by: string, action: PnrAction, text: string, textEn: string
  * Ad düzeltmesini PNR'a yansıt: bilet adı PNR'dakiyle birebir aynı kalmalı
  * (Handbook 2.3). Biletlenmiş yolcu kaydı da yeni adla taşınır.
  */
+/**
+ * Standart kesim süresi: rezervasyondan 72 saat (SSR ADTK), ama ilk kalkıştan
+ * 2 saat önceyi geçemez — yakın uçuşta süre kalkıştan sonraya düşer ve süre
+ * kuyruğu (Q8) rezervasyonu hiç yakalamaz. Kalkışa 2 saatten az kalmışsa şimdi.
+ */
+function standardTtl(segments: ReservationSegment[], nowMs: number): string {
+  const deps = segments.filter((s) => s.status !== "XX").map((s) => Date.parse(s.departure)).filter(Number.isFinite);
+  const cap = deps.length ? Math.min(...deps) - 2 * 3_600_000 : Infinity;
+  return new Date(Math.max(nowMs, Math.min(nowMs + 72 * 3_600_000, cap))).toISOString();
+}
+
+/**
+ * Bilet void edildi ya da tamamen iade edildi: yolcu yeniden biletsizdir.
+ * Numara PNR'dan düşer, rezervasyon yeniden "aktif" olur ve kesim süresi
+ * yeniden başlar — aksi hâlde aynı yolcuya bilet "mükerrer" diye reddedilir,
+ * rezervasyon da hiç iptal edilemezdi.
+ */
+export function detachTicketFromPnr(
+  recordLocator: string,
+  ticketNumber: string,
+  pax: { surname: string; givenName: string },
+  why: "void" | "refund",
+): Pnr | undefined {
+  const p = pnrByLocator(recordLocator);
+  if (!p || !p.ticketNumbers.includes(ticketNumber)) return undefined;
+  p.ticketNumbers = p.ticketNumbers.filter((n) => n !== ticketNumber);
+  const k = paxKey(pax);
+  p.ticketedPax = (p.ticketedPax ?? []).filter((x) => x !== k);
+  if (p.status === "ticketed") {
+    p.status = "active";
+    p.ttl = standardTtl(p.segments, Date.now());
+  }
+  log(p, "Troya", "unticketed",
+    `Bilet ${why === "void" ? "void edildi" : "iade edildi"} · ${ticketNumber} · ${k} yeniden biletsiz`,
+    `Ticket ${why === "void" ? "voided" : "refunded"} · ${ticketNumber} · ${k} unticketed again`);
+  return p;
+}
+
 export function renamePnrPassenger(recordLocator: string, from: Passenger, to: Passenger): void {
   const p = pnrByLocator(recordLocator);
   if (!p) return;
@@ -304,10 +345,10 @@ const activeSegments = (p: Pnr) => p.segments.filter((s) => s.status !== "XX");
 export async function cancelPnr(recordLocator: string, by: string, reason?: string): Promise<Pnr> {
   await delay(420);
   const p = pnrByLocator(recordLocator);
-  if (!p) throw new Error("PNR bulunamadı");
-  if (p.status === "cancelled") throw new Error("PNR zaten iptal edilmiş.");
+  if (!p) throw new LocalizedError("PNR bulunamadı", "PNR not found");
+  if (p.status === "cancelled") throw new LocalizedError("PNR zaten iptal edilmiş.", "The PNR is already cancelled.");
   if ((p.ticketedPax?.length ?? 0) > 0 || p.ticketNumbers.length > 0)
-    throw new Error("Kesilmiş bilet var — önce biletleri void ya da iade edin, sonra rezervasyonu iptal edin.");
+    throw new LocalizedError("Kesilmiş bilet var — önce biletleri void ya da iade edin, sonra rezervasyonu iptal edin.", "Tickets have been issued — void or refund them first, then cancel the reservation.");
   p.status = "cancelled";
   p.ttl = undefined;
   for (const s of p.segments) s.status = "XX";
@@ -319,11 +360,16 @@ export async function cancelPnr(recordLocator: string, by: string, reason?: stri
 export async function cancelSegment(recordLocator: string, index: number, by: string): Promise<Pnr> {
   await delay(380);
   const p = pnrByLocator(recordLocator);
-  if (!p) throw new Error("PNR bulunamadı");
-  if (p.status !== "active") throw new Error("Yalnız biletlenmemiş, aktif rezervasyonda segment iptal edilir.");
+  if (!p) throw new LocalizedError("PNR bulunamadı", "PNR not found");
+  if (p.status !== "active") throw new LocalizedError("Yalnız biletlenmemiş, aktif rezervasyonda segment iptal edilir.", "Segments can be cancelled only on an active, unticketed reservation.");
+  if ((p.ticketedPax?.length ?? 0) > 0 || p.ticketNumbers.length > 0)
+    throw new LocalizedError(
+      "Bu rezervasyonda bileti kesilmiş yolcu var — segment iptali biletli kuponu açıkta bırakır; önce bilet üzerinde değişiklik (exchange) ya da iade yapın.",
+      "A passenger on this reservation is ticketed — cancelling the segment would leave the ticketed coupon orphaned; exchange or refund the ticket first.",
+    );
   const seg = p.segments[index];
-  if (!seg || seg.status === "XX") throw new Error("Segment bulunamadı ya da zaten iptal.");
-  if (activeSegments(p).length <= 1) throw new Error("Son segment iptal edilemez — rezervasyonu iptal edin.");
+  if (!seg || seg.status === "XX") throw new LocalizedError("Segment bulunamadı ya da zaten iptal.", "Segment not found or already cancelled.");
+  if (activeSegments(p).length <= 1) throw new LocalizedError("Son segment iptal edilemez — rezervasyonu iptal edin.", "The last segment cannot be cancelled — cancel the reservation instead.");
   seg.status = "XX";
   const code = `${seg.carrier}${seg.flightNumber.replace(/^[A-Z]{2}/, "")}`;
   log(p, by, "segment_cancelled", `Segment iptal · ${code} ${seg.origin}-${seg.destination}`, `Segment cancelled · ${code} ${seg.origin}-${seg.destination}`);
@@ -335,13 +381,13 @@ export const TTL_EXTEND_HOURS = 24;
 export async function extendTtl(recordLocator: string, by: string, nowMs = Date.now()): Promise<Pnr> {
   await delay(300);
   const p = pnrByLocator(recordLocator);
-  if (!p) throw new Error("PNR bulunamadı");
-  if (p.status !== "active") throw new Error("Yalnız biletlenmemiş rezervasyonun süresi uzatılır.");
+  if (!p) throw new LocalizedError("PNR bulunamadı", "PNR not found");
+  if (p.status !== "active") throw new LocalizedError("Yalnız biletlenmemiş rezervasyonun süresi uzatılır.", "Only an unticketed reservation's time limit can be extended.");
   const firstDep = Math.min(...activeSegments(p).map((s) => Date.parse(s.departure)));
   const cap = firstDep - 2 * 3_600_000;
   const from = Math.max(nowMs, p.ttl ? Date.parse(p.ttl) : nowMs);
   const next = Math.min(from + TTL_EXTEND_HOURS * 3_600_000, cap);
-  if (next <= from) throw new Error("Uçuşa çok az kaldı — süre uzatılamaz, bilet şimdi kesilmeli.");
+  if (next <= from) throw new LocalizedError("Uçuşa çok az kaldı — süre uzatılamaz, bilet şimdi kesilmeli.", "The flight is too close — the time limit cannot be extended; the ticket must be issued now.");
   p.ttl = new Date(next).toISOString();
   log(p, by, "ttl_extended", `Bilet kesim süresi uzatıldı · ${p.ttl.slice(0, 16).replace("T", " ")}Z`, `Ticketing time limit extended · ${p.ttl.slice(0, 16).replace("T", " ")}Z`);
   return p;
@@ -351,10 +397,10 @@ export async function extendTtl(recordLocator: string, by: string, nowMs = Date.
 export async function addRemark(recordLocator: string, kind: PnrRemark["kind"], text: string, by: string): Promise<Pnr> {
   await delay(240);
   const p = pnrByLocator(recordLocator);
-  if (!p) throw new Error("PNR bulunamadı");
+  if (!p) throw new LocalizedError("PNR bulunamadı", "PNR not found");
   const clean = text.trim();
-  if (clean.length < 3) throw new Error("Not en az 3 karakter olmalı.");
-  if (clean.length > 200) throw new Error("Not 200 karakteri geçemez.");
+  if (clean.length < 3) throw new LocalizedError("Not en az 3 karakter olmalı.", "The remark must be at least 3 characters.");
+  if (clean.length > 200) throw new LocalizedError("Not 200 karakteri geçemez.", "The remark cannot exceed 200 characters.");
   (p.remarks ??= []).push({ kind, text: clean, by, at: new Date().toISOString() });
   log(p, by, "remark", `${kind} eklendi · ${clean}`, `${kind} added · ${clean}`);
   return p;
@@ -368,6 +414,20 @@ export interface CreatePnrInput {
 }
 export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
   await delay(600);
+  // Arayüz atlatılsa bile kayıt bu kapıdan geçer: yolcu adı, bilinen
+  // havalimanları, farklı kalkış/varış, taşıyıcı + rakamlı sefer numarası.
+  if (!input.passengers.length) throw new LocalizedError("En az bir yolcu gerekir.", "At least one passenger is required.");
+  if (input.passengers.some((p) => p.surname.trim().length < 2 || !p.givenName.trim()))
+    throw new LocalizedError("Her yolcunun soyadı (en az 2 harf) ve adı zorunlu.", "Every passenger needs a surname (at least 2 letters) and a given name.");
+  if (!input.segments.length) throw new LocalizedError("En az bir segment gerekir.", "At least one segment is required.");
+  for (const s of input.segments) {
+    const where = `${s.origin}-${s.destination}`;
+    if (!airportByCode(s.origin) || !airportByCode(s.destination)) throw new LocalizedError(`${where}: bilinmeyen havalimanı kodu.`, `${where}: unknown airport code.`);
+    if (s.origin === s.destination) throw new LocalizedError(`${where}: kalkış ve varış aynı olamaz.`, `${where}: origin and destination cannot be the same.`);
+    if (!/^[A-Z0-9]{2}$/.test(s.carrier)) throw new LocalizedError(`${where}: taşıyıcı kodu 2 karakter olmalı.`, `${where}: the carrier code must be 2 characters.`);
+    if (!/^([A-Z0-9]{2})?\d{1,4}[A-Z]?$/.test(s.flightNumber.trim().toUpperCase())) throw new LocalizedError(`${where}: sefer numarası rakam olmalı (ör. 1591).`, `${where}: the flight number must be numeric (e.g. 1591).`);
+    if (Number.isNaN(Date.parse(s.departure))) throw new LocalizedError(`${where}: kalkış tarihi geçersiz.`, `${where}: invalid departure date.`);
+  }
   const pnr: Pnr = {
     recordLocator: genRecordLocator(++rlCounter + MOCK_PNRS.length + 17),
     passengers: input.passengers,
@@ -376,8 +436,8 @@ export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
     status: "active",
     contact: input.contact,
     ticketNumbers: [],
-    // Standart TTL: rezervasyondan 72 saat (SSR ADTK) — süresinde kesilmezse uyarı → iptal.
-    ttl: new Date(Date.now() + 72 * 3_600_000).toISOString(),
+    // Standart TTL: rezervasyondan 72 saat (SSR ADTK), ilk kalkış − 2 saati geçmez.
+    ttl: standardTtl(input.segments, Date.now()),
     history: [],
   };
   log(pnr, input.by ?? "QuickRes", "created", "Rezervasyon oluşturuldu", "Reservation created");

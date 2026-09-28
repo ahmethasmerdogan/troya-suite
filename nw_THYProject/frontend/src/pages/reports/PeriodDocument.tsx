@@ -79,9 +79,9 @@ export function PeriodDocument() {
           {/* --- belge başlığı --- */}
           <div className="flex items-center gap-2.5 bg-[var(--brand)] px-5 py-2.5 text-white">
             <BrandMark size={18} variant="bare" className="text-white" />
-            <span className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
+            <span lang="en" className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
             <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
-              Dönem Kapanış Belgesi · Period Closing Statement
+              <span lang="tr">Dönem Kapanış Belgesi</span> · <span lang="en">Period Closing Statement</span>
             </span>
           </div>
 

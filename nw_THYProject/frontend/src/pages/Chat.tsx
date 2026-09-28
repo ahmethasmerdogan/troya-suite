@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, UsersRound, X } from "lucide-react";
+import { ChevronDown, ChevronLeft, ExternalLink, Hash, Info, MessageSquarePlus, Paperclip, Plus, Send, Ticket as TicketIcon, UsersRound, X } from "lucide-react";
 import {
   channelDesc, channelName, dmThreadId, isChannel, isDm, isVisibleTo, canSeeChannel,
   groupTitle, unreadCount, PRESENCE_META,
   type ChatRef, type PresenceStatus,
 } from "@/domain/chat";
 import { useUsers } from "@/store/users";
+import { unitLabel } from "@/domain/users";
 import { usePerm } from "@/lib/usePerm";
 import { PersonCard } from "@/components/domain/PersonCard";
 import { roleLabel } from "@/domain/auth";
@@ -52,6 +53,9 @@ export function Chat() {
   } = useChat();
   const users = useUsers((s) => s.users);
   const [thread, setThread] = useState<string>("");
+  /** Telefonda tek panel görünür: sohbet listesi ya da açık sohbet. */
+  const [pane, setPane] = useState<"list" | "thread">("list");
+  const openThread = (id: string) => { setThread(id); setPane("thread"); };
   const [dirQ, setDirQ] = useState("");
   const [newChannel, setNewChannel] = useState(false);
   const [newChat, setNewChat] = useState(false);
@@ -81,7 +85,7 @@ export function Chat() {
   // İlk açılışta ve başka ekrandan gelen istekte doğru sohbeti aç.
   useEffect(() => {
     const pending = consumePendingThread();
-    if (pending) { setThread(pending); return; }
+    if (pending) { openThread(pending); return; }
     if (!thread && channels[0]) setThread(channels[0].id);
   }, [channels, thread, consumePendingThread]);
 
@@ -147,7 +151,7 @@ export function Chat() {
         onCreate={(name, desc, memberIds) => {
           const c = createChannel(name, desc, memberIds);
           setNewChannel(false);
-          if (c) { setThread(c.id); setOpened((o) => [...o, c.id]); }
+          if (c) { openThread(c.id); setOpened((o) => [...o, c.id]); }
         }}
       />
       <NewGroupModal
@@ -157,7 +161,7 @@ export function Chat() {
         onCreate={(name, memberIds) => {
           const g = createGroup(name, memberIds);
           setNewGroup(false);
-          if (g) { setThread(g.id); setOpened((o) => [...o, g.id]); }
+          if (g) { openThread(g.id); setOpened((o) => [...o, g.id]); }
         }}
       />
       <NewChatModal
@@ -166,14 +170,14 @@ export function Chat() {
         onClose={() => setNewChat(false)}
         onPick={(id) => {
           const tid = dmThreadId(me?.id ?? "", id);
-          setThread(tid);
+          openThread(tid);
           // Mesaj yazılmadan da listede görünsün — yoksa "hiçbir şey olmadı" hissi.
           setOpened((o) => (o.includes(tid) ? o : [...o, tid]));
           setNewChat(false);
         }}
       />
       {/* ---------- sol: kendi durumum, kanallar, kişiler ---------- */}
-      <aside className="hidden w-64 flex-shrink-0 flex-col border-r border-line md:flex">
+      <aside className={cn("w-full flex-shrink-0 flex-col border-line md:flex md:w-64 md:border-r", pane === "list" ? "flex" : "hidden")}>
         <div className="border-b border-line p-3">
           <div className="flex items-center gap-2.5">
             <span className="grid h-8 w-8 flex-shrink-0 place-items-center rounded-full bg-brand text-[11px] font-semibold text-white">
@@ -227,7 +231,7 @@ export function Chat() {
                   <Row
                     key={c.id}
                     active={thread === c.id}
-                    onClick={() => setThread(c.id)}
+                    onClick={() => openThread(c.id)}
                     unread={c.unread}
                     icon={
                       c.kind === "channel" ? <Hash size={14} strokeWidth={2} />
@@ -252,7 +256,7 @@ export function Chat() {
                   .filter((g) => dirMatch({ name: groupTitle(g, nameOf, me?.id), title: "", unit: "", location: "" }))
                   .map((g) => (
                     <Row
-                      key={g.id} active={thread === g.id} onClick={() => setThread(g.id)}
+                      key={g.id} active={thread === g.id} onClick={() => openThread(g.id)}
                       unread={unreadCount(messages[g.id], lastRead[g.id], me?.id ?? "")}
                       icon={<UsersRound size={14} strokeWidth={1.75} />}
                       label={groupTitle(g, nameOf, me?.id)}
@@ -272,7 +276,7 @@ export function Chat() {
               .map((c) => {
                 const n = unreadCount(messages[c.id], lastRead[c.id], me?.id ?? "");
                 return (
-                  <Row key={c.id} active={thread === c.id} onClick={() => setThread(c.id)} unread={n}
+                  <Row key={c.id} active={thread === c.id} onClick={() => openThread(c.id)} unread={n}
                     icon={<Hash size={14} strokeWidth={2} />} label={channelName(c, lang)} />
                 );
               })}
@@ -299,7 +303,7 @@ export function Chat() {
                   tone={p.online ? PRESENCE_META[p.status].tone : "gray"}
                   name={u.name}
                   hint={u.title}
-                  onClick={() => setThread(id)}
+                  onClick={() => openThread(id)}
                 />
               );
             })}
@@ -308,7 +312,13 @@ export function Chat() {
       </aside>
 
       {/* ---------- orta: sohbet ---------- */}
-      <section className="flex min-w-0 flex-1 flex-col">
+      <section className={cn("min-w-0 flex-1 flex-col md:flex", pane === "thread" ? "flex" : "hidden")}>
+        <button
+          type="button" onClick={() => setPane("list")}
+          className="flex items-center gap-1 border-b border-line px-3 py-2 text-[12.5px] font-medium text-ink-2 hover:bg-sunken md:hidden"
+        >
+          <ChevronLeft size={15} strokeWidth={1.75} /> {t("chat.conversations")}
+        </button>
         <ThreadHead thread={thread} me={me?.id} typers={typers} presence={presence} />
 
         <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
@@ -534,7 +544,7 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
   const t = useT();
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["ticket", refItem.id],
-    queryFn: () => getTicket(refItem.id),
+    queryFn: async () => (await getTicket(refItem.id)) ?? null,
   });
 
   return (
@@ -734,6 +744,10 @@ function NewChannelModal({
   const [desc, setDesc] = useState("");
   const [sel, setSel] = useState<string[]>([]);
   useEffect(() => { if (open) { setName(""); setDesc(""); setSel([]); } }, [open]);
+  // Aynı adla ikinci kanal açılmaz — iki "QA Kanal" hangisine yazıldığını belirsizleştirir.
+  const channels = useChat((s) => s.channels);
+  const key = (x: string) => x.trim().toLocaleLowerCase("tr-TR");
+  const taken = name.trim().length > 0 && channels.some((c) => key(c.name) === key(name));
 
   return (
     <Modal
@@ -741,13 +755,13 @@ function NewChannelModal({
       hint={t("chat.newChannel.hint")}
       width="sm"
       footer={
-        <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc, sel)}>
+        <Button variant="success" disabled={name.trim().length < 2 || taken} onClick={() => onCreate(name, desc, sel)}>
           {t("chat.newChannel.submit")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label={t("chat.newChannel.name")} required>
+        <Field label={t("chat.newChannel.name")} required error={taken ? t("chat.newChannel.taken") : undefined}>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("chat.newChannel.namePlaceholder")} maxLength={40} />
         </Field>
         <Field label={t("chat.newChannel.desc")} hint={t("chat.newChannel.descHint")}>
@@ -771,6 +785,7 @@ function NewChatModal({
   onPick: (id: string) => void;
 }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const [q, setQ] = useState("");
   useEffect(() => { if (open) setQ(""); }, [open]);
   const hits = users.filter((u) => {
@@ -796,7 +811,7 @@ function NewChatModal({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-medium text-ink">{u.name}</span>
-                <span className="block truncate text-[11.5px] text-ink-3">{u.title} · {u.unit}</span>
+                <span className="block truncate text-[11.5px] text-ink-3">{u.title} · {unitLabel(u.unit, lang)}</span>
               </span>
             </button>
           ))}
@@ -857,6 +872,7 @@ function MemberPicker({
   onToggle: (id: string) => void;
 }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const [q, setQ] = useState("");
   const hits = users.filter((u) => {
     const s = q.trim().toLocaleLowerCase("tr-TR");
@@ -890,7 +906,7 @@ function MemberPicker({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] text-ink">{u.name}</span>
-                <span className="block truncate text-[11px] text-ink-3">{u.title} · {u.unit}</span>
+                <span className="block truncate text-[11px] text-ink-3">{u.title} · {unitLabel(u.unit, lang)}</span>
               </span>
             </button>
           );

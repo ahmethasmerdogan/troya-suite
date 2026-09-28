@@ -84,7 +84,7 @@ describe("hastalık uzatması (13.10)", () => {
 
   it("yolculuk başlamadan uzatma verilmez", () => {
     const r = illnessExtension(ticket(["O"]), { certificateDate: "2026-06-10", fitToTravelDate: "2026-07-10", fareKind: "normal" }, NOW);
-    expect(r).toEqual({ error: expect.stringMatching(/13\.10/) });
+    expect(r).toEqual({ error: expect.stringMatching(/13\.10/), errorEn: expect.stringMatching(/13\.10/) });
   });
 
   it("normal ücret: elverişlilik tarihine kadar, rapordan en çok 3 ay", () => {
@@ -102,9 +102,9 @@ describe("hastalık uzatması (13.10)", () => {
   it("geçerliliği uzatmayan talep reddedilir (hak boşa gitmez) ve uzatma bir kez verilir", () => {
     const t = ticket(["F", "O"], { deps: ["2026-06-01T08:00:00Z", "2026-07-01T08:00:00Z"] });
     const r = illnessExtension(t, { certificateDate: "2026-06-10", fitToTravelDate: "2026-06-20", fareKind: "normal" }, NOW);
-    expect(r).toEqual({ error: expect.stringMatching(/gerek yok/) });
+    expect(r).toEqual({ error: expect.stringMatching(/gerek yok/), errorEn: expect.stringMatching(/no extension needed/) });
     t.validityExtension = { reason: "illness", certificateDate: "2026-06-10", fitToTravelDate: "2026-06-20", fareKind: "normal", until: "2027-06-01T23:59:59.999Z", grantedAt: "" };
-    expect(illnessExtension(t, { certificateDate: "2026-06-11", fitToTravelDate: "2026-06-21", fareKind: "normal" }, NOW)).toEqual({ error: expect.stringMatching(/bir kez/) });
+    expect(illnessExtension(t, { certificateDate: "2026-06-11", fitToTravelDate: "2026-06-21", fareKind: "normal" }, NOW)).toEqual({ error: expect.stringMatching(/bir kez/), errorEn: expect.stringMatching(/only once/) });
   });
 });
 

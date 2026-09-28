@@ -3,7 +3,7 @@ import { AtSign, Building2, MapPin, MessageSquare, Phone, UserRound } from "luci
 import { useUsers } from "@/store/users";
 import { useChat } from "@/store/chat";
 import { useUI } from "@/store/ui";
-import { managerOf, reportsOf } from "@/domain/users";
+import { managerOf, reportsOf, unitLabel } from "@/domain/users";
 import { dmThreadId, presenceLabel, PRESENCE_META } from "@/domain/chat";
 import { presenceOf } from "@/store/chat";
 import { roleLabel } from "@/domain/auth";
@@ -84,7 +84,7 @@ export function PersonCard({
       </div>
 
       <dl className="mt-3 flex flex-col gap-1.5 border-t border-line pt-3 text-[12.5px]">
-        <Row icon={<Building2 size={13} strokeWidth={1.75} />} label={t("admin.person.unit")} value={u.unit} />
+        <Row icon={<Building2 size={13} strokeWidth={1.75} />} label={t("admin.person.unit")} value={unitLabel(u.unit, lang)} />
         <Row icon={<MapPin size={13} strokeWidth={1.75} />} label={t("admin.person.station")} value={u.location} mono />
         <Row icon={<AtSign size={13} strokeWidth={1.75} />} label={t("admin.person.email")} value={u.email} mono />
         {u.phone && <Row icon={<Phone size={13} strokeWidth={1.75} />} label={t("admin.person.phone")} value={u.phone} mono />}
@@ -97,7 +97,7 @@ export function PersonCard({
           <Row
             icon={<UserRound size={13} strokeWidth={1.75} />}
             label={t("admin.person.team")}
-            value={t("admin.person.teamValue", {
+            value={t(team.length === 1 ? "admin.person.teamValue.one" : "admin.person.teamValue", {
               n: team.length,
               names: team.map((member) => member.name.split(" ")[0]).join(", "),
             })}

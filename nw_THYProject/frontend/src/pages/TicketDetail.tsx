@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, Building2, CalendarClock, ChevronDown,
   CreditCard, FileOutput, HeartPulse, Leaf, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
-import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, newIdempotencyKey } from "@/domain/api";
+import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, listTickets, newIdempotencyKey } from "@/domain/api";
 import { memosForTicket } from "@/domain/memos";
 import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
@@ -18,7 +18,7 @@ import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
 import { ValidityCard } from "@/components/domain/ValidityCard";
 import { cabinOfRbd, co2PerPax } from "@/domain/co2";
-import { TicketFlows, type FlowId } from "@/components/flows";
+import { FLOW_PERM, isFlowId, TicketFlows, type FlowId } from "@/components/flows";
 import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +26,7 @@ import {
   Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge, StatTile,
 } from "@/ui";
 import { translate, useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
@@ -55,19 +56,26 @@ export function TicketDetail() {
   // paylaşım kapalı: yenileme = yeniden çizim.
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["ticket", ticketNumber],
-    queryFn: async () => { const t = await getTicket(ticketNumber); return t ? { ...t } : t; },
+    queryFn: async () => { const t = await getTicket(ticketNumber); return t ? { ...t } : null; },
     structuralSharing: false,
   });
   const { data: emds } = useQuery({ queryKey: ["emdsFor", ticketNumber], queryFn: () => listEmdsForTicket(ticketNumber) });
+  const { data: known } = useQuery({
+    queryKey: ["ticketsAll"], queryFn: listTickets,
+    select: (list) => new Set(list.map((x) => x.ticketNumber)),
+  });
 
   // `?flow=` tek sefer tüketilir; yoksa kapatınca yeniden açılır.
   const consumed = useRef(false);
   useEffect(() => {
     if (!flowParam || consumed.current) return;
     consumed.current = true;
-    setFlow(flowParam as FlowId);
+    // Adresten gelen akış da yetki kapısından geçer; bilinmeyen ya da yetkisiz
+    // akış açılmaz (yetkisiz personel `?flow=refund` ile iadeyi açabiliyordu).
+    if (isFlowId(flowParam) && can(FLOW_PERM[flowParam])) setFlow(flowParam);
+    else if (isFlowId(flowParam)) toast.danger(t("shell.denied.title"), lockHint(FLOW_PERM[flowParam]) ?? t("shell.denied.body"));
     navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber }, search: {}, replace: true });
-  }, [flowParam, ticketNumber, navigate]);
+  }, [flowParam, ticketNumber, navigate, can, lockHint, t]);
 
   // e / r / v — buton ipuçlarında ve ekran kılavuzunda vaat edilen kısayollar.
   // Yazı alanındayken, bir katman (drawer/modal/palet) açıkken ya da yetki
@@ -158,7 +166,9 @@ export function TicketDetail() {
             <> {t("ticket.detail.control.deadline")} <b className="num">{formatDateTime(ticket.control.deadlineAt)}</b>
               {overdue ? t("ticket.detail.control.overdueNote") : t("ticket.detail.control.withinNote")}</>
           )}{" "}
-          <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">{t("ticket.detail.control.manage")}</button>
+          {can(FLOW_PERM.control) && (
+            <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">{t("ticket.detail.control.manage")}</button>
+          )}
         </Alert>
       )}
       {open === 0 && (
@@ -190,10 +200,14 @@ export function TicketDetail() {
                 })}
                 {p.infant && <OutlineBadge tone="violet">{t("ticket.detail.infant", { name: `${p.infant.surname}/${p.infant.givenName}` })}</OutlineBadge>}
                 {ticket.tourCode && <OutlineBadge tone="gray">Tour {ticket.tourCode}</OutlineBadge>}
-                {ticket.conjunctionTickets?.map((tn) => (
+                {/* Bağlı bilet bu sistemde kayıtlıysa açılır; değilse (başka
+                    sistemde kesilmiş) yalnız bilgi olarak durur — "bulunamadı"ya gitmez. */}
+                {ticket.conjunctionTickets?.map((tn) => known?.has(tn) ? (
                   <Link key={tn} to="/tickets/$ticketNumber" params={{ ticketNumber: tn }}>
                     <OutlineBadge tone="gray">Conj {tn}</OutlineBadge>
                   </Link>
+                ) : (
+                  <OutlineBadge key={tn} tone="gray">Conj {tn}</OutlineBadge>
                 ))}
                 {ticket.endorsement && <OutlineBadge tone="amber">{ticket.endorsement}</OutlineBadge>}
                 {ticket.ptc === "CHD" && <OutlineBadge tone="violet">CHD</OutlineBadge>}
@@ -498,6 +512,7 @@ function MoreMenu({
 /** Tarife değişikliği (TK) — yolcu yeni saati öğrendi, kupon HK'ya döner. */
 function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: number }) {
   const t = useT();
+  const errText = useErrorText();
   const qc = useQueryClient();
   const [key] = useState(newIdempotencyKey);
   const run = useMutation({
@@ -507,7 +522,7 @@ function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: n
       qc.invalidateQueries({ queryKey: ["ticket", ticketNumber] });
       qc.invalidateQueries({ queryKey: ["queues"] });
     },
-    onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),
+    onError: (e: Error) => toast.danger(t("skchg.fail"), errText(e)),
   });
   return (
     <button type="button" onClick={() => run.mutate()} disabled={run.isPending} title={t("skchg.ackHint")}

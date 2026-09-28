@@ -1,15 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Leaf, Trash2, UserPlus, Users,
 } from "lucide-react";
-import { issueGroup, issueTicket, newIdempotencyKey, GROUP_MAX } from "@/domain/api";
+import { issueGroup, issueTicket, GROUP_MAX } from "@/domain/api";
 import { getPnr, paxKey, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, fareForPtc, CHILD_DISCOUNT, type FareOffer, type Ptc } from "@/domain/pricing";
 import { Tip } from "@/components/tips/Tip";
-import { co2PerPax } from "@/domain/co2";
+import { cabinOfRbd, co2PerPax } from "@/domain/co2";
 import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -24,8 +24,11 @@ import {
   Alert, Button, Card, InsetPanel, Modal, ModalClose, OutlineBadge, RadioCards, StatusPill,
 } from "@/ui";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 
 /* ====================================================================
    Bilet kesme — beş adım.
@@ -79,8 +82,29 @@ function legFromSegment(s: ReservationSegment): Leg {
   return { origin: s.origin, destination: s.destination, date: s.departure.slice(0, 10), flight, booked: flight };
 }
 
+/**
+ * "Yeni bilet kes" formu SIFIRLAR — sayfayı yeniden yüklemez. Yeniden yükleme
+ * bellek-içi kaydı da silip az önce kesilen bileti yok ediyordu (aynı numara
+ * bir sonraki kesimde yeniden verildi, PNR "bilet bekliyor"a döndü).
+ */
 export function IssueWizard() {
+  const [gen, setGen] = useState(0);
+  const navigate = useNavigate();
+  return (
+    <IssueWizardForm
+      key={gen}
+      onNew={() => { navigate({ to: "/issue", search: {} }); setGen((g) => g + 1); }}
+    />
+  );
+}
+
+function IssueWizardForm({ onNew }: { onNew: () => void }) {
+  // Kesim anahtarı form açılırken üretilir: çift tıklama ve yeniden deneme
+  // aynı işlemdir; başarıdan sonra yenilenir (kural 5/9).
+  const op = useOpKey();
+  const qc = useQueryClient();
   const t = useT();
+  const errText = useErrorText();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [issued, setIssued] = useState<Ticket | null>(null);
@@ -102,6 +126,9 @@ export function IssueWizard() {
   // --- ücret
   const [offer, setOffer] = useState<FareOffer | null>(null);
   const [cabinFilter, setCabinFilter] = useState<string>("all");
+  // PNR'dan gelindiyse tutulan kabin: ücret listesi ona süzülür, farklı kabin
+  // seçilirse uyarılır (önce Y rezervasyona sessizce Business bilet kesilebiliyordu).
+  const [booked, setBooked] = useState<{ rbd: string; cabin: string } | null>(null);
 
   // --- ödeme
   const [fop, setFop] = useState<FormOfPaymentType>("credit");
@@ -119,7 +146,7 @@ export function IssueWizard() {
   // --- QuickRes'ten gelindiyse formu rezervasyondan doldur (?pnr=XQ7T2M)
   const { pnr: srcRl } = useSearch({ from: "/issue" });
   const { data: srcPnr } = useQuery({
-    queryKey: ["pnr", srcRl], queryFn: () => getPnr(srcRl!), enabled: !!srcRl,
+    queryKey: ["pnr", srcRl], queryFn: async () => (await getPnr(srcRl!)) ?? null, enabled: !!srcRl,
   });
   const filled = useRef(false);
   useEffect(() => {
@@ -137,6 +164,12 @@ export function IssueWizard() {
     if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
     setPnr(srcPnr.recordLocator);
     if (srcPnr.segments.length) setLegs(srcPnr.segments.map(legFromSegment));
+    const rbd = srcPnr.segments.find((s) => s.status !== "XX")?.rbd;
+    if (rbd) {
+      const cabin = cabinOfRbd(rbd);
+      setBooked({ rbd, cabin });
+      setCabinFilter(cabin);
+    }
   }, [srcPnr]);
 
   // Her adımın kendi zorunlulukları var; eksikse İLERLEMEZ ve neyin eksik
@@ -234,10 +267,10 @@ export function IssueWizard() {
       segments,
       formOfPayment: { type: fop, detail: fopDetail || undefined },
       baggageAllowanceKg: offer!.baggageKg,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
-    onSuccess: (r) => { setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onSuccess: (r) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   const issue = useMutation({
@@ -258,10 +291,10 @@ export function IssueWizard() {
       formOfPayment: { type: fop, detail: fopDetail || undefined },
       // Ücretin bagaj hakkı kupona yazılır (Handbook 14.4).
       baggageAllowanceKg: offer!.baggageKg,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
-    onSuccess: (t) => { setConfirming(false); setIssued(t); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onSuccess: (t) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssued(t); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   if (issued) {
@@ -272,7 +305,7 @@ export function IssueWizard() {
         group={issuedGroup ?? undefined}
         onOpen={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: tn } })}
         onPrint={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: tn } })}
-        onNew={() => window.location.reload()}
+        onNew={onNew}
       />
     );
   }
@@ -309,7 +342,7 @@ export function IssueWizard() {
           <Card data-tour="issue.form" className="p-5">
             {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} companions={companions} setCompanions={setCompanions} />}
             {step === 1 && <LegStep legs={legs} setLegs={setLegs} errors={errors} />}
-            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} />}
+            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} booked={booked} />}
             {step === 3 && <PayStep fop={fop} setFop={setFop} detail={fopDetail} setDetail={setFopDetail} error={errors.fop} />}
             {step === 4 && <ReviewStep pax={pax} carrier={carrier} legs={legs} offer={offer} fop={fop} detail={fopDetail} />}
             {isGroup && offer && (step === 2 || step === 4) && <GroupFareTable rows={groupRows} total={collect!} />}
@@ -728,6 +761,7 @@ function PaxStep({
 /* --- 1 · sefer -------------------------------------------------------- */
 function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) => void; errors: Record<string, string> }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const set = (i: number, patch: Partial<Leg>) =>
     // Güzergâh/tarih değişirse seçim de rezervasyon seferi de düşer.
     setLegs(legs.map((l, j) => (i === j ? { ...l, ...patch, ...(patch.flight === undefined && (patch.origin || patch.destination || patch.date) ? { flight: null, booked: undefined } : {}) } : l)));
@@ -784,7 +818,7 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                         <span className="mx-1.5 text-ink-3">→</span>
                         {new Date(f.arrival).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                      <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin)}</span>
+                      <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin, lang)}</span>
                       {f.id === leg.booked?.id ? (
                         <OutlineBadge className="ml-auto">{t("issue.leg.booked")}</OutlineBadge>
                       ) : (
@@ -818,8 +852,8 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
 
 /* --- 2 · ücret -------------------------------------------------------- */
 function FareStep({
-  offers, offer, setOffer, cabin, setCabin, error, legs,
-}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string; legs: Leg[] }) {
+  offers, offer, setOffer, cabin, setCabin, error, legs, booked,
+}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string; legs: Leg[]; booked?: { rbd: string; cabin: string } | null }) {
   const t = useT();
   const lang = useUI((s) => s.lang); // ürün açıklaması ve ceza kuralı domainden gelir, dili burada seçilir
   const cabins = ["all", ...Array.from(new Set(offers.map((o) => o.cabin)))];
@@ -839,6 +873,9 @@ function FareStep({
       </div>
 
       {error && <Alert tone="danger" title={error} />}
+      {booked && (offer && offer.cabin !== booked.cabin
+        ? <Alert tone="warning" title={t("issue.fare.bookedMismatch", { rbd: booked.rbd, cabin: booked.cabin, chosen: offer.cabin })} />
+        : <Alert tone="info" title={t("issue.fare.booked", { rbd: booked.rbd, cabin: booked.cabin })} />)}
 
       {offers.length === 0 ? (
         <Empty title={t("issue.fare.emptyTitle")} hint={t("issue.fare.emptyHint")} />
@@ -895,7 +932,7 @@ function FareStep({
                       const kg = l.origin && l.destination ? co2PerPax(l.origin, l.destination, o.cabin, l.flight?.aircraft) : undefined;
                       return kg === undefined ? sum : (sum ?? 0) + kg;
                     }, undefined)} />
-                    <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{o.seatNote}</StatusPill>
+                    <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{lang === "en" ? o.seatNoteEn : o.seatNote}</StatusPill>
                     <span className="num ml-1 text-[11.5px] text-ink-3">{t("issue.fare.seatsLeft", { n: o.seatsLeft })}</span>
                   </span>
                   {/* Ceza kuralı satış anında görünür — yolcuya doğru bilgi verilsin. */}
@@ -922,9 +959,11 @@ function FareStep({
  * yapabileceği asgari şey numarayı hiç tutmamaktır.)
  */
 export function maskCardInput(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 19);
-  if (digits.length <= 4) return digits;
-  return "X".repeat(digits.length - 4) + digits.slice(-4);
+  // Alandaki "X"ler daha önce maskelenmiş hanelerdir — atılırsa tek tek
+  // yazarken her tuşta sayı kayboluyor, sonuç "X1234" kalıyordu.
+  const s = raw.toUpperCase().replace(/[^0-9X]/g, "").slice(0, 19);
+  if (s.length <= 4) return s;
+  return "X".repeat(s.length - 4) + s.slice(-4);
 }
 const FOPS: { id: FormOfPaymentType; labelKey: Key; icon: React.ReactNode }[] = [
   { id: "credit", labelKey: "issue.fop.credit", icon: <CreditCard size={16} strokeWidth={1.75} /> },

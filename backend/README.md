@@ -17,7 +17,7 @@ Bağımlılık yönü daima içeri: `api → application → domain`, `infrastru
 ## Faz 0'da ne var
 
 - Çok-modüllü Gradle (Kotlin DSL) + Java 21 toolchain + ktlint + detekt.
-- **`CouponStatus`** — 18 kod, interim/final ayrımı, **explicit FSM** (`transitionTo` geçersizde exception). Frontend aynası `frontend/src/domain/couponStatusMachine.ts` ile aynı geçiş tablosu.
+- **`CouponStatus`** — resmî 17 kod (Handbook 1.1.4), interim/final ayrımı, **explicit FSM** (`transitionTo` geçersizde exception). Frontend aynası `nw_THYProject/frontend/src/domain/couponStatusMachine.ts` ile aynı geçiş tablosu.
 - Value object'ler: `Money` (Ch 11), `CarrierCode`, `AirportCode`, `FareBasis`, `CarrierRole`, **`TicketNumber`** (3+9+mod-7 check digit).
 - ES/CQRS plumbing: `AggregateRoot` (raise/replay/version), `DomainEvent`, `EventStore` portu (append-only + optimistic concurrency), `Repository`, `IdempotencyStore`.
 - Event store DDL (`V1__event_store.sql`): `events` (stream_id, version, jsonb, UNIQUE) + `outbox` + `idempotency_keys`.

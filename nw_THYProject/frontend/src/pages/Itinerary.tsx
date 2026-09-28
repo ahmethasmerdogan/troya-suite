@@ -28,7 +28,7 @@ export function Itinerary() {
   const navigate = useNavigate();
   const uiLang = useUI((s) => s.lang);
   const [docLang, setDocLang] = useState<"tr" | "en">(uiLang === "en" ? "en" : "tr");
-  const { data: ticket, isLoading } = useQuery({ queryKey: ["ticket", ticketNumber], queryFn: () => getTicket(ticketNumber) });
+  const { data: ticket, isLoading } = useQuery({ queryKey: ["ticket", ticketNumber], queryFn: async () => (await getTicket(ticketNumber)) ?? null });
 
   if (isLoading) return <Skeleton className="h-96 w-full" />;
   if (!ticket) {
@@ -77,7 +77,11 @@ export function Itinerary() {
       </div>
 
       {/* Belgenin kendisi — tam sürüm (tüm kuponlar, ücret dökümü, bildirimler) */}
-      <TicketDocument ticket={ticket} lang={docLang} />
+      {/* Belge dili sayfa dilinden ayrı: büyük harf dönüşümü belge diline göre
+          yapılsın (İngilizce belgede "CALCULATİON" değil "CALCULATION"). */}
+      <div lang={docLang}>
+        <TicketDocument ticket={ticket} lang={docLang} />
+      </div>
 
       <p data-print-hide className="mt-3 text-[11.5px] text-ink-3">
         {tr

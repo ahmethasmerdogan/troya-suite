@@ -45,29 +45,31 @@ Two tracks:
 
 A single unified workspace with a module switcher, mirroring an airline PSS operational model:
 
-- **QuickRes** — reservation (PNR): search, detail, create-PNR wizard, availability.
-- **Troya** — ticketing: issue wizard, ticket detail (status pills, control indicator, lifecycle timeline, fare/TFC breakdown), smart search, itinerary/receipt (TR/EN, printable), exchange / refund / void, EMD, interline messages, orders.
-- **QuickCheck-in** — departure control (DCS): flight list, passenger acceptance, 3D cabin seat selection, boarding.
-- **Panel** & **Admin** — unified dashboard; users, roles & permissions, audit logs, settings.
-- **Bilingual (TR/EN)**, role-based access (cumulative roles), command palette (⌘K), and keyboard shortcuts throughout.
+- **QuickRes** — reservation (PNR): search, detail, create-PNR wizard, availability from the flight schedule, PNR commands (cancel itinerary / segment, TTL extension, remarks, history), one ticket per passenger straight from the PNR.
+- **Troya** — ticketing: 5-step issue wizard with a system fare quote (no hand-typed fares) and group/family issuance, ticket detail (status pills, control indicator, lifecycle timeline, fare / TFC / VAT breakdown), smart search, itinerary/receipt (TR/EN, printable), exchange / refund / void with penalty and tax-refundability rules, EMD, PTA, ADM/ACM, interline messages and agreements, orders, work queues, schedule change, passenger-rights compensation, and a report centre (sales, financial, period closing).
+- **QuickCheck-in** — departure control (DCS): check-in desk with cross-flight passenger search, acceptance window with supervisor-approved late acceptance, travel-document and APIS checks, aircraft-specific seat maps with seat-eligibility rules, boarding, flight close-out (coupons to Flown), and a HUB control board.
+- **Panel**, **Admin** & **Chat** — dashboard with station notices; users, roles & permissions, audit log; real-time staff chat with ticket attachments.
+- **Bilingual (TR/EN)**, role-based access (cumulative roles), command palette (⌘K), keyboard shortcuts, guided screen tours and contextual tips.
 
 ## Tech stack
 
 **Engine (backend)** — Kotlin · Spring Boot 3 (Java 21) · Gradle (Kotlin DSL) multi-module (`domain` · `application` · `infrastructure` · `api`) · PostgreSQL 16 (event store + read models, Flyway) · Redis (control lease) · Kafka / Redpanda (outbox) · Keycloak (OIDC) · Kotest + JUnit 5 · ktlint + detekt · OpenTelemetry.
 
-**Experience (frontend)** — Vite · React 18 · TypeScript · Tailwind CSS + shadcn-style tokens · TanStack Router / Query / Table · Zustand · React Hook Form + Zod · cmdk · Lucide · react-three-fiber (3D cabin) · Vitest + Playwright.
+**Experience (frontend)** — Vite · React 18 · TypeScript · Tailwind CSS + shadcn-style tokens · TanStack Router / Query / Table · Zustand · React Hook Form + Zod · cmdk · Lucide · HashUI component kit · Vitest + Playwright.
 
-**Contracts** — an OpenAPI 3.1 spec is the single source of truth; frontend TypeScript types are generated from it (`openapi-typescript`).
+**Contracts** — an OpenAPI 3.1 spec describes the target REST API. The frontend prototype still runs on its in-memory mock domain with hand-written types shaped after the spec; they will be generated from it (`openapi-typescript`) when the UI is wired to the live engine. See [`contracts/README.md`](contracts/README.md) for what the engine implements today.
 
-**Local infra & CI** — Docker Compose (PostgreSQL · Redpanda · Redis · Keycloak); GitHub Actions (backend: build + ktlint + detekt · frontend: typecheck + test + build).
+**Local infra & CI** — Docker Compose (PostgreSQL · Redpanda · Redis · Keycloak); GitHub Actions (backend: build + ktlint + detekt · frontend v1 and v2: typecheck + test + build). Vercel deploys `main` to production and every other branch to a preview URL.
 
 ## Repository structure
 
 ```
 troya-suite/
 ├── backend/        Kotlin multi-module engine: domain · application · infrastructure · api
-├── frontend/       Vite + React + TypeScript experience (unified panel)
-├── contracts/      OpenAPI 3.1 spec (single source of truth → generates TS types)
+├── nw_THYProject/  Current frontend (v2): nw_THYProject/frontend — Vite + React + TypeScript unified panel, deployed to Vercel
+├── frontend/       Previous frontend (v1), kept as a reference
+├── contracts/      OpenAPI 3.1 spec (target REST API)
+├── vercel.json     Vercel build config (builds nw_THYProject/frontend)
 ├── docker-compose.yml       Local dev infra (Postgres · Redpanda · Redis · Keycloak)
 ├── ARCHITECTURE.md          Architecture decisions & rationale
 ├── GLOSSARY.md              Ubiquitous language (IATA + engineering terms)
@@ -83,7 +85,7 @@ troya-suite/
 **Frontend** — clickable prototype on mock data:
 
 ```bash
-cd frontend
+cd nw_THYProject/frontend
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # tsc + vite build
@@ -104,11 +106,13 @@ cd backend
 
 Java 21 is required on the host for the classic Gradle flow; a fully Docker-based build/test/run flow (no host Java needed) is documented in [`backend/README.md`](backend/README.md).
 
+**Deploy** — the Vercel project is connected to this repository. Every push to `main` goes to production and every other branch gets a preview URL. The root [`vercel.json`](vercel.json) builds `nw_THYProject/frontend`, so no Root Directory setting is needed.
+
 ## Status
 
 Actively developed, **private / internal**. An honest snapshot:
 
-- **Experience (frontend)** — the unified panel (QuickRes + Troya + QuickCheck-in + Panel + Admin) is a **clickable prototype running end-to-end on mock data**, in TR/EN, with typecheck, tests, and build green. API call signatures are shaped to match the real REST contract, so they can be swapped for live endpoints without reshaping the UI.
+- **Experience (frontend)** — the unified panel (v2, `nw_THYProject/frontend`: QuickRes + Troya + QuickCheck-in + Panel + Admin + Chat) is a **clickable prototype running end-to-end on mock data**, in TR/EN, deployed on Vercel, with typecheck, unit tests, end-to-end tests and build green. API call signatures are shaped to match the real REST contract, so they can be swapped for live endpoints without reshaping the UI.
 - **Engine (backend)** — verified end-to-end in Docker: **F0 foundation**, **F1 ticket + coupon** (issue / get / idempotency / event store), and **F2 search + receipt** (CQRS read model + projection) are complete; **F3 void/exchange/refund**, **F4 fare/TFC**, **F5 EMD**, and **F6 interline** have their core commands implemented and verified, with advanced pieces (IRROP/FIM saga, ROE/banker's rounding, vMPD/legacy mapping, EDIFACT/NDC gateway) still open. **F7 order-native** is planned.
 
 Live authentication (Keycloak/OIDC) and SSE/WebSocket live updates land as the backend advances toward an **Order-native (ONE Order)** future.

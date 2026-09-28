@@ -133,7 +133,7 @@ describe("dönem kapanışı", () => {
   // Düzeltme (denetim bulgusu): "void edilebilir" kategori satırı saymaz —
   // zaten iade/void görmüş belge void edilemez.
   it("iadesi yapılmış belge 'void edilebilir' sayılmaz", () => {
-    const p = summarizePeriod("2026-08-03", rows.filter((r) => r.periodId === "2026-08-03"), false);
+    const p = summarizePeriod("2026-08-03", rows.filter((r) => r.periodId === "2026-08-03"), false, "2026-08-03");
     expect(p.closed).toBe(false);
     expect(p.reversible.voidable).toBe(0); // aynı bilet iade edilmiş
     expect(p.reversible.refundCancellable).toBe(1);
@@ -141,8 +141,17 @@ describe("dönem kapanışı", () => {
 
   it("dokunulmamış kesim void edilebilir sayılır", () => {
     const only = [row({ category: "issue", periodId: "2026-08-05", ticketNumber: "2359999999999", amount: { amount: 100, currency: "TRY" } })];
-    const p = summarizePeriod("2026-08-05", only, false);
+    const p = summarizePeriod("2026-08-05", only, false, "2026-08-05");
     expect(p.reversible.voidable).toBe(1);
+  });
+
+  // Düzeltme (gece denetimi): void ve iade geri alma yalnız içinde bulunulan
+  // dönemde mümkün — geçmiş dönemin açık kalemi "void edilebilir" sayılmaz.
+  it("geçmiş dönemin kesimi void edilebilir sayılmaz", () => {
+    const only = [row({ category: "issue", periodId: "2026-08-05", ticketNumber: "2359999999999", amount: { amount: 100, currency: "TRY" } })];
+    const p = summarizePeriod("2026-08-05", only, false, "2026-08-06");
+    expect(p.reversible.voidable).toBe(0);
+    expect(p.reversible.refundCancellable).toBe(0);
   });
 
   it("geri alınmış iade (negatif ters kayıt) sayaçtan düşer", () => {
@@ -150,7 +159,7 @@ describe("dönem kapanışı", () => {
       row({ category: "refund", periodId: "2026-08-06", amount: { amount: 2000, currency: "TRY" } }),
       row({ category: "refund", periodId: "2026-08-06", amount: { amount: -2000, currency: "TRY" } }),
     ];
-    const p = summarizePeriod("2026-08-06", withReversal, false);
+    const p = summarizePeriod("2026-08-06", withReversal, false, "2026-08-06");
     expect(p.reversible.refundCancellable).toBe(0);
   });
 
