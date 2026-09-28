@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import {
   Bell, BookOpen, BookText, Check, ChevronDown, Command as CommandIcon, Globe,
-  LogOut, Menu as MenuIcon, MessageSquare, Moon, Search, Sun, UserRound,
+  LogOut, Menu as MenuIcon, MessageSquare, Moon, Search, Sparkles, Sun, UserRound,
 } from "lucide-react";
 import { useUI, type Lang } from "@/store/ui";
 import { useChatUnreadTotal } from "@/store/chat";
@@ -371,6 +371,9 @@ function AccountMenu({ onSettings }: { onSettings: () => void }) {
           </Link>
           <Link to="/guide" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] text-ink hover:bg-inset">
             <BookOpen size={15} strokeWidth={1.75} className="text-ink-3" /> {t("nav.guide")}
+          </Link>
+          <Link to="/tanitim" onClick={() => setOpen(false)} className="flex w-full items-center gap-2.5 rounded-[10px] px-2.5 py-2 text-[13px] text-ink hover:bg-inset">
+            <Sparkles size={15} strokeWidth={1.75} className="text-ink-3" /> {t("nav.landing")}
           </Link>
           <MenuItem onSelect={() => { onSettings(); setOpen(false); }}>{t("nav.settings")}</MenuItem>
           <MenuItem danger onSelect={() => { setOpen(false); logout(); }} icon={<LogOut size={15} strokeWidth={1.75} />}>
