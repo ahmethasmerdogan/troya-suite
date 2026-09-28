@@ -6,6 +6,7 @@ import type { Ticket } from "@/domain/types";
 import { useUI } from "@/store/ui";
 import { Button } from "@/ui";
 import { useT } from "@/i18n";
+import { cn } from "@/lib/utils";
 import { TicketDocument } from "./TicketDocument";
 
 /* ====================================================================
@@ -51,7 +52,7 @@ export function IssueSuccess({
       aria-label={t("ticket.issued.title")}
       className="anim-fade fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-canvas/85 p-4 backdrop-blur-sm"
     >
-      <div className="w-full max-w-3xl py-8">
+      <div className="w-full max-w-4xl py-8">
         {/* --- onay işareti --- */}
         <div className="flex flex-col items-center">
           <span className="relative grid h-16 w-16 place-items-center rounded-full bg-[var(--brand)]">
@@ -76,7 +77,11 @@ export function IssueSuccess({
         </div>
 
         {/* --- belge + makas --- */}
-        <div className="anim-doc-in relative mt-7" style={{ animationDelay: "0.3s" }}>
+        {/* Koçan koptuktan sonra kalan bilet ortaya kayar (koçan 224px → 112px). */}
+        <div
+          className={cn("anim-doc-in relative mt-7 transition-transform duration-700 ease-out", cut && "sm:translate-x-28")}
+          style={{ animationDelay: "0.3s" }}
+        >
           <TicketDocument ticket={ticket} compact tear lang={lang} />
           {/* Makas koçan hattında iner. Koçan sm:w-56 (224px) olduğundan
               kesim çizgisi sağdan 224px içeridedir; iki değer birlikte değişir. */}

@@ -905,17 +905,19 @@ function FareStep({
         <Empty title={t("issue.fare.emptyTitle")} hint={t("issue.fare.emptyHint")} />
       ) : (
         <>
-          <div className="flex flex-wrap items-center gap-1.5">
-            {cabins.map((c) => (
-              <button key={c} type="button" onClick={() => setCabin(c)}
-                className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
-                  cabin === c ? "border-brand bg-brand-wash text-brand" : "border-line text-ink-2 hover:bg-sunken")}>
-                {c === "all" ? t("issue.fare.all") : c}
-              </button>
-            ))}
+          {/* Solda kabin süzgeci, sağda hızlı seçim: iki ayrı karar, iki ayrı grup. */}
+          <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {cabins.map((c) => (
+                <button key={c} type="button" onClick={() => setCabin(c)}
+                  className={cn("rounded-full border px-3 py-1 text-[12.5px] font-medium transition-colors",
+                    cabin === c ? "border-brand bg-brand-wash text-brand" : "border-line text-ink-2 hover:bg-sunken")}>
+                  {c === "all" ? t("issue.fare.all") : c}
+                </button>
+              ))}
+            </div>
             {quick.length > 0 && (
-              <>
-                <span className="mx-1 h-5 w-px bg-line" />
+              <div className="flex flex-wrap items-center gap-1.5">
                 <span className="microlabel">{t("issue.fare.quick")}</span>
                 <Tip id="issue.fare" />
                 {quick.map(([labelKey, o]) => (
@@ -924,7 +926,7 @@ function FareStep({
                     {t(labelKey)} · <span className="num">{o.total.amount.toLocaleString(locale())}</span>
                   </button>
                 ))}
-              </>
+              </div>
             )}
           </div>
 

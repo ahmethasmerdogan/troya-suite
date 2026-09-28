@@ -66,10 +66,15 @@ export function TicketDocument({
   const mins = seg ? Math.round((new Date(seg.departure).getTime() - now) / 60000) : 0;
 
   return (
-    <DocSheet className={cn(tear && "anim-doc-shake", className)}>
+    // Koparma sahnesinde gövde ve koçan ayrı parçalardır: ortak çerçeve
+    // koçan gidince yerinde boş, beyaz bir kutu bırakıyordu.
+    <DocSheet className={cn(tear && "anim-doc-shake overflow-visible rounded-none border-0 bg-transparent", className)}>
       <div className="flex flex-col sm:flex-row">
         {/* ---------- gövde ---------- */}
-        <div className="min-w-0 flex-1">
+        <div className={cn(
+          "min-w-0 flex-1",
+          tear && "overflow-hidden rounded-t-2xl border border-b-0 border-line bg-surface sm:rounded-l-2xl sm:rounded-tr-none sm:border-b sm:border-r-0",
+        )}>
           {/* Her parça kendi diliyle büyütülür: Türkçe kural "Ticket"ı "TİCKET" yapıyordu. */}
           <DocBand title={<><span lang="tr">Elektronik Bilet</span> · <span lang="en">E-Ticket</span></>} note={ticket.ticketNumber} />
 
@@ -152,16 +157,19 @@ export function TicketDocument({
 
         {/* ---------- koçan ---------- */}
         <div className={cn(
-          "relative flex w-full flex-shrink-0 flex-col justify-between border-t border-dashed border-line-strong bg-elev px-5 py-4 sm:w-56 sm:border-l sm:border-t-0",
-          tear && "anim-doc-tear",
+          "relative flex w-full flex-shrink-0 flex-col justify-between bg-elev px-5 py-4 sm:w-56",
+          tear
+            ? "anim-doc-tear rounded-b-2xl border border-line [border-top-style:dashed] sm:rounded-bl-none sm:rounded-r-2xl sm:[border-left-style:dashed] sm:[border-top-style:solid]"
+            : "border-t border-dashed border-line-strong sm:border-l sm:border-t-0",
         )}>
           <DocPerforation />
           <div>
             <div className="microlabel">Toplam · Total</div>
             <Money value={ticket.fare.total} size="md" className="mt-1" />
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-3 gap-1.5">
               <MiniBox label={d("ticket.doc.mini.coupons")} value={String(ticket.coupons.length)} />
               <MiniBox label={d("ticket.doc.mini.open")} value={String(ticket.coupons.filter((c) => c.status === "O").length)} />
+              <MiniBox label={d("ticket.doc.mini.flown")} value={String(ticket.coupons.filter((c) => c.status === "F").length)} />
             </div>
           </div>
           <DocBarcode seed={ticket.ticketNumber} className="mt-4" />

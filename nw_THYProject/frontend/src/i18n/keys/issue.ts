@@ -13,7 +13,7 @@ export const tr = {
   "issue.step.pay": "Ödeme",
   "issue.step.review": "Onay",
   "issue.title": "Bilet Kes",
-  "issue.hint": "Yolcu → Sefer → Ücret → Ödeme → Onay. Para işlemi sunucu sonucunu bekler; iyimser arayüz yoktur.",
+  "issue.hint": "Yolcu → Sefer → Ücret → Ödeme → Onay. Bilet, onayınızdan sonra sistem kaydı doğruladığında kesilir.",
 
   // alan doğrulama
   "issue.err.surname": "Soyadı en az 2 karakter (Ch 2)",
@@ -193,7 +193,7 @@ export const en: Record<keyof typeof tr, string> = {
   "issue.step.pay": "Payment",
   "issue.step.review": "Review",
   "issue.title": "Issue Ticket",
-  "issue.hint": "Passenger → Flight → Fare → Payment → Review. A monetary transaction waits for the server result; there is no optimistic UI.",
+  "issue.hint": "Passenger → Flight → Fare → Payment → Review. The ticket is issued once you confirm and the system verifies the record.",
 
   "issue.err.surname": "Surname must be at least 2 characters (Ch 2)",
   "issue.err.givenName": "Given name is required",

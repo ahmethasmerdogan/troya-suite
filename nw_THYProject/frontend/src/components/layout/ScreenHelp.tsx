@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import { BookOpen, Compass, HelpCircle, Keyboard, Lightbulb, X } from "lucide-react";
 import { Modal } from "@/components/ui/overlay";
@@ -6,6 +6,7 @@ import { useT, type Key } from "@/i18n";
 import { tourFor } from "@/components/tips/catalog";
 import { useTips } from "@/store/tips";
 import { cn } from "@/lib/utils";
+import { useUI } from "@/store/ui";
 
 /* ====================================================================
    Ekran yardımı — yeni personel için.
@@ -199,13 +200,28 @@ export function ScreenHelpButton({ className }: { className?: string }) {
   const tour = tourFor(path);
   const startTour = useTips((s) => s.startTour);
 
+  // "?" her ekranda o ekranın kılavuzunu açar — yazı yazılırken, bir pencere
+  // ya da komut paleti açıkken tetiklenmez.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      if (ev.key !== "?" || ev.metaKey || ev.ctrlKey || ev.altKey || ev.repeat) return;
+      const el = ev.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      if (useUI.getState().commandOpen || document.querySelector('[role="dialog"]')) return;
+      ev.preventDefault();
+      setOpen(true);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <>
       <button
         data-tour="shell.help"
         onClick={() => setOpen(true)}
         aria-label={t("admin.help.button")}
-        title={t("admin.help.button")}
+        title={`${t("admin.help.button")} (?)`}
         className={cn(
           "grid h-8 w-8 place-items-center rounded-[10px] text-ink-3 transition-colors hover:bg-inset hover:text-ink",
           className,
@@ -263,7 +279,7 @@ export function ScreenHelpButton({ className }: { className?: string }) {
                 <Keyboard size={13} strokeWidth={1.75} /> {t("admin.help.shortcuts")}
               </div>
               <div className="flex flex-wrap gap-2">
-                {g.shortcuts.map(([k, label]) => (
+                {[...g.shortcuts, ["?", "admin.help.sc.help"] as [string, Key]].map(([k, label]) => (
                   <span key={k} className="inline-flex items-center gap-1.5 rounded-md border border-line px-2 py-1 text-[12px] text-ink-2">
                     <kbd className="num rounded-sm bg-inset px-1.5 py-0.5 text-[11px] text-ink">{k}</kbd>
                     {t(label)}

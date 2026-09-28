@@ -104,7 +104,7 @@ export function Login() {
         </div>
       </aside>
 
-      <main className="flex flex-1 flex-col items-center justify-center px-5 py-10 sm:px-8">
+      <main className="flex min-w-0 flex-1 flex-col items-center justify-center px-5 py-10 sm:px-8">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <BrandMark size={36} />

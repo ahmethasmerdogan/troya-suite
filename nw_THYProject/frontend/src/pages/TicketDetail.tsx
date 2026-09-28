@@ -24,7 +24,7 @@ import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge, StatTile,
+  Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge,
 } from "@/ui";
 import { translate, useT, type Key } from "@/i18n";
 import { useErrorText } from "@/lib/useErrorText";
@@ -112,7 +112,6 @@ export function TicketDetail() {
 
   const p = ticket.passenger;
   const open = ticket.coupons.filter((c) => c.status === "O").length;
-  const flown = ticket.coupons.filter((c) => c.status === "F").length;
   const overdue = isControlOverdue(ticket);
 
   return (
@@ -146,14 +145,6 @@ export function TicketDetail() {
 
       <div data-tour="ticket.document" className="mb-4">
         <TicketDocument ticket={ticket} compact lang={uiLang} />
-      </div>
-
-      {/* --- dört ölçü --- */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatTile icon={<TicketIcon size={16} strokeWidth={1.75} />} value={ticket.coupons.length} label={t("ticket.detail.stat.coupons")} mono />
-        <StatTile icon={<Plane size={16} strokeWidth={1.75} />} value={open} label={t("ticket.detail.stat.open")} mono />
-        <StatTile icon={<User size={16} strokeWidth={1.75} />} value={flown} label={t("ticket.detail.stat.flown")} mono />
-        <StatTile icon={<CreditCard size={16} strokeWidth={1.75} />} value={<Money value={ticket.fare.total} size="sm" />} label={t("ticket.detail.total")} />
       </div>
 
       {!ticket.control.isValidatingCarrier && (
