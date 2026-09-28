@@ -24,6 +24,15 @@ export function splitAmount(value: number, currency: string) {
   return { int: intGrouped, dec, cur: currency };
 }
 
+/** ISO → `<input type="datetime-local">` değeri (yerel saat). UTC dilimi
+ *  vermek her düzenlemede saati kaydırır. */
+export function toLocalInput(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const p = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function formatDateTime(iso: string) {
   const d = new Date(iso);
   return d.toLocaleString(locale(), {

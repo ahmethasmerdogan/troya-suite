@@ -14,17 +14,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
 import { PermGate } from "@/components/layout/PermGate";
-import { cn, formatDateTime } from "@/lib/utils";
+import { cn, formatDateTime, toLocalInput } from "@/lib/utils";
 
 const SEV_TONE: Record<ChangeSeverity, Tone> = { minor: "gray", involuntary: "amber", significant: "red" };
 const SEV_KEY: Record<ChangeSeverity, Key> = { minor: "skchg.sev.minor", involuntary: "skchg.sev.involuntary", significant: "skchg.sev.significant" };
-
-/** ISO → datetime-local (yerel saat). */
-function toLocalInput(iso: string): string {
-  const d = new Date(iso);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
-}
 
 /**
  * Tarife değişikliği — üç adım tek ekranda: etkilenen seferi seç, yeni

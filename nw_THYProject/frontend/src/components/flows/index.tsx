@@ -35,7 +35,7 @@ import { Inset, Line, Rule } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
 import { useUI } from "@/store/ui";
-import { cn, formatDateTime, flightCode, locale, parseAmount } from "@/lib/utils";
+import { cn, formatDateTime, flightCode, locale, parseAmount, toLocalInput } from "@/lib/utils";
 import { useOpKey } from "@/lib/useOpKey";
 import { invalidateRecords } from "@/lib/invalidate";
 
@@ -242,7 +242,7 @@ function ExchangeFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean
                 <Field label={t("flows.common.newDeparture")}>
                   <Input
                     type="datetime-local"
-                    value={s.departure ? s.departure.slice(0, 16) : ""}
+                    value={s.departure ? toLocalInput(s.departure) : ""}
                     onChange={(e) => {
                       // Boş/yarım değer Date'i patlatır — yok say, eski kalkışı koru.
                       const v = e.target.value;
@@ -854,6 +854,14 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
   const [seq, setSeq] = useState(first?.seq ?? 1);
   const [flightNumber, setFlightNumber] = useState(first?.segment.flightNumber ?? "");
   const [departure, setDeparture] = useState(first?.segment.departure ?? "");
+  // Kupon değişince form o kuponun seferiyle yeniden dolar — aksi hâlde ilk
+  // kuponun uçuşu seçilen kupona yazılır.
+  const pick = (s: number) => {
+    const c = ticket.coupons.find((x) => x.seq === s);
+    setSeq(s);
+    setFlightNumber(c?.segment.flightNumber ?? "");
+    setDeparture(c?.segment.departure ?? "");
+  };
 
   const run = useMutation({
     mutationFn: () => revalidateCoupon({
@@ -873,7 +881,7 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
       <div className="flex flex-col gap-4">
         <Banner kind="info">{t("flows.revalidate.banner")}</Banner>
         <Field label={t("flows.common.coupon")}>
-          <Select value={seq} onChange={(e) => setSeq(Number(e.target.value))}>
+          <Select value={seq} onChange={(e) => pick(Number(e.target.value))}>
             {ticket.coupons.filter((c) => c.status === "O").map((c) => (
               <option key={c.seq} value={c.seq}>#{c.seq} · {c.segment.origin} → {c.segment.destination}</option>
             ))}
@@ -883,7 +891,7 @@ function RevalidateFlow({ ticket, open, onClose }: { ticket: Ticket; open: boole
         <Field label={t("flows.common.newDeparture")}>
           <Input
             type="datetime-local"
-            value={departure ? departure.slice(0, 16) : ""}
+            value={departure ? toLocalInput(departure) : ""}
             onChange={(e) => { const v = e.target.value; if (!v) return; const d = new Date(v); if (!Number.isNaN(d.getTime())) setDeparture(d.toISOString()); }}
           />
         </Field>

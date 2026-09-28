@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flightCode, parseAmount } from "./utils";
+import { flightCode, parseAmount, toLocalInput } from "./utils";
 
 // "TKTK198" hatası: veri kaynakları uçuş numarasını farklı tutuyor —
 // check-in/rezervasyon "TK198", kesim sihirbazı "198". Render tarafında
@@ -35,5 +35,17 @@ describe("parseAmount — TR ve EN tutar yazımı", () => {
   it("anlamsız girdi NaN", () => {
     expect(Number.isNaN(parseAmount("abc"))).toBe(true);
     expect(Number.isNaN(parseAmount("12a"))).toBe(true);
+  });
+});
+
+describe("toLocalInput", () => {
+  it("yerel saati verir, geri okununca aynı ana döner", () => {
+    const iso = "2026-06-20T08:30:00.000Z";
+    const v = toLocalInput(iso);
+    expect(v).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(new Date(v).toISOString()).toBe(iso);
+  });
+  it("geçersiz tarihte boş döner", () => {
+    expect(toLocalInput("x")).toBe("");
   });
 });

@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { useDialog } from "@/lib/useDialog";
@@ -110,10 +110,24 @@ export function Drawer({
 
 /** Açılır menü kabı — tetikleyiciyi çağıran taraf yerleştirir. */
 export function Menu({ children, align = "right", className }: { children: ReactNode; align?: "left" | "right"; className?: string }) {
+  // Dar ekranda tetikleyici kenara yakınsa menü ekran dışına taşar; açılınca
+  // ölçülür ve 8px kenar payı içine kaydırılır.
+  const ref = useRef<HTMLDivElement>(null);
+  const [shift, setShift] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    if (r.left < 8) setShift(8 - r.left);
+    else if (r.right > vw - 8) setShift(vw - 8 - r.right);
+  }, []);
   return (
     <div
+      ref={ref}
+      style={shift ? { translate: `${shift}px 0` } : undefined}
       className={cn(
-        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 rounded-lg border border-line bg-panel p-1",
+        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 max-w-[calc(100vw-16px)] rounded-lg border border-line bg-panel p-1",
         align === "right" ? "right-0" : "left-0",
         className,
       )}
