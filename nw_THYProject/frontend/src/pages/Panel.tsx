@@ -1,6 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
-import { ArrowRight, ArrowUpRight, BookText, Search, TicketPlus } from "lucide-react";
+import {
+  ArrowRight, ArrowUpRight, BarChart3, BookMarked, BookText, PlaneTakeoff, Search, TicketPlus, Tickets, UserCheck,
+  type LucideIcon,
+} from "lucide-react";
+import type { ReactNode } from "react";
 import { getDashboardStats, listTickets } from "@/domain/api";
 import { STATUS_META } from "@/domain/couponStatus";
 import { STATUS_TONE } from "@/components/domain/statusTone";
@@ -8,9 +12,9 @@ import { checkinWindow, listFlights } from "@/domain/checkin";
 import { listPnrs, ttlState } from "@/domain/reservation";
 import { useUI } from "@/store/ui";
 import { useT, type Key } from "@/i18n";
-import { MODULES } from "@/modules";
-import { Button } from "@/components/ui/core";
-import { Panel as Card, PanelHead, PanelBody, Stat, PageTitle } from "@/components/ui/surface";
+import { Button, Kbd } from "@/components/ui/core";
+import { Panel as Card, PanelHead, PanelBody } from "@/components/ui/surface";
+import type { Permission } from "@/domain/auth";
 import { Donut, Sparkline, type Seg } from "@/components/ui/chart";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dot } from "@/components/ui/pill";
@@ -18,7 +22,7 @@ import { NoticeRow, useNotices } from "@/components/layout/Notices";
 import { DailyTip } from "@/components/tips/DailyTip";
 import { WorkSummary } from "@/components/domain/WorkSummary";
 import { usePerm } from "@/lib/usePerm";
-import { formatDateTime, locale } from "@/lib/utils";
+import { cn, formatDateTime, locale } from "@/lib/utils";
 
 /** Sparkline altındaki gün kısaltmaları — Date.getDay() sırasıyla (pazar = 0). */
 const DOW: Key[] = [
@@ -54,43 +58,77 @@ export function Panel() {
   const checkedIn = flights.data?.reduce((a, f) => a + f.checkedIn, 0);
   const capacity = flights.data?.reduce((a, f) => a + f.capacity, 0);
   const activePnrs = pnrs.data?.filter((p) => p.status === "active");
-  const counts: Record<string, number> = {
-    quickres: pnrs.data?.length ?? 0,
-    troya: tickets.data?.length ?? 0,
-    checkin: flights.data?.length ?? 0,
-  };
+  const openCounters = flights.data?.filter((f) => checkinWindow(f).state === "open").length;
+  const pnrAttention = activePnrs?.filter((p) => ttlState(p).kind !== "ok").length;
+  const load = capacity ? (checkedIn ?? 0) / capacity : undefined;
 
   return (
     <div className="flex flex-col gap-5">
-      <PageTitle
-        title={`${greeting}, ${user?.name?.split(" ")[0] ?? ""}`}
-        hint={new Date().toLocaleDateString(locale(), { day: "2-digit", month: "long", weekday: "long" }) + " · IST-CTR · TK"}
-        action={
+      {/* Karşılama — günün özeti tek cümlede, en sık işler bir tık uzakta. */}
+      <section className="relative overflow-hidden rounded-xl border border-line bg-panel">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-0"
+          style={{ background: "radial-gradient(55% 140% at 100% 0%, var(--brand-wash), transparent 62%)" }}
+        />
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-y-0 right-0 w-1/2 opacity-60"
+          style={{
+            backgroundImage: "radial-gradient(var(--line-firm) 1px, transparent 1px)",
+            backgroundSize: "16px 16px",
+            maskImage: "linear-gradient(90deg, transparent, #000 60%)",
+            WebkitMaskImage: "linear-gradient(90deg, transparent, #000 60%)",
+          }}
+        />
+        <div className="relative flex flex-wrap items-end justify-between gap-4 px-5 pb-5 pt-6 sm:px-6">
+          <div className="min-w-0">
+            <div className="text-[12.5px] text-ink-3">
+              {new Date().toLocaleDateString(locale(), { day: "numeric", month: "long", weekday: "long" })} · IST-CTR · TK
+            </div>
+            <h1 className="mt-1 text-[26px] font-semibold leading-tight tracking-[-0.03em] text-ink sm:text-[30px]">
+              {greeting}, {user?.name?.split(" ")[0] ?? ""}
+            </h1>
+            <p className="mt-1.5 max-w-2xl text-[13.5px] leading-relaxed text-ink-2">
+              {openCounters !== undefined && pnrAttention !== undefined && stats.data
+                ? t("panel.summary", { a: openCounters, p: pnrAttention, n: stats.data.issuedToday })
+                : " "}
+            </p>
+          </div>
           <div data-tour="panel.actions" className="flex flex-wrap items-center gap-2">
-            <Button variant="secondary" onClick={() => setCommandOpen(true)}><Search size={15} strokeWidth={1.75} /> {t("common.search")}</Button>
+            <Button variant="secondary" onClick={() => setCommandOpen(true)}>
+              <Search size={15} strokeWidth={1.75} /> {t("common.search")}
+              <Kbd className="ml-1 hidden sm:inline-flex">⌘K</Kbd>
+            </Button>
             <Button onClick={() => navigate({ to: "/issue" })}><TicketPlus size={15} strokeWidth={1.75} /> {t("nav.issue")}</Button>
           </div>
-        }
-      />
+        </div>
+        <QuickActions />
+      </section>
 
       <div data-tour="panel.kpis" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label={t("panel.kpi.flights")} value={flights.data?.length ?? "—"}
-          hint={flights.data ? t("panel.kpi.flights.hint", { n: flights.data.filter((f) => checkinWindow(f).state === "open").length }) : undefined} />
-        <Stat label={t("panel.kpi.checkedin")} value={checkedIn ?? "—"}
-          hint={capacity ? t("panel.kpi.checkedin.hint", { n: Math.round(((checkedIn ?? 0) / capacity) * 100) }) : undefined} />
-        <Stat label={t("panel.kpi.pnrs")} value={activePnrs?.length ?? "—"}
-          hint={activePnrs ? t("panel.kpi.pnrs.hint", { n: activePnrs.filter((p) => ttlState(p).kind !== "ok").length }) : undefined} />
-        <Stat label={t("panel.kpi.tickets")} value={tickets.data?.length ?? "—"}
-          hint={stats.data ? t("panel.kpi.tickets.hint", { n: stats.data.issuedToday }) : undefined} />
+        <Kpi icon={PlaneTakeoff} label={t("panel.kpi.flights")} value={flights.data?.length}
+          hint={openCounters !== undefined ? t("panel.kpi.flights.hint", { n: openCounters }) : undefined}
+          visual={flights.data && openCounters !== undefined ? <Meter value={openCounters / Math.max(1, flights.data.length)} /> : undefined} />
+        <Kpi icon={UserCheck} label={t("panel.kpi.checkedin")} value={checkedIn}
+          hint={load !== undefined ? t("panel.kpi.checkedin.hint", { n: Math.round(load * 100) }) : undefined}
+          visual={load !== undefined ? <Meter value={load} /> : undefined} />
+        <Kpi icon={BookMarked} label={t("panel.kpi.pnrs")} value={activePnrs?.length}
+          hint={pnrAttention !== undefined ? t("panel.kpi.pnrs.hint", { n: pnrAttention }) : undefined}
+          attention={!!pnrAttention}
+          visual={activePnrs?.length ? <Meter value={(pnrAttention ?? 0) / activePnrs.length} tone="warn" /> : undefined} />
+        <Kpi icon={Tickets} label={t("panel.kpi.tickets")} value={tickets.data?.length}
+          hint={stats.data ? t("panel.kpi.tickets.hint", { n: stats.data.issuedToday }) : undefined}
+          visual={stats.data ? <Sparkline points={stats.data.weekly} width={120} height={28} className="w-full" /> : undefined} />
       </div>
-
-      <DailyTip />
 
       {/* İş listesi ve duyurular yan yana: ikisi de "şimdi ne yapmalıyım" sorusunun cevabı. */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
         <WorkSummary />
         <StationNotices />
       </div>
+
+      <DailyTip />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Card>
@@ -164,29 +202,92 @@ export function Panel() {
         </span>
       </Link>
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-        {MODULES.map((m) => (
-          <Link
-            key={m.id}
-            to={m.home}
-            className="group flex flex-col gap-3 rounded-lg border border-line bg-panel p-5 transition-colors hover:border-brand"
-          >
-            <div className="flex items-start justify-between">
-              <span className="grid h-10 w-10 place-items-center rounded-md border border-line bg-raised text-ink-2 transition-colors group-hover:bg-brand-wash group-hover:text-brand">
-                <m.icon size={19} strokeWidth={1.75} />
-              </span>
-              <span className="num rounded-full bg-sunken px-2 py-1 text-[11px] text-ink-2">{counts[m.id] ?? 0}</span>
-            </div>
-            <div>
-              <div className="text-[15px] font-semibold tracking-tight text-ink">{t(m.labelKey)}</div>
-              <div className="mt-0.5 text-[12.5px] text-ink-3">{t(m.subKey)}</div>
-            </div>
-            <span className="mt-auto inline-flex items-center gap-1 text-[13px] font-medium text-brand">
-              {t("panel.openModule")} <ArrowRight size={14} strokeWidth={2} className="transition-transform group-hover:translate-x-0.5" />
-            </span>
-          </Link>
-        ))}
+    </div>
+  );
+}
+
+type Quick = { to: string; icon: LucideIcon; label: Key; sub: Key; perm?: Permission };
+
+const QUICK: Quick[] = [
+  { to: "/issue", icon: TicketPlus, label: "nav.issue", sub: "panel.quick.issue", perm: "ticket.issue" },
+  { to: "/search", icon: Search, label: "nav.search", sub: "panel.quick.search" },
+  { to: "/res/new", icon: BookMarked, label: "nav.res.new", sub: "panel.quick.pnr" },
+  { to: "/checkin", icon: UserCheck, label: "desk.title", sub: "panel.quick.checkin" },
+  { to: "/reports", icon: BarChart3, label: "nav.reports", sub: "panel.quick.reports", perm: "revenue.view" },
+];
+
+/** Karşılama kartının altındaki kısayol şeridi — yetkisi olmayan kısayol görünmez. */
+function QuickActions() {
+  const t = useT();
+  const { can } = usePerm();
+  const items = QUICK.filter((q) => !q.perm || can(q.perm));
+  return (
+    <nav
+      aria-label={t("panel.quick.title")}
+      className={cn(
+        "relative grid grid-cols-3 border-t border-hair bg-panel/70",
+        items.length >= 5 ? "lg:grid-cols-5" : "lg:grid-cols-4",
+      )}
+    >
+      {items.map((q) => (
+        <Link
+          key={q.to}
+          to={q.to}
+          className="group flex min-w-0 flex-col items-start gap-2 border-b border-r border-hair px-3.5 py-3 transition-colors hover:bg-brand-wash/60 sm:flex-row sm:items-center sm:gap-3 sm:px-6 sm:py-3.5"
+        >
+          <span className="grid size-9 flex-shrink-0 place-items-center rounded-lg border border-line bg-raised text-ink-2 transition-colors group-hover:border-brand/30 group-hover:bg-panel group-hover:text-brand">
+            <q.icon size={17} strokeWidth={1.75} />
+          </span>
+          <span className="min-w-0 max-w-full flex-1">
+            <span className="block text-[12.5px] font-medium leading-snug text-ink sm:truncate sm:text-[13.5px]">{t(q.label)}</span>
+            <span className="hidden truncate text-[12px] text-ink-3 sm:block">{t(q.sub)}</span>
+          </span>
+          <ArrowRight size={14} strokeWidth={2} className="hidden flex-shrink-0 text-ink-4 transition-all group-hover:translate-x-0.5 group-hover:text-brand sm:block" />
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/** Pano göstergesi: ikon, değer, açıklama ve altta küçük bir görsel (çubuk ya da eğri). */
+function Kpi({
+  icon: Icon, label, value, hint, visual, attention,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: number | undefined;
+  hint?: string;
+  visual?: ReactNode;
+  attention?: boolean;
+}) {
+  return (
+    <div className="flex flex-col rounded-lg border border-line bg-panel px-4 pb-3.5 pt-3.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="microlabel">{label}</span>
+        <span className={cn("grid size-7 place-items-center rounded-md", attention ? "bg-brand-wash text-brand" : "bg-sunken text-ink-3")}>
+          <Icon size={15} strokeWidth={1.75} />
+        </span>
       </div>
+      {value === undefined ? (
+        <Skeleton className="mt-2 h-7 w-16" />
+      ) : (
+        <div className="num mt-1.5 text-[28px] font-semibold leading-none tracking-[-0.03em] text-ink">{value.toLocaleString(locale())}</div>
+      )}
+      <div className="mt-2 min-h-[18px] text-[12px] leading-snug text-ink-3">{hint}</div>
+      {visual && <div className="mt-2.5">{visual}</div>}
+    </div>
+  );
+}
+
+/** 0–1 arası doluluk çubuğu; `warn` dikkat isteyen payı amberle gösterir. */
+function Meter({ value, tone }: { value: number; tone?: "warn" }) {
+  const pct = Math.round(Math.min(1, Math.max(0, value)) * 100);
+  return (
+    <div className="h-1.5 w-full overflow-hidden rounded-full bg-sunken" role="presentation">
+      <div
+        className="h-full rounded-full transition-[width] duration-700"
+        style={{ width: `${pct}%`, background: tone === "warn" ? "var(--st-U, #d97706)" : "var(--brand)" }}
+      />
     </div>
   );
 }

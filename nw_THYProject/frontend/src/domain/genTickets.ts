@@ -73,7 +73,15 @@ export function generateTickets(count: number): Ticket[] {
     const dep = new Date(TODAY + dayOffset * 86400000 + Math.floor(rnd() * 18) * 3600000);
     const arr = new Date(dep.getTime() + (90 + Math.floor(rnd() * 600)) * 60000);
     const lead = 3 + Math.floor(rnd() * 40);
-    const issued = new Date(Math.min(dep.getTime() - lead * 86400000, TODAY - (1 + (u % 5)) * 3600000));
+    // Açık biletlerin kesimi son yedi güne yayılır, bir kısmı BUGÜN: pano,
+    // haftalık grafik ve "bugünkü satış" raporu demoda boş görünmesin.
+    // Kesim hiçbir zaman "şimdi"den ileri değildir.
+    const recent = u % 8;
+    const issued = past
+      ? new Date(Math.min(dep.getTime() - lead * 86400000, TODAY - (1 + (u % 5)) * 3600000))
+      : recent < 4
+        ? new Date(Math.min(DEMO_NOW - 60_000, Math.max(TODAY, DEMO_NOW - (20 + recent * 70) * 60_000)))
+        : new Date(TODAY - (recent - 3) * 86400000 + (8 + (u % 10)) * 3600000);
 
     const mkSeg = (from: string, to: string, fn: string, dt: Date, at: Date): Segment => ({
       origin: from, destination: to, marketingCarrier: carrier, operatingCarrier: carrier,
@@ -128,8 +136,10 @@ export function generateTickets(count: number): Ticket[] {
       detail: "Satış kaydı iptal edildi", status: "V",
       money: { currency, gross: total, ...(vatAmount ? { vat: vatAmount, vatRate } : {}) },
     });
+    // İade son on gün içinde (kalkıştan sonra, kullanılmamış kupon): "bu ay
+    // ceza geliri" ve mali rapor demoda gerçek bir hareket gösterir.
     if (plan.status === "R") history.push({
-      id: "gr", type: "CouponRefunded", occurredAt: new Date(issued.getTime() + 86400000).toISOString(),
+      id: "gr", type: "CouponRefunded", occurredAt: new Date(Math.max(issued.getTime() + 86400000, DEMO_NOW - ((u % 9) * 26 + 3) * 3600000)).toISOString(),
       actor: `${carrier} / IST-CTR`, couponSeq: 1, detail: "İade edildi", status: "R",
       money: {
         currency,

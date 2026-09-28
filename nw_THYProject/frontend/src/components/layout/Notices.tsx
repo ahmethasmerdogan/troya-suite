@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Megaphone, TriangleAlert, X } from "lucide-react";
+import { ArrowRight, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { getOpsBoard, opsAlertText } from "@/domain/ops";
 import { listRevenueAlerts } from "@/domain/api";
 import { OPS_CHANNEL_ID } from "@/domain/chat";
@@ -105,52 +105,75 @@ function readDismissed(): string[] {
   }
 }
 
-/** Üst şerit — en öncelikli açık duyuru. */
+/**
+ * Üst şerit — açık duyurular önem sırasıyla, tek satırda. Şerit sakin bir
+ * yüzeydir (renk yalnız sol kenar, nokta ve etiket): her ekranın üstünde
+ * durduğu için alarm rengine boyanmaz. Oklarla sıradaki duyuruya geçilir.
+ */
 export function AnnouncementBar() {
   const t = useT();
   const notices = useNotices();
   const [dismissed, setDismissed] = useState<string[]>(readDismissed);
+  const [idx, setIdx] = useState(0);
   const open = notices.filter((n) => !dismissed.includes(n.id));
-  const top = open[0];
-  if (!top) return null;
+  if (open.length === 0) return null;
+  const i = idx % open.length;
+  const top = open[i];
 
   const tone = SEV_TONE[top.severity];
-  const Icon = top.severity === "info" ? Megaphone : TriangleAlert;
+  const step = (d: number) => setIdx((i + d + open.length) % open.length);
+  const nav = "grid size-6 flex-shrink-0 place-items-center rounded-md text-ink-3 transition-colors hover:bg-inset hover:text-ink";
 
   return (
     <div
       role="status"
       data-print-hide
-      className="anim-rise flex items-center gap-2.5 border-b border-line px-3 py-2 sm:px-4"
-      style={{ background: TONE_WASH[tone], color: TONE_INK[tone] }}
+      className="anim-rise relative flex items-center gap-2.5 border-b border-line bg-panel py-1.5 pl-4 pr-2 sm:pr-3"
     >
-      <Icon size={15} strokeWidth={2} className="flex-shrink-0" style={{ color: TONE_DOT[tone] }} />
+      <span aria-hidden className="absolute inset-y-0 left-0 w-[3px]" style={{ background: TONE_DOT[tone] }} />
+      <span aria-hidden className="relative flex size-2 flex-shrink-0">
+        {top.severity === "critical" && (
+          <span className="absolute inset-0 animate-ping rounded-full opacity-60 motion-reduce:hidden" style={{ background: TONE_DOT[tone] }} />
+        )}
+        <span className="relative size-2 rounded-full" style={{ background: TONE_DOT[tone] }} />
+      </span>
       <span
-        className="flex-shrink-0 rounded-sm px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]"
-        style={{ background: TONE_DOT[tone], color: "#fff" }}
+        className="flex-shrink-0 rounded-full px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.08em]"
+        style={{ background: TONE_WASH[tone], color: TONE_INK[tone] }}
       >
         {t(SEV_LABEL_KEY[top.severity])}
       </span>
-      <span className="truncate text-[12.5px] font-semibold">{top.title}</span>
-      <span className="hidden min-w-0 flex-1 truncate text-[12.5px] opacity-85 sm:block">{top.detail}</span>
+      <span className="min-w-0 truncate text-[12.5px] font-semibold text-ink">{top.title}</span>
+      <span className="hidden min-w-0 flex-1 truncate text-[12.5px] text-ink-2 sm:block">{top.detail}</span>
+      <span className="flex-1 sm:hidden" />
       {open.length > 1 && (
-        <span className="num flex-shrink-0 rounded-full bg-black/8 px-1.5 py-0.5 text-[11px] font-medium dark:bg-white/10">
-          +{open.length - 1}
+        <span className="flex flex-shrink-0 items-center">
+          <button type="button" onClick={() => step(-1)} aria-label={t("shell.notice.prev")} className={nav}>
+            <ChevronLeft size={14} strokeWidth={2} />
+          </button>
+          <span className="num min-w-[38px] text-center text-[11.5px] text-ink-3">{i + 1}/{open.length}</span>
+          <button type="button" onClick={() => step(1)} aria-label={t("shell.notice.next")} className={nav}>
+            <ChevronRight size={14} strokeWidth={2} />
+          </button>
         </span>
       )}
       {top.to && (
-        <Link to={top.to} className="flex-shrink-0 text-[12.5px] font-semibold underline underline-offset-2">
-          {t("shell.notice.open")}
+        <Link
+          to={top.to}
+          className="inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[12.5px] font-medium text-brand transition-colors hover:bg-brand-wash"
+        >
+          {t("shell.notice.open")} <ArrowRight size={13} strokeWidth={2} />
         </Link>
       )}
       <button
+        type="button"
         onClick={() => setDismissed((d) => {
           const next = [...d, top.id];
           try { localStorage.setItem(DISMISS_KEY, JSON.stringify(next.slice(-60))); } catch { /* depolama kapalı */ }
           return next;
         })}
         aria-label={t("shell.notice.dismiss")}
-        className="flex-shrink-0 rounded-sm p-0.5 opacity-60 transition-opacity hover:opacity-100"
+        className={nav}
       >
         <X size={14} strokeWidth={2} />
       </button>

@@ -14,9 +14,6 @@ export const tr = {
   "ticket.detail.print": "Yazdır",
   "ticket.detail.actions": "İşlemler",
 
-  "ticket.detail.stat.coupons": "Kupon",
-  "ticket.detail.stat.open": "Açık kupon",
-  "ticket.detail.stat.flown": "Uçulmuş",
   "ticket.detail.total": "Toplam",
 
   "ticket.detail.control.overdueTitle": "Kontrol süresi doldu",
@@ -186,6 +183,7 @@ export const tr = {
   "ticket.doc.th.status": "Statü",
   "ticket.doc.mini.coupons": "Kupon",
   "ticket.doc.mini.open": "Açık",
+  "ticket.doc.mini.flown": "Uçuldu",
   "ticket.doc.departed": "kalkış geçti",
   "ticket.doc.timeLeft": "kalkışa {v}",
   "ticket.doc.min": "{n} dk",
@@ -227,9 +225,6 @@ export const en: Record<keyof typeof tr, string> = {
   "ticket.detail.print": "Print",
   "ticket.detail.actions": "Actions",
 
-  "ticket.detail.stat.coupons": "Coupons",
-  "ticket.detail.stat.open": "Open coupons",
-  "ticket.detail.stat.flown": "Flown",
   "ticket.detail.total": "Total",
 
   "ticket.detail.control.overdueTitle": "Control time limit expired",
@@ -390,6 +385,7 @@ export const en: Record<keyof typeof tr, string> = {
   "ticket.doc.th.status": "Status",
   "ticket.doc.mini.coupons": "Coupons",
   "ticket.doc.mini.open": "Open",
+  "ticket.doc.mini.flown": "Flown",
   "ticket.doc.departed": "departed",
   "ticket.doc.timeLeft": "{v} to departure",
   "ticket.doc.min": "{n} min",

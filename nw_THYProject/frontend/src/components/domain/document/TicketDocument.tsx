@@ -159,9 +159,10 @@ export function TicketDocument({
           <div>
             <div className="microlabel">Toplam · Total</div>
             <Money value={ticket.fare.total} size="md" className="mt-1" />
-            <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className="mt-3 grid grid-cols-3 gap-1.5">
               <MiniBox label={d("ticket.doc.mini.coupons")} value={String(ticket.coupons.length)} />
               <MiniBox label={d("ticket.doc.mini.open")} value={String(ticket.coupons.filter((c) => c.status === "O").length)} />
+              <MiniBox label={d("ticket.doc.mini.flown")} value={String(ticket.coupons.filter((c) => c.status === "F").length)} />
             </div>
           </div>
           <DocBarcode seed={ticket.ticketNumber} className="mt-4" />
