@@ -93,6 +93,7 @@ async function issueTicketRun(input: IssueTicketInput): Promise<Ticket> {
   const existing = issuedKeys.get(input.idempotencyKey);
   if (existing) return store.find((t) => t.ticketNumber === existing)!;
 
+  assertSegmentsBookable(input.segments);
   assertFareSane(input.fare, `${input.passenger.surname}/${input.passenger.givenName}`);
   assertFopSane(input.formOfPayment);
   assertCanIssue([input.passenger], input.pnr);
@@ -104,6 +105,24 @@ async function issueTicketRun(input: IssueTicketInput): Promise<Ticket> {
  * Hepsi yan etkisizdir: grup kesiminde HİÇBİR bilet yazılmadan önce tüm
  * yolcular burada doğrulanır (hepsi ya da hiçbiri).
  */
+/** Kalkışı geçmiş sefere satış yapılmaz; bacaklar zaman sırasında olmalı. */
+function assertSegmentsBookable(segments: IssueTicketInput["segments"]) {
+  if (!segments.length) throw new DomainError("En az bir sefer seçilmeli.", "At least one flight must be selected.");
+  const now = demoNow();
+  let prev = -Infinity;
+  for (const s of segments) {
+    const dep = Date.parse(s.departure);
+    const fn = s.flightNumber.toUpperCase();
+    const where = `${s.origin}-${s.destination} ${fn.startsWith(s.marketingCarrier) ? fn : s.marketingCarrier + fn}`;
+    if (!Number.isFinite(dep)) throw new DomainError(`${where}: kalkış zamanı geçersiz.`, `${where}: invalid departure time.`);
+    if (dep <= now)
+      throw new DomainError(`${where} seferinin kalkışı geçti — kalkmış sefere bilet kesilemez.`, `${where} has already departed — a departed flight cannot be ticketed.`);
+    if (dep < prev)
+      throw new DomainError(`${where}: bacaklar zaman sırasında olmalı — sonraki sefer öncekinden önce kalkamaz.`, `${where}: legs must be in time order — a later leg cannot depart before an earlier one.`);
+    prev = dep;
+  }
+}
+
 function assertCanIssue(passengers: Passenger[], pnr?: string) {
   // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
   assertPeriodOpen(new Date().toISOString(), "yeni satış", "a new sale");
@@ -284,6 +303,7 @@ async function issueGroupRun(input: GroupIssueInput): Promise<GroupIssueResult> 
         `in a group adults pay the same fare and children pay the child-discounted adult fare.`,
       );
   }
+  assertSegmentsBookable(input.segments);
   assertCanIssue(input.passengers.map((p) => p.passenger), input.pnr);
 
   // Doğrulama bitti — artık yazılır. Her bilet kendi idempotency anahtarını taşır.
@@ -748,6 +768,8 @@ export interface RefundInput {
   issuerAuthorityRef?: string;
   /** Ciro "NON-REF" gibi bir kısıt taşıyorsa yetkili override'ı. */
   restrictionOverride?: string;
+  /** Tutar sistemin hesabından sapıyorsa gerekçe — kayda geçer. */
+  justification?: string;
   idempotencyKey: string;
 }
 
@@ -781,6 +803,24 @@ async function refundTicketRun(input: RefundInput): Promise<Ticket> {
     if (!isRefundable(c.status))
       throw new DomainError(`Kupon #${seq} iadeye uygun değil (${c.status}) — O/A/Y olmalı (1.3.5).`, `Coupon #${seq} is not eligible for refund (${c.status}) — it must be O/A/Y (1.3.5).`);
   }
+
+  // Tutar kapısı — kupon statüsü değişmeden ÖNCE: iade tahsil edilenden
+  // (önceki iadeler düşülerek) fazla olamaz. Sistemin hesabından sapma
+  // engellenmez, kayda geçer (quotedGross + gerekçe); arayüz gerekçe ister.
+  const amt = input.refundAmount.amount;
+  if (!Number.isFinite(amt) || amt < 0)
+    throw new DomainError("İade tutarı geçersiz.", "Invalid refund amount.");
+  if (input.refundAmount.currency !== t.fare.total.currency)
+    throw new DomainError(`İade biletin para biriminde (${t.fare.total.currency}) yapılır.`, `The refund is made in the ticket currency (${t.fare.total.currency}).`);
+  const alreadyRefunded = (t.refunds ?? []).filter((r) => !r.cancelledAt).reduce((s, r) => s + r.amount.amount, 0);
+  const ceiling = round2(t.fare.total.amount - alreadyRefunded);
+  if (amt > ceiling + 0.01)
+    throw new DomainError(
+      `İade tutarı ${amt} ${t.fare.total.currency}, bilette iade edilebilecek kalan tutarı (${ceiling} ${t.fare.total.currency}) aşıyor.`,
+      `The refund of ${amt} ${t.fare.total.currency} exceeds the amount still refundable on the ticket (${ceiling} ${t.fare.total.currency}).`,
+    );
+  if (input.residual && (input.residual.amount < 0 || input.residual.amount > ceiling + 0.01))
+    throw new DomainError("Bakiye belge tutarı biletin kalan tutarını aşamaz.", "The residual amount cannot exceed the ticket's remaining value.");
 
   const affected: Coupon[] = [];
   const cascadedEmdA: Emd[] = [];
@@ -840,6 +880,7 @@ async function refundTicketRun(input: RefundInput): Promise<Ticket> {
         (input.residual ? ` · residual ${input.residual.amount.toLocaleString("en-US")} ${input.residual.currency} (For Refund Only)` : "") +
         (waiverLabel ? ` · waiver: ${waiverLabel}` : "") +
         (input.method === "voucher" ? " · voucher (EMD-S travel credit)" : "") +
+        (input.justification?.trim() ? ` · gerekçe: ${input.justification.trim()}` : "") +
         ` · SAC ${sac}`,
       status: "R",
       money,

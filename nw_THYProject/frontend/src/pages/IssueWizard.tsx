@@ -27,6 +27,8 @@ import { useT, type Key } from "@/i18n";
 import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
+import { demoNow } from "@/domain/demoClock";
+import { ymd } from "@/components/ui/pickers";
 import { useOpKey } from "@/lib/useOpKey";
 import { invalidateRecords } from "@/lib/invalidate";
 
@@ -776,13 +778,27 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
       </div>
 
       {legs.map((leg, i) => {
+        // Kalkmış sefer listelenmez; sonraki bacak önceki seferin varışından
+        // en az 45 dk sonra kalkmalı (asgari aktarma süresi).
+        const prev = i > 0 ? legs[i - 1].flight : null;
+        const earliest = prev ? Date.parse(prev.arrival) + 45 * 60_000 : demoNow();
+        const minDay = i > 0 && legs[i - 1].date ? legs[i - 1].date : ymd(new Date(demoNow()));
         const found = leg.origin && leg.destination && leg.date
-          ? searchFlights(leg.origin, leg.destination, leg.date, 1)
+          ? searchFlights(leg.origin, leg.destination, leg.date, 1).filter((f) => Date.parse(f.departure) > earliest)
           : [];
         // Rezervasyondaki sefer listede yoksa da seçilebilir kalmalı: başa sabitlenir.
         const flights = leg.booked ? [leg.booked, ...found.filter((f) => f.id !== leg.booked!.id)] : found;
         return (
           <div key={i} className="flex flex-col gap-3">
+            {i > 0 && (
+              <div className="flex items-center justify-between border-t border-line pt-4">
+                <span className="microlabel">{t("flows.common.leg", { n: i + 1 })}</span>
+                <Button variant="ghost" size="sm" iconLeft={<Trash2 size={14} strokeWidth={1.75} />}
+                  onClick={() => setLegs(legs.filter((_, j) => j !== i))}>
+                  {t("issue.leg.remove")}
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <Field label={t("issue.leg.from")} required error={errors[`leg${i}o`]}>
                 <AirportPicker value={leg.origin} onChange={(v) => set(i, { origin: v })} placeholder={t("fix.issue.origin.placeholder")} />
@@ -791,14 +807,14 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                 <AirportPicker value={leg.destination} onChange={(v) => set(i, { destination: v })} placeholder="Tokyo / NRT" />
               </Field>
               <Field label={t("issue.leg.date")} required hint={t("issue.leg.dateHint")} error={errors[`leg${i}t`] ?? errors[`leg${i}f`]}>
-                <DayPicker value={leg.date} onChange={(v) => set(i, { date: v })} />
+                <DayPicker value={leg.date} onChange={(v) => set(i, { date: v })} min={minDay} />
               </Field>
             </div>
 
             {!leg.date ? (
               <Alert tone="info" title={t("issue.leg.infoTitle")}>{t("issue.leg.infoBody")}</Alert>
             ) : flights.length === 0 ? (
-              <Empty title={t("issue.leg.emptyTitle")} hint={t("issue.leg.emptyHint")} />
+              <Empty title={t("issue.leg.emptyTitle")} hint={i > 0 && prev ? t("issue.leg.emptyHintConnection") : t("issue.leg.emptyHint")} />
             ) : (
               <div className="flex flex-col gap-2">
                 {flights.map((f) => {
