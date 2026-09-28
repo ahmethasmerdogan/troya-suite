@@ -9,7 +9,7 @@ import type {
 } from "./types";
 import { buildTicketNumber } from "./ticketNumber";
 import { foldIncludes } from "./text";
-import { CHECKIN_TICKETS } from "./checkin";
+import { CHECKIN_TICKETS, FLIGHTS as DCS_FLIGHTS } from "./checkin";
 import { fareForPtc } from "./pricing";
 import { applyTransition, applyRefundCancel, canTransition, isRefundable } from "./couponStatusMachine";
 import { isFinal } from "./couponStatus";
@@ -96,7 +96,7 @@ async function issueTicketRun(input: IssueTicketInput): Promise<Ticket> {
   assertSegmentsBookable(input.segments);
   assertFareSane(input.fare, `${input.passenger.surname}/${input.passenger.givenName}`);
   assertFopSane(input.formOfPayment);
-  assertCanIssue([input.passenger], input.pnr);
+  assertCanIssue([input.passenger], input.pnr, input.segments);
   return writeTicket(input);
 }
 
@@ -123,7 +123,7 @@ function assertSegmentsBookable(segments: IssueTicketInput["segments"]) {
   }
 }
 
-function assertCanIssue(passengers: Passenger[], pnr?: string) {
+function assertCanIssue(passengers: Passenger[], pnr?: string, segments: IssueTicketInput["segments"] = []) {
   // Kapanmış döneme yeni satış yazılamaz — kalemler settlement'a iletilmiştir.
   assertPeriodOpen(new Date().toISOString(), "yeni satış", "a new sale");
   // Rezervasyondan kesim: bilet adı PNR'daki adla birebir aynı olmalı ve her
@@ -132,6 +132,17 @@ function assertCanIssue(passengers: Passenger[], pnr?: string) {
   if (!srcPnr) return;
   if (srcPnr.status === "cancelled" || srcPnr.segments.every((s) => s.status === "XX"))
     throw new DomainError(`${srcPnr.recordLocator} rezervasyonu iptal edilmiş — iptal edilmiş rezervasyona bilet kesilemez.`, `Reservation ${srcPnr.recordLocator} is cancelled — a cancelled reservation cannot be ticketed.`);
+  // XE ile iptal edilmiş segment bilete giremez.
+  const num = (n: string) => n.replace(/^[A-Z]{2}(?=\d)/, "");
+  for (const s of segments) {
+    const cancelled = srcPnr.segments.find((x) => x.status === "XX" && x.origin === s.origin && x.destination === s.destination
+      && num(x.flightNumber) === num(s.flightNumber) && x.departure === s.departure);
+    if (cancelled)
+      throw new DomainError(
+        `${srcPnr.recordLocator} rezervasyonunda ${s.origin}-${s.destination} segmenti iptal edilmiş (XX) — iptal edilen segmente bilet kesilemez.`,
+        `Segment ${s.origin}-${s.destination} is cancelled (XX) in reservation ${srcPnr.recordLocator} — a cancelled segment cannot be ticketed.`,
+      );
+  }
   for (const p of passengers) {
     const k = paxKey(p);
     if (!srcPnr.passengers.some((x) => paxKey(x) === k))
@@ -304,7 +315,7 @@ async function issueGroupRun(input: GroupIssueInput): Promise<GroupIssueResult> 
       );
   }
   assertSegmentsBookable(input.segments);
-  assertCanIssue(input.passengers.map((p) => p.passenger), input.pnr);
+  assertCanIssue(input.passengers.map((p) => p.passenger), input.pnr, input.segments);
 
   // Doğrulama bitti — artık yazılır. Her bilet kendi idempotency anahtarını taşır.
   const groupRef = `GRP${String(groupCounter++).padStart(4, "0")}`;
@@ -2237,6 +2248,14 @@ async function applyScheduleChangeRun(input: ScheduleChangeInput): Promise<Sched
     }
     opKeys.set(sub, t.ticketNumber);
     result.applied.push({ ticketNumber: t.ticketNumber, severity });
+  }
+  // Aynı sefer DCS'te de varsa (kalkış kontrolü, HUB panosu) yeni saat oraya
+  // da yazılır — "tek komut, iki yüzey": bilet ve kontuar aynı saati görür.
+  const code = input.flightNumber.toUpperCase();
+  for (const f of DCS_FLIGHTS) {
+    const fcode = (f.flightNumber.startsWith(f.carrier) ? f.flightNumber : f.carrier + f.flightNumber).toUpperCase();
+    if (fcode === code && f.departure.slice(0, 10) === input.date && f.status !== "departed" && f.status !== "closed")
+      f.departure = new Date(newDep).toISOString();
   }
   skchgResults.set(input.idempotencyKey, result);
   return result;

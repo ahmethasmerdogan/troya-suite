@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { BadgeCheck, CircleAlert, CircleX, FileCheck2, IdCard, ShieldCheck } from "lucide-react";
 import {
@@ -212,9 +212,12 @@ export function LateAcceptModal({
 
 /** Uçuş kapanışı onayı — geri alınamaz işlem tek tıkla yapılmaz. */
 export function CloseOutModal({
-  noShow, pending, onClose, onConfirm,
-}: { noShow: number; pending: boolean; onClose: () => void; onConfirm: () => void }) {
+  noShow, pending, onClose, onConfirm, earlyMin,
+}: { noShow: number; pending: boolean; onClose: () => void; onConfirm: () => void; earlyMin?: number }) {
   const t = useT();
+  // Çift tıklama ikinci kapanışı "zaten kapatılmış" hatasıyla denemesin.
+  const fired = useRef(false);
+  const confirm = () => { if (fired.current) return; fired.current = true; onConfirm(); };
   return (
     <Modal
       open
@@ -224,10 +227,15 @@ export function CloseOutModal({
       footer={
         <>
           <Button variant="ghost" onClick={onClose}>{t("common.cancel")}</Button>
-          <Button variant="danger" disabled={pending} onClick={onConfirm}>{t("close.confirm")}</Button>
+          <Button variant="danger" disabled={pending} onClick={confirm}>{t("close.confirm")}</Button>
         </>
       }
     >
+      {earlyMin != null && earlyMin > 15 && (
+        <p className="mb-3 rounded-md bg-[var(--t-amber-w,#fff7e6)] px-3 py-2 text-[13px] text-[var(--t-amber-i)]">
+          {t("close.early", { n: earlyMin })}
+        </p>
+      )}
       <p className="text-[13.5px] leading-relaxed text-ink-2">{t("close.body", { n: noShow })}</p>
     </Modal>
   );

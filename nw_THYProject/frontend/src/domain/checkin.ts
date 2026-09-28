@@ -556,10 +556,13 @@ export async function recordApis(
   return pax;
 }
 
+const checkinKeys = new Map<string, string>();
 export async function checkInPassenger(input: CheckInInput): Promise<CheckinPassenger> {
   await delay(550);
   const pax = PASSENGERS[input.flightId]?.find((p) => p.id === input.passengerId);
   if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  // Aynı işlem anahtarı → aynı sonuç (çift tıklama ikinci bir kabul üretmez).
+  if (checkinKeys.get(input.idempotencyKey) === pax.id) return pax;
   const flightRef = FLIGHTS.find((f) => f.flightId === input.flightId);
   const firstAcceptance = pax.status === "not_checked";
   // Koltuk değiştirme yalnız kabul edilmiş ve henüz binmemiş yolcuda, uçuş
@@ -629,6 +632,7 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
   if (pax.sequenceNumber == null) pax.sequenceNumber = ++seqCounter;
   const flight = FLIGHTS.find((f) => f.flightId === input.flightId);
   if (flight && firstAccept) flight.checkedIn += 1;
+  checkinKeys.set(input.idempotencyKey, pax.id);
   return pax;
 }
 
@@ -657,6 +661,8 @@ export async function boardPassenger(flightId: string, passengerId: string): Pro
   await delay(300);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
   if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  // Zaten binmiş yolcuyu yeniden bindirmek aynı sonucu verir (çift tıklama).
+  if (pax.status === "boarded") return pax;
   assertFlightOpen(flightId);
   if (pax.status !== "checked_in") throw new LocalizedError("Önce check-in yapılmalı", "The passenger must be checked in first");
   pax.status = "boarded";

@@ -1,6 +1,6 @@
 // QuickRes — Rezervasyon domaini (PNR + availability). Mock; backend gelince REST'e bağlanır.
 // PNR (Passenger Name Record) → Troya'da bilet kesimine kaynak olur (PNR→ticket linkage).
-import { shiftFixture } from "./demoClock";
+import { demoNow, shiftFixture } from "./demoClock";
 import { LocalizedError } from "./errors";
 import { searchFlights } from "./flights";
 import { computeFareOffers } from "./pricing";
@@ -427,6 +427,7 @@ export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
     if (!/^[A-Z0-9]{2}$/.test(s.carrier)) throw new LocalizedError(`${where}: taşıyıcı kodu 2 karakter olmalı.`, `${where}: the carrier code must be 2 characters.`);
     if (!/^([A-Z0-9]{2})?\d{1,4}[A-Z]?$/.test(s.flightNumber.trim().toUpperCase())) throw new LocalizedError(`${where}: sefer numarası rakam olmalı (ör. 1591).`, `${where}: the flight number must be numeric (e.g. 1591).`);
     if (Number.isNaN(Date.parse(s.departure))) throw new LocalizedError(`${where}: kalkış tarihi geçersiz.`, `${where}: invalid departure date.`);
+    if (Date.parse(s.departure) <= demoNow()) throw new LocalizedError(`${where}: seferin kalkışı geçti — kalkmış sefere rezervasyon yapılamaz.`, `${where}: the flight has already departed — it cannot be booked.`);
   }
   const pnr: Pnr = {
     recordLocator: genRecordLocator(++rlCounter + MOCK_PNRS.length + 17),
