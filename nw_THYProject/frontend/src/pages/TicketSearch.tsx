@@ -50,7 +50,7 @@ const FILTERS: { id: string; labelKey: Key; hit: (t: TicketSummary) => boolean }
 
 const ACTION: Record<string, Key> = {
   exchange: "nav.exchange", refund: "nav.refund", void: "nav.void",
-  irrop: "nav.irrop", endorse: "search.action.endorse",
+  irrop: "nav.irrop", endorse: "search.action.endorse", emd: "nav.emd",
 };
 
 const col = createColumnHelper<TicketSummary>();

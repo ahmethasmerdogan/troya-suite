@@ -2,7 +2,9 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, CalendarClock, Inbox } from "lucide-react";
-import { applyScheduleChange, listTickets, listUpcomingFlights, newIdempotencyKey, type ScheduleChangeResult } from "@/domain/api";
+import { applyScheduleChange, listTickets, listUpcomingFlights, type ScheduleChangeResult } from "@/domain/api";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 import { classifyScheduleChange, isInternationalSegment, type ChangeSeverity, type ScheduledFlight } from "@/domain/scheduleChange";
 import { Button, Field, Input } from "@/components/ui/core";
 import { PageTitle, Panel, PanelHead, PanelBody, Empty } from "@/components/ui/surface";
@@ -11,6 +13,7 @@ import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
+import { PermGate } from "@/components/layout/PermGate";
 import { cn, formatDateTime } from "@/lib/utils";
 
 const SEV_TONE: Record<ChangeSeverity, Tone> = { minor: "gray", involuntary: "amber", significant: "red" };
@@ -29,6 +32,10 @@ function toLocalInput(iso: string): string {
  * Sonuç kuyruğa düşer: her bilet için yolcuya bildirim işi (Q7).
  */
 export function ScheduleChange() {
+  return <PermGate perm="ticket.irrop" titleKey="nav.skchg"><ScheduleChangeScreen /></PermGate>;
+}
+
+function ScheduleChangeScreen() {
   const t = useT();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -52,12 +59,14 @@ export function ScheduleChange() {
     [sel, summaries],
   );
 
+  const op = useOpKey();
   const run = useMutation({
-    mutationFn: () => applyScheduleChange({ flightNumber: sel!.flightNumber, date: sel!.date, newDeparture: newIso, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => applyScheduleChange({ flightNumber: sel!.flightNumber, date: sel!.date, newDeparture: newIso, idempotencyKey: op.key() }),
     onSuccess: (r) => {
+      op.rotate();
       setResult(r);
       toast.success(t("skchg.done"), t("skchg.doneBody", { a: r.applied.length, s: r.skipped.length }));
-      for (const k of ["upcomingFlights", "ticketsAll", "tickets", "queues"]) qc.invalidateQueries({ queryKey: [k] });
+      invalidateRecords(qc);
       setSel(null);
     },
     onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),

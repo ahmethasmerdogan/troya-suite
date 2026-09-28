@@ -161,7 +161,16 @@ export interface RaiseMemoInput {
   at?: string;
 }
 
-export async function raiseMemo(input: RaiseMemoInput): Promise<Memo> {
+/** Aynı anahtarla uçuştaki istek aynı sözü alır — çift tıklama iki dekont kesmez. */
+const inflight = new Map<string, Promise<Memo>>();
+export function raiseMemo(input: RaiseMemoInput): Promise<Memo> {
+  const cur = inflight.get(input.idempotencyKey);
+  if (cur) return cur;
+  const p = raiseMemoRun(input).finally(() => inflight.delete(input.idempotencyKey));
+  inflight.set(input.idempotencyKey, p);
+  return p;
+}
+async function raiseMemoRun(input: RaiseMemoInput): Promise<Memo> {
   await delay(420);
   const prior = keys.get(input.idempotencyKey);
   if (prior) return MEMOS.find((m) => m.id === prior)!;

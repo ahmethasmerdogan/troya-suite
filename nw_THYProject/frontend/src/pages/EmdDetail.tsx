@@ -1,7 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Ban, FileText, Ticket as TicketIcon, Undo2 } from "lucide-react";
-import { getEmd, newIdempotencyKey, refundEmd, voidEmd } from "@/domain/api";
+import { getEmd, refundEmd, voidEmd } from "@/domain/api";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 import { usePerm } from "@/lib/usePerm";
 import { Button } from "@/components/ui/core";
 import { toast } from "@/components/ui/toast";
@@ -25,18 +27,17 @@ export function EmdDetail() {
   const { can, lockHint } = usePerm();
   const { data: emd, isLoading } = useQuery({ queryKey: ["emd", emdNumber], queryFn: () => getEmd(emdNumber) });
 
-  const refresh = () => {
-    qc.invalidateQueries({ queryKey: ["emd", emdNumber] });
-    qc.invalidateQueries({ queryKey: ["emds"] });
-    qc.invalidateQueries({ queryKey: ["emdsFor"] });
-  };
+  // EMD'nin bağlı bileti, order'ı ve raporlar da değişir (lib/invalidate).
+  const refresh = () => invalidateRecords(qc);
+  const voidKey = useOpKey();
+  const refundKey = useOpKey();
   const voidOp = useMutation({
-    mutationFn: () => voidEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => voidEmd({ emdNumber, idempotencyKey: voidKey.key() }),
     onSuccess: () => { toast.success(t("misc.emd.voidOk")); refresh(); },
     onError: (e: Error) => toast.danger(t("misc.emd.voidFail"), e.message),
   });
   const refundOp = useMutation({
-    mutationFn: () => refundEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
+    mutationFn: () => refundEmd({ emdNumber, idempotencyKey: refundKey.key() }),
     onSuccess: () => { toast.success(t("misc.emd.refundOk")); refresh(); },
     onError: (e: Error) => toast.danger(t("misc.emd.refundFail"), e.message),
   });

@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "@tanstack/react-router";
 import { MOCK_TICKETS, MOCK_EMDS, MOCK_ORDERS } from "@/domain/mockData";
 import { FLIGHTS } from "@/domain/checkin";
+import { PermGate } from "@/components/layout/PermGate";
 import { useT } from "@/i18n";
 
 // Service Map — claude.ai/design "Service Map.dc.html" tasarımını BİZİM tasarım sistemimize
@@ -93,6 +94,10 @@ const fmtLat = (x: number) => (x >= 1000 ? (x / 1000).toFixed(2) + "s" : x < 100
 const errColor = (x: number) => (x >= 3 ? "#EF4444" : x >= 1 ? "#F59E0B" : "var(--text-tertiary)");
 
 export function ServiceMap() {
+  return <PermGate perm="ops.view" titleKey="nav.ci.servicemap"><ServiceMapScreen /></PermGate>;
+}
+
+function ServiceMapScreen() {
   const t = useT();
   const router = useRouter();
   const goBack = () => { if (window.history.length > 1) router.history.back(); else router.navigate({ to: "/ops" }); };

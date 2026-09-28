@@ -17,6 +17,7 @@ import { Dot } from "@/components/ui/pill";
 import { NoticeRow, useNotices } from "@/components/layout/Notices";
 import { DailyTip } from "@/components/tips/DailyTip";
 import { WorkSummary } from "@/components/domain/WorkSummary";
+import { usePerm } from "@/lib/usePerm";
 import { formatDateTime, locale } from "@/lib/utils";
 
 /** Sparkline altındaki gün kısaltmaları — Date.getDay() sırasıyla (pazar = 0). */
@@ -197,6 +198,7 @@ export function Panel() {
  */
 function StationNotices() {
   const t = useT();
+  const { can } = usePerm();
   const notices = useNotices();
   const urgent = notices.filter((n) => n.severity !== "info").length;
   if (notices.length === 0) return null;
@@ -205,11 +207,11 @@ function StationNotices() {
       <PanelHead
         title={t("search.panel.notices.title")}
         hint={t("search.panel.notices.hint", { n: urgent, m: notices.length })}
-        action={
+        action={can("ops.view") ? (
           <Link to="/ops" className="inline-flex items-center gap-1 text-[13px] font-medium text-brand">
             {t("nav.section.ops")} <ArrowRight size={14} strokeWidth={2} />
           </Link>
-        }
+        ) : undefined}
       />
       <PanelBody className="anim-stagger flex flex-col gap-0.5 pt-1.5">
         {notices.slice(0, 5).map((n) => (

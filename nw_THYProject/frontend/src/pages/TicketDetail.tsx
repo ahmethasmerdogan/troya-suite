@@ -18,7 +18,7 @@ import { TicketDocument } from "@/components/domain/document/TicketDocument";
 import { LifecycleTimeline } from "@/components/domain/LifecycleTimeline";
 import { ValidityCard } from "@/components/domain/ValidityCard";
 import { cabinOfRbd, co2PerPax } from "@/domain/co2";
-import { TicketFlows, type FlowId } from "@/components/flows";
+import { FLOW_PERM, isFlowId, TicketFlows, type FlowId } from "@/components/flows";
 import { Tip } from "@/components/tips/Tip";
 import { Menu, MenuItem, useOutside } from "@/components/ui/overlay";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,9 +65,12 @@ export function TicketDetail() {
   useEffect(() => {
     if (!flowParam || consumed.current) return;
     consumed.current = true;
-    setFlow(flowParam as FlowId);
+    // Adresten gelen akış da yetki kapısından geçer; bilinmeyen ya da yetkisiz
+    // akış açılmaz (yetkisiz personel `?flow=refund` ile iadeyi açabiliyordu).
+    if (isFlowId(flowParam) && can(FLOW_PERM[flowParam])) setFlow(flowParam);
+    else if (isFlowId(flowParam)) toast.danger(t("shell.denied.title"), lockHint(FLOW_PERM[flowParam]) ?? t("shell.denied.body"));
     navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber }, search: {}, replace: true });
-  }, [flowParam, ticketNumber, navigate]);
+  }, [flowParam, ticketNumber, navigate, can, lockHint, t]);
 
   // e / r / v — buton ipuçlarında ve ekran kılavuzunda vaat edilen kısayollar.
   // Yazı alanındayken, bir katman (drawer/modal/palet) açıkken ya da yetki
@@ -158,7 +161,9 @@ export function TicketDetail() {
             <> {t("ticket.detail.control.deadline")} <b className="num">{formatDateTime(ticket.control.deadlineAt)}</b>
               {overdue ? t("ticket.detail.control.overdueNote") : t("ticket.detail.control.withinNote")}</>
           )}{" "}
-          <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">{t("ticket.detail.control.manage")}</button>
+          {can(FLOW_PERM.control) && (
+            <button onClick={() => setFlow("control")} className="font-semibold underline underline-offset-2">{t("ticket.detail.control.manage")}</button>
+          )}
         </Alert>
       )}
       {open === 0 && (

@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import {
   Check, ChevronLeft, ChevronRight, CreditCard, Banknote, Wallet, Plane, Leaf, Trash2, UserPlus, Users,
 } from "lucide-react";
-import { issueGroup, issueTicket, newIdempotencyKey, GROUP_MAX } from "@/domain/api";
+import { issueGroup, issueTicket, GROUP_MAX } from "@/domain/api";
 import { getPnr, paxKey, unticketedPassengers, type ReservationSegment } from "@/domain/reservation";
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, fareForPtc, CHILD_DISCOUNT, type FareOffer, type Ptc } from "@/domain/pricing";
@@ -26,6 +26,8 @@ import {
 import { useT, type Key } from "@/i18n";
 import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 
 /* ====================================================================
    Bilet kesme — beş adım.
@@ -79,7 +81,27 @@ function legFromSegment(s: ReservationSegment): Leg {
   return { origin: s.origin, destination: s.destination, date: s.departure.slice(0, 10), flight, booked: flight };
 }
 
+/**
+ * "Yeni bilet kes" formu SIFIRLAR — sayfayı yeniden yüklemez. Yeniden yükleme
+ * bellek-içi kaydı da silip az önce kesilen bileti yok ediyordu (aynı numara
+ * bir sonraki kesimde yeniden verildi, PNR "bilet bekliyor"a döndü).
+ */
 export function IssueWizard() {
+  const [gen, setGen] = useState(0);
+  const navigate = useNavigate();
+  return (
+    <IssueWizardForm
+      key={gen}
+      onNew={() => { navigate({ to: "/issue", search: {} }); setGen((g) => g + 1); }}
+    />
+  );
+}
+
+function IssueWizardForm({ onNew }: { onNew: () => void }) {
+  // Kesim anahtarı form açılırken üretilir: çift tıklama ve yeniden deneme
+  // aynı işlemdir; başarıdan sonra yenilenir (kural 5/9).
+  const op = useOpKey();
+  const qc = useQueryClient();
   const t = useT();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
@@ -234,9 +256,9 @@ export function IssueWizard() {
       segments,
       formOfPayment: { type: fop, detail: fopDetail || undefined },
       baggageAllowanceKg: offer!.baggageKg,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
-    onSuccess: (r) => { setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
+    onSuccess: (r) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
     onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
   });
 
@@ -258,9 +280,9 @@ export function IssueWizard() {
       formOfPayment: { type: fop, detail: fopDetail || undefined },
       // Ücretin bagaj hakkı kupona yazılır (Handbook 14.4).
       baggageAllowanceKg: offer!.baggageKg,
-      idempotencyKey: newIdempotencyKey(),
+      idempotencyKey: op.key(),
     }),
-    onSuccess: (t) => { setConfirming(false); setIssued(t); },
+    onSuccess: (t) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssued(t); },
     onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
   });
 
@@ -272,7 +294,7 @@ export function IssueWizard() {
         group={issuedGroup ?? undefined}
         onOpen={() => navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: tn } })}
         onPrint={() => navigate({ to: "/itinerary/$ticketNumber", params: { ticketNumber: tn } })}
-        onNew={() => window.location.reload()}
+        onNew={onNew}
       />
     );
   }

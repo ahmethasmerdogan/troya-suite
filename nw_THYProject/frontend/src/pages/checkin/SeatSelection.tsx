@@ -2,7 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { checkInPassenger, getFlight, getSeatMap, listPassengers, LATE_REASONS, type LateReason, type Seat } from "@/domain/checkin";
-import { advanceCouponStatus, newIdempotencyKey, recordBaggage } from "@/domain/api";
+import { advanceCouponStatus, recordBaggage } from "@/domain/api";
+import { useOpKey } from "@/lib/useOpKey";
+import { invalidateRecords } from "@/lib/invalidate";
 import { denialReason, paxSeatNotes, seatDenial } from "@/domain/seatRules";
 import { layoutFor } from "@/domain/aircraftLayout";
 import { CabinMap, CabinLegend, blockedSummary } from "@/components/checkin/CabinMap";
@@ -50,9 +52,10 @@ export function SeatSelection() {
    * döngüsündeki bir adımdır (Handbook 1.1.4.1). Kupon O→C'ye geçmezse
    * bilet tarafında uçuş hiç olmamış görünür.
    */
+  const op = useOpKey();
   const accept = useMutation({
     mutationFn: async () => {
-      const p = await checkInPassenger({ flightId, passengerId, seat: seat!, bags, idempotencyKey: newIdempotencyKey(), late });
+      const p = await checkInPassenger({ flightId, passengerId, seat: seat!, bags, idempotencyKey: op.key(), late });
       let couponWarning: string | null = null;
       if (p.ticketNumber && p.couponSeq != null) {
         try {
@@ -61,7 +64,7 @@ export function SeatSelection() {
           if (bags > 0) {
             await recordBaggage({
               ticketNumber: p.ticketNumber, couponSeq: p.couponSeq,
-              checkedPieces: bags, idempotencyKey: newIdempotencyKey(),
+              checkedPieces: bags, idempotencyKey: `${op.key()}:bag`,
             });
           }
         } catch (e) {
@@ -78,13 +81,8 @@ export function SeatSelection() {
         t("checkin.toast.seatLine", { name: `${p.surname}/${p.givenName}`, seat: p.seat ?? "—" }),
       );
       if (couponWarning) toast.warning(t("checkin.toast.couponFailed"), couponWarning);
-      qc.invalidateQueries({ queryKey: ["pax", flightId] });
-      qc.invalidateQueries({ queryKey: ["seatmap", flightId] });
-      qc.invalidateQueries({ queryKey: ["flight", flightId] });
-      qc.invalidateQueries({ queryKey: ["flights"] });
-      qc.invalidateQueries({ queryKey: ["opsBoard"] });
-      qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
-      qc.invalidateQueries({ queryKey: ["tickets"] });
+      op.rotate();
+      invalidateRecords(qc);
       navigate({ to: "/checkin/$flightId", params: { flightId } });
     },
     onError: (e: Error) => toast.danger(t("checkin.toast.acceptFailed"), e.message),

@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { flightCode } from "./utils";
+import { flightCode, parseAmount } from "./utils";
 
 // "TKTK198" hatası: veri kaynakları uçuş numarasını farklı tutuyor —
 // check-in/rezervasyon "TK198", kesim sihirbazı "198". Render tarafında
@@ -23,5 +23,17 @@ describe("sefer tanıtıcısı", () => {
     expect(flightCode("TK", "")).toBe("TK");
     expect(flightCode("", "198")).toBe("198");
     expect(flightCode(undefined, undefined)).toBe("");
+  });
+});
+
+describe("parseAmount — TR ve EN tutar yazımı", () => {
+  it.each([
+    ["1.250,50", 1250.5], ["1,250.50", 1250.5], ["1250,5", 1250.5], ["1250.5", 1250.5],
+    ["1.250", 1250], ["1,250", 1250], ["1.234.567", 1234567], ["1.234.567,89", 1234567.89],
+    ["150", 150], ["", 0], ["  42,00 ", 42],
+  ])("%s → %d", (raw, n) => { expect(parseAmount(raw)).toBeCloseTo(n, 6); });
+  it("anlamsız girdi NaN", () => {
+    expect(Number.isNaN(parseAmount("abc"))).toBe(true);
+    expect(Number.isNaN(parseAmount("12a"))).toBe(true);
   });
 });

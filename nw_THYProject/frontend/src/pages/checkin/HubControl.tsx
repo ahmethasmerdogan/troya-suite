@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/i18n";
 import { useUI } from "@/store/ui";
+import { PermGate } from "@/components/layout/PermGate";
 import { cn, locale } from "@/lib/utils";
 
 /**
@@ -34,6 +35,10 @@ function useNow(ms = 1000) {
 }
 
 export function HubControl() {
+  return <PermGate perm="ops.view" titleKey="checkin.hub.title"><HubControlScreen /></PermGate>;
+}
+
+function HubControlScreen() {
   const t = useT();
   const lang = useUI((s) => s.lang); // durum/uyarı/milestone metinleri domainden gelir, dili burada seçilir
   const qc = useQueryClient();

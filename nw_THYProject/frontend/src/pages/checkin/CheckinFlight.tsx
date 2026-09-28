@@ -253,7 +253,7 @@ export function CheckinFlight() {
                   <LockKeyhole size={15} strokeWidth={1.75} /> {t("checkin.flight.takeControl")}
                 </Button>
                 {tab === "boarding" && (
-                  <Button variant="secondary" size="sm" disabled={boardEveryone.isPending}
+                  <Button variant="secondary" size="sm" disabled={!can("checkin.board") || boardEveryone.isPending}
                     onClick={() => boardEveryone.mutate()}>
                     <Users size={15} strokeWidth={1.75} /> {t("checkin.flight.boardAll")}
                   </Button>
@@ -406,7 +406,7 @@ export function CheckinFlight() {
                       {tab === "checkin" ? (
                         <Button
                           size="sm"
-                          disabled={gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
+                          disabled={!can("checkin.accept") || gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
                           title={
                             gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") })
                               : docsBlocked ? t("desk.action.docsBlocked")
@@ -423,7 +423,7 @@ export function CheckinFlight() {
                           {!firstTime ? t("checkin.action.changeSeat") : late ? t("desk.action.late") : t("checkin.action.accept")}
                         </Button>
                       ) : (
-                        <Button variant="success" size="sm" disabled={p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
+                        <Button variant="success" size="sm" disabled={!can("checkin.board") || p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
                           {p.status === "boarded" ? t("checkin.pax.boarded") : t("checkin.action.board")}
                         </Button>
                       )}
