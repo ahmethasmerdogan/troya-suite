@@ -46,6 +46,11 @@ export function greatCircleKm(from: string, to: string): number | undefined {
   return Math.round(2 * R_KM * Math.asin(Math.sqrt(h)));
 }
 
+/** Havalimanının [enlem, boylam] değeri (tanıtım küresi için). */
+export function coordsOf(code: string): [number, number] | undefined {
+  return COORDS[code.toUpperCase()];
+}
+
 export function hasCoords(code: string): boolean {
   return code.toUpperCase() in COORDS;
 }

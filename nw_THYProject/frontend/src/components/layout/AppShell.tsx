@@ -25,6 +25,8 @@ import { useChat } from "@/store/chat";
  * Kabuk dolgu ya da kaydırma dayatmaz. Bölünmüş sayfalar kendi
  * panellerini kurar; geri kalan her şey tek sütun akar.
  */
+const LANDING = "/tanitim";
+
 export function AppShell() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const user = useUI((s) => s.user);
@@ -34,6 +36,9 @@ export function AppShell() {
   useEffect(() => {
     useChat.getState().bind(user?.id ?? null, user?.name);
   }, [user]);
+
+  // Tanıtım sayfası herkese açık ve kabuksuzdur.
+  if (pathname === LANDING) return <Outlet />;
 
   // Giriş yapılmadıysa tüm rotalar yerine giriş ekranı.
   if (!user) return <Login />;

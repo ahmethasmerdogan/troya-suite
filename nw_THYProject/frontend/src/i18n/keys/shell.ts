@@ -57,6 +57,7 @@ export const tr = {
   "shell.login.headline2": "tek konsolu.",
   "shell.login.lede":
     "Bilet kesiminden EMD'ye, exchange/refund'dan interline mesajlaşmaya — IATA standartlarına sadık, tıklama-tabanlı arayüz.",
+  "shell.login.intro": "Sistemi tanıyın",
   "shell.login.stat.status": "Kupon statüsü",
   "shell.login.stat.handbook": "Handbook kapsamı",
   "shell.login.stat.bilingual": "Çift dilli",
@@ -125,6 +126,7 @@ export const en: Record<keyof typeof tr, string> = {
   "shell.login.headline2": "ticketing operation.",
   "shell.login.lede":
     "From ticket issuance to EMD, from exchange/refund to interline messaging — a click-based interface faithful to IATA standards.",
+  "shell.login.intro": "Discover the system",
   "shell.login.stat.status": "Coupon statuses",
   "shell.login.stat.handbook": "Handbook coverage",
   "shell.login.stat.bilingual": "Bilingual",

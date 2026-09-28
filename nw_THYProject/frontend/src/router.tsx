@@ -109,6 +109,9 @@ const guideRoute = createRoute({ getParentRoute: () => rootRoute, path: "/guide"
 // Sistem dokümantasyonu (ürün/teknik genel bakış)
 const docsRoute = createRoute({ getParentRoute: () => rootRoute, path: "/docs", component: lazyRouteComponent(() => import("@/pages/Docs"), "Docs") });
 
+// Tanıtım sayfası — giriş gerektirmez; kabuk bu rotada yalnız Outlet çizer.
+const landingRoute = createRoute({ getParentRoute: () => rootRoute, path: "/tanitim", component: lazyRouteComponent(() => import("@/pages/landing/Landing"), "Landing") });
+
 // Personel mesajlaşma (tam sayfa)
 const chatRoute = createRoute({ getParentRoute: () => rootRoute, path: "/chat", component: lazyRouteComponent(() => import("@/pages/Chat"), "Chat") });
 
@@ -118,7 +121,7 @@ const routeTree = rootRoute.addChildren([
   profileRoute, searchRoute, queuesRoute, skchgRoute, issueRoute, ticketDetailRoute, itineraryRoute, messagesRoute, memosRoute, agreementsRoute, ptaRoute, ordersRoute, orderDetailRoute, emdsRoute, emdDetailRoute,
   emdReceiptRoute, reportRoute, reportFinancialRoute, reportPeriodRoute, reportPeriodDocRoute, reportsHubRoute,
   checkinFlightsRoute, checkinFlightRoute, seatSelectionRoute, opsRoute, serviceMapRoute,
-  adminRoute, guideRoute, docsRoute, chatRoute,
+  adminRoute, guideRoute, docsRoute, chatRoute, landingRoute,
 ]);
 
 export const router = createRouter({
