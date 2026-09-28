@@ -13,6 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { Card, InsetPanel, OutlineBadge, StatusPill } from "@/ui";
 import { useT } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { cn } from "@/lib/utils";
 import { ReportShell } from "./ReportShell";
 
@@ -29,6 +30,7 @@ import { ReportShell } from "./ReportShell";
 
 export function PeriodClosing() {
   const t = useT();
+  const errText = useErrorText();
   const qc = useQueryClient();
   const [confirm, setConfirm] = useState<PeriodSummary | null>(null);
 
@@ -49,7 +51,7 @@ export function PeriodClosing() {
       setConfirm(null);
       qc.invalidateQueries({ queryKey: ["closedPeriods"] });
     },
-    onError: (e: Error) => toast.danger(t("report.close.failTitle"), e.message),
+    onError: (e: Error) => toast.danger(t("report.close.failTitle"), errText(e)),
   });
 
   return (

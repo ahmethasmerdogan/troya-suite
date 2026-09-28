@@ -23,6 +23,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, translate, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
@@ -51,6 +52,7 @@ const FILTER_LABEL: Record<Filter, Key> = {
 export function CheckinFlight() {
   const { flightId } = useParams({ from: "/checkin/$flightId" });
   const t = useT();
+  const errText = useErrorText();
   // Koltuk kısıt notları domainden iki dilli gelir; okunacak dili arayüz seçer.
   const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
@@ -97,7 +99,7 @@ export function CheckinFlight() {
         try {
           await advanceCouponStatus(done.ticketNumber, done.couponSeq, "L");
         } catch (e) {
-          couponWarning = (e as Error).message;
+          couponWarning = errText(e);
         }
       }
       return { pax: done, couponWarning };
@@ -114,7 +116,7 @@ export function CheckinFlight() {
       qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
       qc.invalidateQueries({ queryKey: ["tickets"] });
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), errText(e)),
   });
 
   /** Kabulü geri al: koltuk boşalır, kupon havalimanı kontrolüne (A) çekilir. */
@@ -130,7 +132,7 @@ export function CheckinFlight() {
       toast.success(t("checkin.toast.undone.title"), t("checkin.toast.undone.body", { name: `${p.surname}/${p.givenName}` }));
       refreshAll(p.ticketNumber);
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), errText(e)),
   });
 
   /** Kabul edilmiş herkesi tek işlemde bindir. */
@@ -145,7 +147,7 @@ export function CheckinFlight() {
       return done;
     },
     onSuccess: (list) => { toast.success(t("checkin.toast.boardAll.title"), t("checkin.toast.boardAll.body", { n: list.length })); refreshAll(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), errText(e)),
   });
 
   /**
@@ -168,7 +170,7 @@ export function CheckinFlight() {
       toast.success(t("checkin.toast.closed.title"), t("checkin.toast.closed.body", { flown: r.flown, noshow: r.noShow.length }));
       refreshAll();
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.closeFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.closeFailed"), errText(e)),
   });
 
   /** Kabul öncesi havalimanı kontrolü al (O→A). */
@@ -182,7 +184,7 @@ export function CheckinFlight() {
       return n;
     },
     onSuccess: (n) => { toast.success(t("checkin.toast.control.title"), t("checkin.toast.control.body", { n })); refreshAll(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), errText(e)),
   });
 
   const intlFlight = flight ? isInternational(flight) : false;
@@ -486,13 +488,14 @@ function ApisModal({
   pax, flightId, onClose, onSaved,
 }: { pax: CheckinPassenger; flightId: string; onClose: () => void; onSaved: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const [passport, setPassport] = useState(pax.passport ?? "");
   const [nationality, setNationality] = useState(pax.nationality ?? "");
 
   const save = useMutation({
     mutationFn: () => recordApis(flightId, pax.id, { passport, nationality }),
     onSuccess: (p) => { toast.success(t("checkin.toast.apis.title"), `${p.surname}/${p.givenName} · ${p.nationality} ${p.passport}`); onSaved(); },
-    onError: (e: Error) => toast.danger(t("checkin.toast.apisFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.apisFailed"), errText(e)),
   });
 
   return (

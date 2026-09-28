@@ -12,6 +12,7 @@ import { PageTitle, Panel, PanelHead, PanelBody } from "@/components/ui/surface"
 import { Banner } from "@/components/ui/banner";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 
 // Yeni rezervasyon — yolcu ve segment girişi, sonra PNR üretimi.
 const emptyPax = (): Passenger => ({ surname: "", givenName: "", title: "MR" });
@@ -22,6 +23,7 @@ const emptySeg = (): ReservationSegment => ({
 
 export function CreatePnr() {
   const t = useT();
+  const errText = useErrorText();
   const navigate = useNavigate();
   const user = useUI((x) => x.user);
   // Uygunluk sorgusundan seçilen sefer (?o=&d=&cx=&fn=&rbd=&dep=&arr=) formu doldurur.
@@ -49,7 +51,7 @@ export function CreatePnr() {
       toast.success(t("chat.res.new.created"), `PNR ${p.recordLocator}`);
       navigate({ to: "/res/$pnr", params: { pnr: p.recordLocator } });
     },
-    onError: (e: Error) => setError(e.message),
+    onError: (e: Error) => setError(errText(e)),
   });
 
   const valid = pax.every((p) => p.surname.trim().length >= 2 && p.givenName.trim())

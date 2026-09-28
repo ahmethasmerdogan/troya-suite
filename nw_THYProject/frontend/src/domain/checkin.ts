@@ -10,6 +10,7 @@ import {
 import { MOCK_TICKETS } from "./mockData";
 import { checkTravelDocs, type DocCheckResult, type TravelPermit } from "./travelDocs";
 import { generateTickets } from "./genTickets";
+import { LocalizedError } from "./errors";
 
 /**
  * Check-in yolcusuna GERÇEK bir bilet bağla.
@@ -393,9 +394,9 @@ export function paxDocCheck(pax: CheckinPassenger, flight: DepartureFlight): Doc
 export async function recordTravelPermit(flightId: string, passengerId: string, permit: TravelPermit): Promise<CheckinPassenger> {
   await delay(320);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (!permit.type.trim() || !permit.number.trim()) throw new Error("İzin türü ve numarası zorunlu");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(permit.validUntil)) throw new Error("Geçerlilik tarihi YYYY-AA-GG olmalı");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (!permit.type.trim() || !permit.number.trim()) throw new LocalizedError("İzin türü ve numarası zorunlu", "Permit type and number are required");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(permit.validUntil)) throw new LocalizedError("Geçerlilik tarihi YYYY-AA-GG olmalı", "Valid-until date must be YYYY-MM-DD");
   pax.visa = { type: permit.type.trim().toUpperCase(), number: permit.number.trim().toUpperCase(), validUntil: permit.validUntil };
   return pax;
 }
@@ -404,8 +405,8 @@ export async function recordTravelPermit(flightId: string, passengerId: string, 
 export async function recordPassportExpiry(flightId: string, passengerId: string, expiry: string): Promise<CheckinPassenger> {
   await delay(240);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) throw new Error("Tarih YYYY-AA-GG olmalı");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(expiry)) throw new LocalizedError("Tarih YYYY-AA-GG olmalı", "Date must be YYYY-MM-DD");
   pax.passportExpiry = expiry;
   return pax;
 }
@@ -419,8 +420,8 @@ export async function recordPassportExpiry(flightId: string, passengerId: string
 export async function recordOkToBoard(flightId: string, passengerId: string, ref: string, by: string): Promise<CheckinPassenger> {
   await delay(320);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (ref.trim().length < 4) throw new Error("Makam onay referansı zorunlu");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (ref.trim().length < 4) throw new LocalizedError("Makam onay referansı zorunlu", "Authority approval reference is required");
   pax.okToBoard = { ref: ref.trim().toUpperCase(), by, at: new Date().toISOString() };
   return pax;
 }
@@ -482,9 +483,9 @@ export async function recordApis(
 ): Promise<CheckinPassenger> {
   await delay(320);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (!data.passport.trim()) throw new Error("Pasaport numarası zorunlu");
-  if (data.nationality.trim().length !== 2) throw new Error("Uyruk iki harfli ülke kodu olmalı (ISO-2)");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (!data.passport.trim()) throw new LocalizedError("Pasaport numarası zorunlu", "Passport number is required");
+  if (data.nationality.trim().length !== 2) throw new LocalizedError("Uyruk iki harfli ülke kodu olmalı (ISO-2)", "Nationality must be a two-letter country code (ISO-2)");
   pax.passport = data.passport.trim().toUpperCase();
   pax.nationality = data.nationality.trim().toUpperCase();
   pax.apis = true;
@@ -494,41 +495,55 @@ export async function recordApis(
 export async function checkInPassenger(input: CheckInInput): Promise<CheckinPassenger> {
   await delay(550);
   const pax = PASSENGERS[input.flightId]?.find((p) => p.id === input.passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
   const flightRef = FLIGHTS.find((f) => f.flightId === input.flightId);
   const firstAcceptance = pax.status === "not_checked";
   // Kabul penceresi — yalnız İLK kabulde (koltuk değiştirmek kabul değildir).
   if (flightRef && firstAcceptance) {
     const w = checkinWindow(flightRef);
-    if (w.state === "closed") throw new Error("Kapı kapandı — bu uçuşa kabul yapılamaz.");
+    if (w.state === "closed") throw new LocalizedError("Kapı kapandı — bu uçuşa kabul yapılamaz.", "The gate is closed — no acceptance on this flight.");
     if (w.state === "late") {
-      if (!input.late) throw new Error(`Kontuar kapandı (kalkıştan ${w.closeMin} dk önce) — geç kabul süpervizör onayı ve gerekçe ister.`);
-      if (input.late.reason === "OTHER" && !input.late.note?.trim()) throw new Error("\"Diğer\" gerekçesinde açıklama zorunlu.");
+      if (!input.late) throw new LocalizedError(`Kontuar kapandı (kalkıştan ${w.closeMin} dk önce) — geç kabul süpervizör onayı ve gerekçe ister.`, `Check-in counter closed (${w.closeMin} min before departure) — late acceptance requires supervisor approval and a reason.`);
+      if (input.late.reason === "OTHER" && !input.late.note?.trim()) throw new LocalizedError("\"Diğer\" gerekçesinde açıklama zorunlu.", "A description is required for the \"Other\" reason.");
     }
   }
   // APIS kapısı — uluslararası uçuşta eksik bilgiyle kabul yok.
   if (flightRef && isInternational(flightRef)) {
     const gaps = apisMissing(pax);
-    if (gaps.length) throw new Error(`APIS eksik (${gaps.join(", ")}) — uluslararası uçuşta kabul yapılamaz.`);
+    if (gaps.length) {
+      throw new LocalizedError(
+        `APIS eksik (${gaps.join(", ")}) — uluslararası uçuşta kabul yapılamaz.`,
+        `APIS missing (${apisMissing(pax, "en").join(", ")}) — no acceptance on an international flight.`,
+      );
+    }
     // Seyahat belgesi kapısı (Timatic benzeri) — NOT OK yolcu taşınmaz.
     const docs = paxDocCheck(pax, flightRef);
     if (docs.verdict === "not_ok") {
-      const why = docs.lines.filter((l) => !l.ok).map((l) => l.tr).join("; ");
-      throw new Error(`Seyahat belgesi uygun değil — ${why}.`);
+      const failed = docs.lines.filter((l) => !l.ok);
+      const why = failed.map((l) => l.tr).join("; ");
+      throw new LocalizedError(
+        `Seyahat belgesi uygun değil — ${why}.`,
+        `Travel documents not OK — ${failed.map((l) => l.en).join("; ")}.`,
+      );
     }
   }
   // Koltuk uygunluğu — backend otorite ilkesinin mock karşılığı: UI atlatılsa bile burada reddedilir.
   const seatInfo = seatFromId(input.seat, input.flightId);
-  if (!seatInfo) throw new Error(`Geçersiz koltuk: ${input.seat} — bu uçak tipinde böyle bir koltuk yok.`);
+  if (!seatInfo) throw new LocalizedError(`Geçersiz koltuk: ${input.seat} — bu uçak tipinde böyle bir koltuk yok.`, `Invalid seat: ${input.seat} — this aircraft type has no such seat.`);
   const denial = seatDenial(pax, seatInfo);
-  if (denial) throw new Error(`Koltuk ${seatInfo.id} bu yolcuya verilemez — ${denial.reason}`);
+  if (denial) {
+    throw new LocalizedError(
+      `Koltuk ${seatInfo.id} bu yolcuya verilemez — ${denial.reason}`,
+      `Seat ${seatInfo.id} cannot be assigned to this passenger — ${denial.reasonEn}`,
+    );
+  }
 
   // Doluluk da sunucuda zorlanır: aynı koltuk iki yolcuya verilemez.
   // (Yolcunun KENDİ koltuğunu koruması serbest — koltuk değiştirme akışı.)
   const other = (PASSENGERS[input.flightId] ?? []).find(
     (x) => x.id !== pax.id && x.seat?.toUpperCase() === seatInfo.id,
   );
-  if (other) throw new Error(`Koltuk ${seatInfo.id} dolu — ${other.surname}/${other.givenName}.`);
+  if (other) throw new LocalizedError(`Koltuk ${seatInfo.id} dolu — ${other.surname}/${other.givenName}.`, `Seat ${seatInfo.id} is taken — ${other.surname}/${other.givenName}.`);
 
   // Koltuk DEĞİŞTİRME kabul sayacını şişirmemeli; yalnız ilk kabul sayılır.
   const firstAccept = firstAcceptance;
@@ -551,8 +566,8 @@ export function manualBoardedCount(flightId: string): number { return manualBoar
 export async function boardPassenger(flightId: string, passengerId: string): Promise<CheckinPassenger> {
   await delay(300);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (pax.status !== "checked_in") throw new Error("Önce check-in yapılmalı");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (pax.status !== "checked_in") throw new LocalizedError("Önce check-in yapılmalı", "The passenger must be checked in first");
   pax.status = "boarded";
   manualBoarded[flightId] = (manualBoarded[flightId] ?? 0) + 1; // HUB board canlı senkron
   return pax;
@@ -568,9 +583,9 @@ export async function boardPassenger(flightId: string, passengerId: string): Pro
 export async function undoCheckIn(flightId: string, passengerId: string): Promise<CheckinPassenger> {
   await delay(400);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
-  if (!pax) throw new Error("Yolcu bulunamadı");
-  if (pax.status === "boarded") throw new Error("Yolcu uçağa binmiş — check-in geri alınamaz.");
-  if (pax.status !== "checked_in") throw new Error("Bu yolcu zaten kabul edilmemiş.");
+  if (!pax) throw new LocalizedError("Yolcu bulunamadı", "Passenger not found");
+  if (pax.status === "boarded") throw new LocalizedError("Yolcu uçağa binmiş — check-in geri alınamaz.", "The passenger has boarded — check-in cannot be undone.");
+  if (pax.status !== "checked_in") throw new LocalizedError("Bu yolcu zaten kabul edilmemiş.", "This passenger has not been accepted.");
   pax.status = "not_checked";
   pax.seat = undefined;
   pax.sequenceNumber = undefined;
@@ -584,7 +599,7 @@ export async function boardAll(flightId: string): Promise<CheckinPassenger[]> {
   await delay(600);
   const list = PASSENGERS[flightId] ?? [];
   const target = list.filter((p) => p.status === "checked_in");
-  if (!target.length) throw new Error("Bindirilecek kabul edilmiş yolcu yok.");
+  if (!target.length) throw new LocalizedError("Bindirilecek kabul edilmiş yolcu yok.", "There are no accepted passengers to board.");
   for (const p of target) {
     p.status = "boarded";
     manualBoarded[flightId] = (manualBoarded[flightId] ?? 0) + 1;
@@ -607,9 +622,9 @@ export interface CloseOutResult {
 export async function closeOutFlight(flightId: string): Promise<CloseOutResult> {
   await delay(700);
   const flight = FLIGHTS.find((f) => f.flightId === flightId);
-  if (!flight) throw new Error("Uçuş bulunamadı");
+  if (!flight) throw new LocalizedError("Uçuş bulunamadı", "Flight not found");
   if (flight.status === "departed" || flight.status === "closed")
-    throw new Error("Uçuş zaten kapatılmış.");
+    throw new LocalizedError("Uçuş zaten kapatılmış.", "The flight is already closed.");
   const list = PASSENGERS[flightId] ?? [];
   const boarded = list.filter((p) => p.status === "boarded");
   // Kabul edilmiş ama binmemiş yolcular no-show'dur.

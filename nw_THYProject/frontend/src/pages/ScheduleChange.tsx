@@ -11,6 +11,8 @@ import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
+import { useUI } from "@/store/ui";
 import { cn, formatDateTime } from "@/lib/utils";
 
 const SEV_TONE: Record<ChangeSeverity, Tone> = { minor: "gray", involuntary: "amber", significant: "red" };
@@ -30,6 +32,8 @@ function toLocalInput(iso: string): string {
  */
 export function ScheduleChange() {
   const t = useT();
+  const errText = useErrorText();
+  const lang = useUI((s) => s.lang);
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { data: flights, isLoading } = useQuery({ queryKey: ["upcomingFlights"], queryFn: listUpcomingFlights, staleTime: 0 });
@@ -60,7 +64,7 @@ export function ScheduleChange() {
       for (const k of ["upcomingFlights", "ticketsAll", "tickets", "queues"]) qc.invalidateQueries({ queryKey: [k] });
       setSel(null);
     },
-    onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),
+    onError: (e: Error) => toast.danger(t("skchg.fail"), errText(e)),
   });
 
   return (
@@ -72,7 +76,7 @@ export function ScheduleChange() {
           {t("skchg.doneBody", { a: result.applied.length, s: result.skipped.length })}
           {result.skipped.length > 0 && (
             <ul className="mt-1.5 list-disc pl-4 text-[12.5px]">
-              {result.skipped.map((x) => <li key={x.ticketNumber}><span className="num">{x.ticketNumber}</span> — {x.reason}</li>)}
+              {result.skipped.map((x) => <li key={x.ticketNumber}><span className="num">{x.ticketNumber}</span> — {lang === "en" ? x.reasonEn : x.reason}</li>)}
             </ul>
           )}
           <button type="button" onClick={() => navigate({ to: "/queues" })} className="mt-2 flex items-center gap-1.5 font-semibold underline underline-offset-2">

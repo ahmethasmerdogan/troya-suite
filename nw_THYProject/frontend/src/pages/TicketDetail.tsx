@@ -26,6 +26,7 @@ import {
   Alert, Button, Card, InsetPanel, MetaRow, OutlineBadge, StatTile,
 } from "@/ui";
 import { translate, useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
@@ -498,6 +499,7 @@ function MoreMenu({
 /** Tarife değişikliği (TK) — yolcu yeni saati öğrendi, kupon HK'ya döner. */
 function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: number }) {
   const t = useT();
+  const errText = useErrorText();
   const qc = useQueryClient();
   const [key] = useState(newIdempotencyKey);
   const run = useMutation({
@@ -507,7 +509,7 @@ function AckScheduleChange({ ticketNumber, seq }: { ticketNumber: string; seq: n
       qc.invalidateQueries({ queryKey: ["ticket", ticketNumber] });
       qc.invalidateQueries({ queryKey: ["queues"] });
     },
-    onError: (e: Error) => toast.danger(t("skchg.fail"), e.message),
+    onError: (e: Error) => toast.danger(t("skchg.fail"), errText(e)),
   });
   return (
     <button type="button" onClick={() => run.mutate()} disabled={run.isPending} title={t("skchg.ackHint")}

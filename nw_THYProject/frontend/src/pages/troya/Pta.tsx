@@ -14,6 +14,7 @@ import { Modal } from "@/components/ui/overlay";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { toast } from "@/components/ui/toast";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { csvNumber } from "@/lib/csv";
 import { formatDate } from "@/lib/utils";
 
@@ -29,6 +30,7 @@ const col = createColumnHelper<Pta>();
 
 export function PtaPage() {
   const t = useT();
+  const errText = useErrorText();
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -56,7 +58,7 @@ export function PtaPage() {
       setOpen(false);
       qc.invalidateQueries({ queryKey: ["ptas"] });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.createFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.createFail"), errText(e)),
   });
 
   const issue = useMutation({
@@ -66,13 +68,13 @@ export function PtaPage() {
       qc.invalidateQueries({ queryKey: ["ptas"] });
       navigate({ to: "/tickets/$ticketNumber", params: { ticketNumber: ticket.ticketNumber } });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.issueFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.issueFail"), errText(e)),
   });
 
   const ack = useMutation({
     mutationFn: (p: Pta) => acknowledgePta({ ptaReference: p.ptaReference, idempotencyKey: newIdempotencyKey() }),
     onSuccess: (p) => { toast.success(t("misc.pta.ackOk"), p.ptaReference); qc.invalidateQueries({ queryKey: ["ptas"] }); },
-    onError: (e: Error) => toast.danger(t("misc.pta.ackFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.ackFail"), errText(e)),
   });
 
   const refund = useMutation({
@@ -87,7 +89,7 @@ export function PtaPage() {
       setRefundFor(null);
       qc.invalidateQueries({ queryKey: ["ptas"] });
     },
-    onError: (e: Error) => toast.danger(t("misc.pta.refundFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.pta.refundFail"), errText(e)),
   });
 
   const columns = [

@@ -19,6 +19,7 @@ import { Banner } from "@/components/ui/banner";
 import { toast } from "@/components/ui/toast";
 import { usePerm } from "@/lib/usePerm";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { csvNumber } from "@/lib/csv";
 import { cn, formatDate, formatDateTime } from "@/lib/utils";
@@ -148,6 +149,7 @@ export function Memos() {
 /* --- ayrıntı + akış -------------------------------------------------- */
 function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const { can } = usePerm();
@@ -157,12 +159,12 @@ function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
   const [withdrawText, setWithdrawText] = useState("");
   const by = user?.name ?? "—";
   const done = () => { toast.success(t("memos.toast.done"), m.number); qc.invalidateQueries({ queryKey: ["memos"] }); qc.invalidateQueries({ queryKey: ["memosFor", m.ticketNumber] }); };
-  const fail = (e: Error) => toast.danger(t("memos.toast.failed"), e.message);
+  const fail = (e: Error) => toast.danger(t("memos.toast.failed"), errText(e));
   const dispute = useMutation({ mutationFn: () => disputeMemo(m.id, disputeText), onSuccess: done, onError: fail });
   const resolve = useMutation({ mutationFn: (accept: boolean) => resolveDispute(m.id, accept, by), onSuccess: done, onError: fail });
   const bill = useMutation({ mutationFn: () => billMemo(m.id, by), onSuccess: done, onError: fail });
   const withdraw = useMutation({ mutationFn: () => withdrawMemo(m.id, by, withdrawText), onSuccess: done, onError: fail });
-  const block = billingBlock(m);
+  const block = billingBlock(m, Date.now(), lang);
   const manage = can("adm.manage");
   const cur = m.total.currency;
 
@@ -262,6 +264,7 @@ function MemoDrawer({ memo: m, onClose }: { memo: Memo; onClose: () => void }) {
 /* --- dekont kes ------------------------------------------------------ */
 function RaiseMemoModal({ initialTicket, onClose, onDone }: { initialTicket?: string; onClose: () => void; onDone: (m: Memo) => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const qc = useQueryClient();
@@ -281,7 +284,7 @@ function RaiseMemoModal({ initialTicket, onClose, onDone }: { initialTicket?: st
   const m = useMutation({
     mutationFn: () => raiseMemo({ type, ticketNumber: tn, reason, amounts: parsed, note, by: user?.name ?? "—", idempotencyKey: newIdempotencyKey() }),
     onSuccess: (memo) => { toast.success(t("memos.toast.raised"), memo.number); qc.invalidateQueries({ queryKey: ["memos"] }); onDone(memo); },
-    onError: (e: Error) => toast.danger(t("memos.toast.failed"), e.message),
+    onError: (e: Error) => toast.danger(t("memos.toast.failed"), errText(e)),
   });
 
   const amountField = (k: keyof MemoAmounts, label: Key) => (

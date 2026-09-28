@@ -14,11 +14,13 @@ import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Banner } from "@/components/ui/banner";
 import { useT } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { formatDate } from "@/lib/utils";
 
 // EMD detay — belge, kuponları ve bağlı bilet linkage'ı.
 export function EmdDetail() {
   const t = useT();
+  const errText = useErrorText();
   const { emdNumber } = useParams({ from: "/emds/$emdNumber" });
   const navigate = useNavigate();
   const qc = useQueryClient();
@@ -33,12 +35,12 @@ export function EmdDetail() {
   const voidOp = useMutation({
     mutationFn: () => voidEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => { toast.success(t("misc.emd.voidOk")); refresh(); },
-    onError: (e: Error) => toast.danger(t("misc.emd.voidFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.emd.voidFail"), errText(e)),
   });
   const refundOp = useMutation({
     mutationFn: () => refundEmd({ emdNumber, idempotencyKey: newIdempotencyKey() }),
     onSuccess: () => { toast.success(t("misc.emd.refundOk")); refresh(); },
-    onError: (e: Error) => toast.danger(t("misc.emd.refundFail"), e.message),
+    onError: (e: Error) => toast.danger(t("misc.emd.refundFail"), errText(e)),
   });
 
   const withList = (detail: React.ReactNode) => (

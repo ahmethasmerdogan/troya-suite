@@ -24,6 +24,7 @@ import {
   Alert, Button, Card, InsetPanel, Modal, ModalClose, OutlineBadge, RadioCards, StatusPill,
 } from "@/ui";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
 
@@ -81,6 +82,7 @@ function legFromSegment(s: ReservationSegment): Leg {
 
 export function IssueWizard() {
   const t = useT();
+  const errText = useErrorText();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [issued, setIssued] = useState<Ticket | null>(null);
@@ -237,7 +239,7 @@ export function IssueWizard() {
       idempotencyKey: newIdempotencyKey(),
     }),
     onSuccess: (r) => { setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   const issue = useMutation({
@@ -261,7 +263,7 @@ export function IssueWizard() {
       idempotencyKey: newIdempotencyKey(),
     }),
     onSuccess: (t) => { setConfirming(false); setIssued(t); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   if (issued) {
