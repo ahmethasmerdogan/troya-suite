@@ -9,6 +9,7 @@ import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTick
 import { memosForTicket } from "@/domain/memos";
 import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
+import { STATUS_META } from "@/domain/couponStatus";
 import { usePerm } from "@/lib/usePerm";
 import { STATUS_TONE } from "@/components/domain/statusTone";
 import { StatusPill } from "@/components/domain/StatusPill";
@@ -172,8 +173,9 @@ export function TicketDetail() {
         </Alert>
       )}
       {open === 0 && (
+        // Kupon kullanımdaysa (A/C/L…) "tüm kuponlar final" demek yanlıştı.
         <Alert tone="warning" title={t("ticket.detail.noOpen.title")} className="mb-4">
-          {t("ticket.detail.noOpen.body")}
+          {ticket.coupons.every((c) => STATUS_META[c.status].final) ? t("ticket.detail.noOpen.body") : t("ticket.detail.noOpen.inUse")}
         </Alert>
       )}
 

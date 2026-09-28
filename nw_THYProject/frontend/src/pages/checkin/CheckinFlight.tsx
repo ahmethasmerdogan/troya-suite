@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, translate, type Key } from "@/i18n";
 import { useErrorText } from "@/lib/useErrorText";
+import { invalidateRecords } from "@/lib/invalidate";
 import { useUI } from "@/store/ui";
 import { formatDateTime, flightCode, locale } from "@/lib/utils";
 
@@ -58,7 +59,7 @@ export function CheckinFlight() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const search = useSearch({ from: "/checkin/$flightId" });
-  const { can } = usePerm();
+  const { can, lockHint } = usePerm();
   const [tab, setTab] = useState<"checkin" | "boarding">("checkin");
   // Kalkış kontrolü panosundan yolcu adıyla gelindiyse liste o yolcuya süzülü açılır.
   const [q, setQ] = useState(search.pax ?? "");
@@ -80,15 +81,8 @@ export function CheckinFlight() {
   const { data: flight, isLoading } = useQuery({ queryKey: ["flight", flightId], queryFn: async () => (await getFlight(flightId)) ?? null });
   const { data: pax } = useQuery({ queryKey: ["pax", flightId], queryFn: () => listPassengers(flightId) });
 
-  const refreshAll = (tn?: string) => {
-    qc.invalidateQueries({ queryKey: ["pax", flightId] });
-    qc.invalidateQueries({ queryKey: ["flight", flightId] });
-    qc.invalidateQueries({ queryKey: ["flights"] });
-    qc.invalidateQueries({ queryKey: ["opsBoard"] });
-    qc.invalidateQueries({ queryKey: ["seatmap", flightId] });
-    qc.invalidateQueries({ queryKey: ["tickets"] });
-    if (tn) qc.invalidateQueries({ queryKey: ["ticket", tn] });
-  };
+  // Kontuar panosu, gişe araması ve bilet kayıtları da değişir (lib/invalidate).
+  const refreshAll = () => invalidateRecords(qc);
 
   /** Biniş kuponu C→L'ye taşır (lifted/boarded) — bilet tarafıyla senkron. */
   const board = useMutation({
@@ -110,11 +104,7 @@ export function CheckinFlight() {
         t("checkin.toast.seatLine", { name: `${p.surname}/${p.givenName}`, seat: p.seat ?? "—" }),
       );
       if (couponWarning) toast.warning(t("checkin.toast.couponFailed"), couponWarning);
-      qc.invalidateQueries({ queryKey: ["pax", flightId] });
-      qc.invalidateQueries({ queryKey: ["opsBoard"] });
-      qc.invalidateQueries({ queryKey: ["flights"] });
-      qc.invalidateQueries({ queryKey: ["ticket", p.ticketNumber] });
-      qc.invalidateQueries({ queryKey: ["tickets"] });
+      refreshAll();
     },
     onError: (e: Error) => toast.danger(t("checkin.toast.boardFailed"), errText(e)),
   });
@@ -130,7 +120,7 @@ export function CheckinFlight() {
     },
     onSuccess: (p) => {
       toast.success(t("checkin.toast.undone.title"), t("checkin.toast.undone.body", { name: `${p.surname}/${p.givenName}` }));
-      refreshAll(p.ticketNumber);
+      refreshAll();
     },
     onError: (e: Error) => toast.danger(t("checkin.toast.undoFailed"), errText(e)),
   });
@@ -223,6 +213,9 @@ export function CheckinFlight() {
 
   const intl = isInternational(flight);
   const win = checkinWindow(flight, now);
+  // Kapanmış uçuşta satır işlemleri yapılamaz — sunucu da reddeder; düğme
+  // açık kalınca operatör hata bildirimiyle karşılaşıyordu.
+  const gone = flight.status === "departed" || flight.status === "closed";
   const canLate = can("checkin.override");
   const noShowIfClosed = (pax ?? []).filter((p) => p.status === "checked_in").length;
   const firstApisGap = intl ? rows.findIndex((p) => p.status === "not_checked" && apisMissing(p).length > 0) : -1;
@@ -262,8 +255,8 @@ export function CheckinFlight() {
                   </Button>
                 )}
                 <Tip id="checkin.closeout" />
-                <Button variant="danger" size="sm" disabled={closeOut.isPending}
-                  title={t("checkin.flight.closeOut.title")}
+                <Button variant="danger" size="sm" disabled={closeOut.isPending || !canLate}
+                  title={canLate ? t("checkin.flight.closeOut.title") : lockHint("checkin.override")}
                   onClick={() => setConfirmClose(true)}>
                   <PlaneLanding size={15} strokeWidth={1.75} /> {t("checkin.flight.closeOut")}
                 </Button>
@@ -288,7 +281,7 @@ export function CheckinFlight() {
           <Stat
             label={t("checkin.stat.departure")}
             value={new Date(flight.departure).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
-            hint={countdown(flight.departure)}
+            hint={gone ? t("checkin.countdown.departed") : countdown(flight.departure)}
           />
           <Stat label={t("checkin.stat.capacity")} value={flight.capacity}
             hint={`${flight.aircraft.config} · ${intl ? t("checkin.flight.intl") : t("checkin.flight.domestic")}`} />
@@ -390,7 +383,7 @@ export function CheckinFlight() {
                         </Button>
                       )}
                       {p.status === "checked_in" && (
-                        <Button variant="ghost" size="sm" disabled={undo.isPending}
+                        <Button variant="ghost" size="sm" disabled={undo.isPending || gone}
                           title={t("checkin.action.undo.title")}
                           onClick={() => undo.mutate(p)}>
                           <Undo2 size={15} strokeWidth={1.75} /> {t("checkin.action.undo")}
@@ -409,11 +402,11 @@ export function CheckinFlight() {
                       {tab === "checkin" ? (
                         <Button
                           size="sm"
-                          disabled={!can("checkin.accept") || gaps.length > 0 || docsBlocked || shut || (late && !canLate)}
+                          disabled={!can("checkin.accept") || gaps.length > 0 || docsBlocked || shut || gone || (late && !canLate)}
                           title={
-                            gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") })
-                              : docsBlocked ? t("desk.action.docsBlocked")
-                                : shut ? t("desk.action.closedTitle")
+                            shut || gone ? t("desk.action.closedTitle")
+                              : gaps.length ? t("checkin.action.apisMissingTitle", { list: gaps.join(", ") })
+                                : docsBlocked ? t("desk.action.docsBlocked")
                                   : late ? (canLate ? t("desk.action.late.title") : t("desk.action.lateLocked"))
                                     : undefined
                           }
@@ -426,7 +419,7 @@ export function CheckinFlight() {
                           {!firstTime ? t("checkin.action.changeSeat") : late ? t("desk.action.late") : t("checkin.action.accept")}
                         </Button>
                       ) : (
-                        <Button variant="success" size="sm" disabled={!can("checkin.board") || p.status === "boarded" || board.isPending} onClick={() => board.mutate(p)}>
+                        <Button variant="success" size="sm" disabled={!can("checkin.board") || p.status === "boarded" || board.isPending || gone} onClick={() => board.mutate(p)}>
                           {p.status === "boarded" ? t("checkin.pax.boarded") : t("checkin.action.board")}
                         </Button>
                       )}
@@ -471,7 +464,7 @@ export function CheckinFlight() {
         />
       )}
       {confirmClose && (
-        <CloseOutModal noShow={noShowIfClosed} pending={closeOut.isPending} onClose={() => setConfirmClose(false)} onConfirm={() => closeOut.mutate()} />
+        <CloseOutModal noShow={noShowIfClosed} pending={closeOut.isPending} earlyMin={win.minsToDeparture} onClose={() => setConfirmClose(false)} onConfirm={() => closeOut.mutate()} />
       )}
 
       {/* APIS — uluslararası uçuşta yolcu bilgisi kalkıştan önce iletilir. */}

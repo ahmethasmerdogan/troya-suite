@@ -63,6 +63,12 @@ const emptyCompanion = (surname = ""): Companion => ({ surname, givenName: "", t
  * Bu yüzden rezervasyondaki sefer listenin başına sabitlenir ve seçili gelir.
  */
 function legFromSegment(s: ReservationSegment): Leg {
+  // Programdaki gerçek sefer bulunursa o kullanılır: talep çarpanı (fiyat)
+  // uygunluk sorgusundakiyle aynı olur ve sefer listede iki kez görünmez.
+  const code = s.flightNumber.startsWith(s.carrier) ? s.flightNumber : s.carrier + s.flightNumber;
+  const scheduled = searchFlights(s.origin, s.destination, s.departure.slice(0, 10), 1)
+    .find((f) => f.flightNumber === code && f.departure === s.departure);
+  if (scheduled) return { origin: s.origin, destination: s.destination, date: s.departure.slice(0, 10), flight: scheduled, booked: scheduled };
   const dep = new Date(s.departure), arr = new Date(s.arrival);
   const flight: FlightItem = {
     id: `pnr-${s.carrier}${s.flightNumber}-${s.departure}`,
@@ -163,9 +169,11 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
       surname: x.surname, givenName: x.givenName, title: x.title ?? "MR", foid: x.foid ?? "",
       ptc: x.title === "CHD" ? "CHD" : "ADT",
     })));
-    if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
+    // İptal edilmiş (XX) segment bilete girmez.
+    const live = srcPnr.segments.filter((s) => s.status !== "XX");
+    if (live[0]) setCarrier(live[0].carrier);
     setPnr(srcPnr.recordLocator);
-    if (srcPnr.segments.length) setLegs(srcPnr.segments.map(legFromSegment));
+    if (live.length) setLegs(live.map(legFromSegment));
     const rbd = srcPnr.segments.find((s) => s.status !== "XX")?.rbd;
     if (rbd) {
       const cabin = cabinOfRbd(rbd);

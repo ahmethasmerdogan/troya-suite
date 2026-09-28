@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { invalidateRecords } from "@/lib/invalidate";
 import { useNavigate, useSearch } from "@tanstack/react-router";
 import { CalendarSearch, Plus, Trash2 } from "lucide-react";
 import { createPnr, type ReservationSegment } from "@/domain/reservation";
@@ -40,6 +41,7 @@ export function CreatePnr() {
   const [contact, setContact] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  const qc = useQueryClient();
   const create = useMutation({
     mutationFn: () => createPnr({
       passengers: pax.map((p) => ({ ...p, surname: p.surname.trim().toUpperCase(), givenName: p.givenName.trim().toUpperCase() })),
@@ -48,6 +50,8 @@ export function CreatePnr() {
       by: user?.name,
     }),
     onSuccess: (p) => {
+      // Liste, PNR panosu ve kuyruklar yeni kaydı hemen göstersin.
+      invalidateRecords(qc);
       toast.success(t("chat.res.new.created"), `PNR ${p.recordLocator}`);
       navigate({ to: "/res/$pnr", params: { pnr: p.recordLocator } });
     },

@@ -31,6 +31,7 @@ export const tr = {
 
   // ── kalkışa kalan süre ──────────────────────────────────────────────
   "checkin.countdown.past": "{time} · kalkış geçti",
+  "checkin.countdown.departed": "Uçuş kapandı · kalktı",
   "checkin.countdown.min": "{n} dk kaldı",
   "checkin.countdown.hour": "{h} sa {m} dk kaldı",
 
@@ -220,6 +221,7 @@ export const en: Record<keyof typeof tr, string> = {
 
   // ── time to departure ───────────────────────────────────────────────
   "checkin.countdown.past": "{time} · departure passed",
+  "checkin.countdown.departed": "Flight closed · departed",
   "checkin.countdown.min": "{n} min to departure",
   "checkin.countdown.hour": "{h} h {m} min to departure",
 

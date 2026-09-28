@@ -37,6 +37,8 @@ export const tr = {
   "ticket.detail.noOpen.title": "İşlem yapılamaz",
   "ticket.detail.noOpen.body":
     "Açık (O) kupon yok — tüm kuponlar final statüde. Bu bilet üzerinde exchange/refund/void yapılamaz.",
+  "ticket.detail.noOpen.inUse":
+    "Açık (O) kupon yok — kuponlar kullanımda (havalimanı kontrolü, check-in ya da biniş) veya final statüde. Exchange/refund/void için kupon O olmalı; check-in geri alınırsa açılır.",
 
   "ticket.detail.paxSection": "Yolcu ve belge",
   "ticket.detail.meta.passenger": "Yolcu",
@@ -247,6 +249,8 @@ export const en: Record<keyof typeof tr, string> = {
   "ticket.detail.noOpen.title": "No operation possible",
   "ticket.detail.noOpen.body":
     "No open (O) coupon — all coupons are in a final status. Exchange, refund and void cannot be performed on this ticket.",
+  "ticket.detail.noOpen.inUse":
+    "No open (O) coupon — coupons are in use (airport control, check-in or boarding) or final. Exchange, refund and void need an O coupon; undoing the check-in reopens it.",
 
   "ticket.detail.paxSection": "Passenger and document",
   "ticket.detail.meta.passenger": "Passenger",

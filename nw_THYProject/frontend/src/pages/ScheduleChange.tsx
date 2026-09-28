@@ -52,7 +52,13 @@ function ScheduleChangeScreen() {
   const minutes = sel && newIso ? Math.round((Date.parse(newIso) - Date.parse(sel.departure)) / 60000) : 0;
   const severity = sel ? classifyScheduleChange(minutes, isInternationalSegment(sel)) : "minor";
   const affected = useMemo(
-    () => (sel && summaries ? summaries.filter((s) => s.flightNumbers.includes(sel.flightNumber) && s.departures.some((d) => d.slice(0, 10) === sel.date)) : []),
+    // Sunucunun uygulayacağı tanımla aynı: o seferde AÇIK (O/A) kuponu olan
+    // bilet. Önceden kapanmış kuponlar da sayılıyor, düğme "7 bilete uygula"
+    // derken sonuç 6 çıkıyordu.
+    () => (sel && summaries
+      ? summaries.filter((s) => s.flightNumbers.some((fn, i) =>
+        fn === sel.flightNumber && s.departures[i]?.slice(0, 10) === sel.date && (s.statuses[i] === "O" || s.statuses[i] === "A")))
+      : []),
     [sel, summaries],
   );
 

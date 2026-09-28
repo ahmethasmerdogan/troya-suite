@@ -3,6 +3,8 @@ import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { ArrowLeftRight, ChevronLeft, ChevronRight, Plane } from "lucide-react";
 import { getAvailability, type FareClass, type FlightOption } from "@/domain/reservation";
+import { airportByCode } from "@/domain/airports";
+import { demoNow } from "@/domain/demoClock";
 import type { CabinName } from "@/domain/fareTypes";
 import { Button, Field, IconButton } from "@/components/ui/core";
 import { PageTitle, Panel, PanelBody, Empty } from "@/components/ui/surface";
@@ -35,9 +37,12 @@ export function Availability() {
   const [date, setDate] = useState(() => ymd(new Date()));
   const [rows, setRows] = useState<FlightOption[] | null>(null);
 
+  const today = ymd(new Date(demoNow()));
+  // Kalkmış sefere rezervasyon yapılmaz; bilinmeyen havalimanı sorgulanmaz.
+  const known = !!airportByCode(origin) && !!airportByCode(destination);
   const search = useMutation({
     mutationFn: (d: string) => getAvailability(origin.toUpperCase(), destination.toUpperCase(), d),
-    onSuccess: setRows,
+    onSuccess: (list) => setRows(list.filter((f) => Date.parse(f.departure) > demoNow())),
   });
 
   const shiftDay = (n: number) => {
@@ -77,9 +82,9 @@ export function Availability() {
               <AirportPicker value={destination} onChange={setDestination} placeholder="LHR" />
             </Field>
             <Field label={t("chat.res.field.date")}>
-              <DayPicker value={date} onChange={setDate} />
+              <DayPicker value={date} onChange={setDate} min={today} />
             </Field>
-            <Button type="submit" disabled={search.isPending || origin.length !== 3 || destination.length !== 3 || origin === destination}>
+            <Button type="submit" disabled={search.isPending || !known || origin === destination}>
               {search.isPending ? t("chat.searching") : t("common.search")}
             </Button>
           </form>
@@ -96,7 +101,7 @@ export function Availability() {
         <Panel>
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-4 py-3">
             <div className="flex items-center gap-2">
-              <IconButton label={t("res.avail.day.prev")} size="sm" onClick={() => shiftDay(-1)}><ChevronLeft size={16} strokeWidth={2} /></IconButton>
+              <IconButton label={t("res.avail.day.prev")} size="sm" disabled={date <= today} onClick={() => shiftDay(-1)}><ChevronLeft size={16} strokeWidth={2} /></IconButton>
               <span className="num text-[14px] font-semibold text-ink">
                 {rows[0].origin} → {rows[0].destination} · {new Date(`${date}T12:00:00`).toLocaleDateString(locale(), { weekday: "long", day: "2-digit", month: "long" })}
               </span>

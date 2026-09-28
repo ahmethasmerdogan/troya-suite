@@ -95,6 +95,7 @@ export const tr = {
 
   // ── uçuş kapanışı onayı ──────────────────────────────────────────────
   "close.title": "Uçuşu kapat",
+  "close.early": "Kalkışa daha {n} dk var — kapı normalde kalkıştan 15 dk önce kapanır. Erken kapanışta kabul edilmemiş yolcular uçuşu kaçırır.",
   "close.body": "Kapı kapanır ve uçuş kalkmış sayılır. Binen yolcuların kuponu Flown (F) olur; kabul edilip binmeyen {n} yolcu no-show kaydedilir. Bu işlem geri alınamaz.",
   "close.confirm": "Evet, uçuşu kapat",
 };
@@ -184,6 +185,7 @@ export const en: Record<keyof typeof tr, string> = {
   "pickers.nextYear": "Next year",
 
   "close.title": "Close flight",
+  "close.early": "Departure is still {n} min away — the gate normally closes 15 min before departure. Closing early leaves unaccepted passengers behind.",
   "close.body": "The gate closes and the flight is considered departed. Boarded passengers' coupons become Flown (F); {n} accepted passengers who did not board are recorded as no-shows. This cannot be undone.",
   "close.confirm": "Yes, close the flight",
 };

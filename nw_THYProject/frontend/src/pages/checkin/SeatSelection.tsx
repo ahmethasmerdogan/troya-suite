@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useNavigate, useParams, useSearch } from "@tanstack/react-router";
 import { checkInPassenger, getFlight, getSeatMap, listPassengers, LATE_REASONS, type LateReason, type Seat } from "@/domain/checkin";
@@ -48,6 +48,13 @@ export function SeatSelection() {
   const { data: seats, isLoading } = useQuery({ queryKey: ["seatmap", flightId], queryFn: () => getSeatMap(flightId) });
 
   const person = pax?.find((p) => p.id === passengerId);
+  // Bagaj yolcunun kaydından başlar; koltuk değişiminde 1'e düşüp DCS ile
+  // bilet arasında uyuşmazlık yaratıyordu.
+  const personId = person?.id;
+  useEffect(() => {
+    if (person) setBags(person.bags > 0 ? person.bags : 1);
+    // yalnız yolcu değişince (sorgu yenilenince kullanıcının seçimini ezmesin)
+  }, [personId]);
 
   /**
    * Kabul iki şey yapar: DCS kaydını günceller VE Troya kuponunu ilerletir.
@@ -58,8 +65,19 @@ export function SeatSelection() {
   const op = useOpKey();
   const accept = useMutation({
     mutationFn: async () => {
+      // Koltuk değişimi kabul değildir: kupon zaten C'dedir, yeniden ilerletilmez.
+      const seatChange = person?.status === "checked_in";
+      const bagsBefore = person?.bags ?? 0;
       const p = await checkInPassenger({ flightId, passengerId, seat: seat!, bags, idempotencyKey: op.key(), late });
       let couponWarning: string | null = null;
+      if (seatChange) {
+        if (p.ticketNumber && p.couponSeq != null && bags !== bagsBefore && bags > 0) {
+          try {
+            await recordBaggage({ ticketNumber: p.ticketNumber, couponSeq: p.couponSeq, checkedPieces: bags, idempotencyKey: `${op.key()}:bag` });
+          } catch (e) { couponWarning = errText(e); }
+        }
+        return { pax: p, couponWarning };
+      }
       if (p.ticketNumber && p.couponSeq != null) {
         try {
           await advanceCouponStatus(p.ticketNumber, p.couponSeq, "C");
