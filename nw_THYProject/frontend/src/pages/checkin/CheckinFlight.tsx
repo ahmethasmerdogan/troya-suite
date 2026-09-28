@@ -237,6 +237,7 @@ export function CheckinFlight() {
   return withList(
     <>
       <DetailHead
+        back="/checkin"
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{flightCode(flight.carrier, flight.flightNumber)}</span>

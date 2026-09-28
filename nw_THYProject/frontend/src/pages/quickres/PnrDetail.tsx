@@ -70,6 +70,7 @@ export function PnrDetail() {
   return withList(
     <>
       <DetailHead
+        back="/res"
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{pnr.recordLocator}</span>

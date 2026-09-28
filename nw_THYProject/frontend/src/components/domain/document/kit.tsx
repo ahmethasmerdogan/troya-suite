@@ -28,8 +28,9 @@ export function DocBand({ title, note }: { title: ReactNode; note?: string }) {
   return (
     <div className="flex items-center gap-2.5 bg-[var(--brand)] px-5 py-2.5 text-white">
       <BrandMark size={18} variant="bare" className="text-white" />
-      <span lang="en" className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
-      <span className="ml-auto truncate text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
+      <span lang="en" className="flex-shrink-0 whitespace-nowrap text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
+      {/* Dar ekranda başlık kesilmez, ikinci satıra iner. */}
+      <span className="ml-auto min-w-0 text-right text-[10.5px] font-semibold uppercase leading-snug tracking-[0.14em] text-white/80">
         {title}
       </span>
       {note && <span className="num hidden text-[10.5px] text-white/70 sm:block">{note}</span>}

@@ -386,6 +386,7 @@ export const MOCK_REVENUE_ALERTS: RevenueAlert[] = [
   { id: "ra3", kind: "duplicate", severity: "high", ticketNumber: "2351234567890", detail: "Aynı FOID + güzergah ile ikinci bilet algılandı — olası mükerrer kesim.", detailEn: "A second ticket with the same FOID and routing was detected — possible duplicate issue.", detectedAt: "2026-06-15T19:25:00Z" },
   { id: "ra4", kind: "status_mismatch", severity: "low", ticketNumber: "2355544332211", detail: "DCS 'lifted' bildirdi ama kupon statüsü 'A' — interline statü senkron gecikmesi.", detailEn: "DCS reported 'lifted' but the coupon status is 'A' — interline status sync lag.", detectedAt: "2026-06-15T14:03:00Z" },
 ];
+shiftFixture(MOCK_REVENUE_ALERTS);
 
 // Maskeli ödeme detayından kart son-4 hanesini çıkar (yalnız kredi kartı).
 function cardLast4Of(t: Ticket): string | undefined {

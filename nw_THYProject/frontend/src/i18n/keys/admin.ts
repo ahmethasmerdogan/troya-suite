@@ -111,6 +111,9 @@ export const tr = {
   "admin.revenue.hint": "Sıra dışı kupon kullanımı, çift belge, statü uyuşmazlığı (Handbook 14.7).",
   "admin.revenue.empty": "Uyarı yok",
   "admin.revenue.emptyHint": "Şu an gelir koruma uyarısı bulunmuyor.",
+  "admin.revenue.sev.high": "Yüksek",
+  "admin.revenue.sev.medium": "Orta",
+  "admin.revenue.sev.low": "Düşük",
 
   // ---- Ayarlar ----
   "admin.settings.title": "Ayarlar",
@@ -358,6 +361,9 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.revenue.hint": "Out-of-sequence coupon usage, duplicate documents, status mismatch (Handbook 14.7).",
   "admin.revenue.empty": "No alerts",
   "admin.revenue.emptyHint": "There is no revenue protection alert at the moment.",
+  "admin.revenue.sev.high": "High",
+  "admin.revenue.sev.medium": "Medium",
+  "admin.revenue.sev.low": "Low",
 
   // ---- Ayarlar ----
   "admin.settings.title": "Settings",

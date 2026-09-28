@@ -37,6 +37,7 @@ export function OrderDetail() {
   return withList(
     <>
       <DetailHead
+        back="/orders"
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{order.orderId}</span>

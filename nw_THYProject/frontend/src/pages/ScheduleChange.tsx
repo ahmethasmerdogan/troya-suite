@@ -95,8 +95,11 @@ function ScheduleChangeScreen() {
               <Empty title={t("skchg.none")} />
             ) : (
               <div className="flex flex-col">
-                <div className="grid grid-cols-[110px_1fr_170px_60px] gap-3 border-b border-line py-2 microlabel">
-                  <span>{t("skchg.col.flight")}</span><span>{t("skchg.col.route")}</span><span>{t("skchg.col.dep")}</span><span className="text-right">{t("skchg.col.tickets")}</span>
+                {/* Telefonda güzergâh ile kalkış tek sütunda alt alta; geniş ekranda ayrı sütunlar (sm:contents). */}
+                <div className="grid grid-cols-[72px_minmax(0,1fr)_44px] gap-3 border-b border-line py-2 microlabel sm:grid-cols-[110px_1fr_170px_60px]">
+                  <span>{t("skchg.col.flight")}</span>
+                  <span className="sm:contents"><span>{t("skchg.col.route")}</span><span className="hidden sm:inline">{t("skchg.col.dep")}</span></span>
+                  <span className="text-right">{t("skchg.col.tickets")}</span>
                 </div>
                 {flights.slice(0, 14).map((f) => {
                   const on = sel?.flightNumber === f.flightNumber && sel.date === f.date;
@@ -107,12 +110,14 @@ function ScheduleChangeScreen() {
                       onClick={() => pick(f)}
                       aria-label={`${f.flightNumber} ${f.date}`}
                       aria-pressed={on}
-                      className={cn("grid grid-cols-[110px_1fr_170px_60px] items-center gap-3 border-b border-hair py-2.5 text-left text-[13px] transition-colors last:border-0",
+                      className={cn("grid grid-cols-[72px_minmax(0,1fr)_44px] items-center gap-3 border-b border-hair py-2.5 text-left text-[13px] transition-colors last:border-0 sm:grid-cols-[110px_1fr_170px_60px]",
                         on ? "bg-brand-wash" : "hover:bg-sunken")}
                     >
                       <span className="num font-semibold text-ink">{f.flightNumber}</span>
-                      <span className="num text-ink-2">{f.origin} → {f.destination}</span>
-                      <span className="num text-ink-2">{formatDateTime(f.departure)}</span>
+                      <span className="flex min-w-0 flex-col sm:contents">
+                        <span className="num whitespace-nowrap text-ink-2">{f.origin} → {f.destination}</span>
+                        <span className="num text-[12px] text-ink-3 sm:text-[13px] sm:text-ink-2">{formatDateTime(f.departure)}</span>
+                      </span>
                       <span className="num text-right text-ink">{f.tickets}</span>
                     </button>
                   );
@@ -127,7 +132,7 @@ function ScheduleChangeScreen() {
             <PanelHead title={t("skchg.newTime")} hint={t("skchg.newTimeHint")} />
             <PanelBody className="flex flex-col gap-3">
               {!sel ? (
-                <p className="text-[13px] text-ink-3">{t("skchg.pickHint")}</p>
+                <p className="text-[13px] text-ink-3">{t("skchg.pickFirst")}</p>
               ) : (
                 <>
                   <div className="flex items-center gap-2 text-[13px]">

@@ -117,20 +117,27 @@ export function Menu({ children, align = "right", className }: { children: React
   // ölçülür ve 8px kenar payı içine kaydırılır.
   const ref = useRef<HTMLDivElement>(null);
   const [shift, setShift] = useState(0);
+  const [maxH, setMaxH] = useState<number>();
   useLayoutEffect(() => {
     const el = ref.current;
     if (!el) return;
+    // Açılış animasyonu ölçeklediği için genişlik offsetWidth'ten alınır.
     const r = el.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const left = r.left + r.width / 2 - w / 2;
     const vw = document.documentElement.clientWidth;
-    if (r.left < 8) setShift(8 - r.left);
-    else if (r.right > vw - 8) setShift(vw - 8 - r.right);
+    if (left < 8) setShift(8 - left);
+    else if (left + w > vw - 8) setShift(vw - 8 - (left + w));
+    // Uzun menü ekranın altına taşmaz; kalan yükseklikte kendi içinde kayar.
+    const room = window.innerHeight - r.top - 8;
+    if (el.scrollHeight > room) setMaxH(Math.max(160, room));
   }, []);
   return (
     <div
       ref={ref}
-      style={shift ? { translate: `${shift}px 0` } : undefined}
+      style={{ translate: shift ? `${shift}px 0` : undefined, maxHeight: maxH }}
       className={cn(
-        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 max-w-[calc(100vw-16px)] rounded-lg border border-line bg-panel p-1",
+        "anim-pop absolute top-[calc(100%+6px)] z-40 min-w-52 max-w-[calc(100vw-16px)] overflow-y-auto rounded-lg border border-line bg-panel p-1",
         align === "right" ? "right-0" : "left-0",
         className,
       )}

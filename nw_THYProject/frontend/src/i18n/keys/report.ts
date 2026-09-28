@@ -70,7 +70,7 @@ export const tr = {
   "report.noAmounts": "Bu dönemde tutarlı işlem yok.",
   "report.grossSales": "Brüt satış",
   "report.refund": "İade",
-  "report.void": "İptal (Void)",
+  "report.void": "İptal (VOID)",
   "report.netSales": "Net satış",
   "report.byCategory": "İşlem tipine göre",
   "report.byActor": "Personel / ofise göre",

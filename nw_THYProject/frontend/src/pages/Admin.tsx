@@ -161,8 +161,8 @@ function Users() {
           title={t("admin.users.title")}
           hint={t("admin.users.hint", { n: users.length, active: users.filter((u) => u.status === "active").length })}
           action={
-            <span className="flex items-center gap-2">
-              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("admin.users.searchPh")} className="w-52" />
+            <span className="flex w-full items-center gap-2 sm:w-auto">
+              <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("admin.users.searchPh")} className="min-w-0 flex-1 sm:w-52 sm:flex-none" />
               <Button size="sm" disabled={!canWrite} title={canWrite ? undefined : t("admin.users.needManager")}
                 onClick={() => setCreating(true)}>
                 <UserPlus size={15} strokeWidth={1.75} /> {t("admin.users.new")}
@@ -178,7 +178,7 @@ function Users() {
               <span className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-brand text-[12px] font-semibold text-white">
                 {u.initials}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className="min-w-[11rem] flex-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[13.5px] font-medium text-ink">{u.name}</span>
                   {u.id === me?.id && <Pill tone="blue">{t("admin.users.you")}</Pill>}
@@ -490,15 +490,17 @@ function Revenue() {
           <Empty title={t("admin.revenue.empty")} hint={t("admin.revenue.emptyHint")} />
         ) : (
           (data ?? []).map((a) => (
-            <div key={a.id} className="flex flex-wrap items-center gap-3 border-b border-hair py-3 last:border-0">
-              <Pill tone={SEV[a.severity] ?? "gray"}>{a.severity}</Pill>
+            // Telefonda açıklama tam genişlikte ikinci satıra iner (basis-full);
+            // geniş ekranda tek satırdır.
+            <div key={a.id} className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-hair py-3 last:border-0">
+              <Pill tone={SEV[a.severity] ?? "gray"}>{t(`admin.revenue.sev.${a.severity}`)}</Pill>
               <Link to="/tickets/$ticketNumber" params={{ ticketNumber: a.ticketNumber }} className="num text-[13px] font-medium text-brand hover:underline">
                 {a.ticketNumber}
               </Link>
-              <span className="min-w-0 flex-1 text-[13px] text-ink-2">
+              <span className="num ml-auto text-[11.5px] text-ink-3 md:order-last md:ml-0">{formatDateTime(a.detectedAt)}</span>
+              <span className="min-w-0 basis-full text-[13px] text-ink-2 md:basis-0 md:flex-1">
                 {lang === "en" ? a.detailEn ?? a.detail : a.detail}
               </span>
-              <span className="num text-[11.5px] text-ink-3">{formatDateTime(a.detectedAt)}</span>
             </div>
           ))
         )}

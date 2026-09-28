@@ -16,6 +16,33 @@ import { cn, locale } from "@/lib/utils";
    biçimde seçilsin diye buraya taşındı.
    ==================================================================== */
 
+/**
+ * Açılır panel alta sığmıyor ama kaydırma alanında üstte yer varsa yukarı
+ * açılır. Alttaki 80px, sabit duran aksiyon şeridine ayrılır — panel onun
+ * altında kalmasın. İkisi de sığmazsa aşağı açılır ve görünür alana kaydırılır.
+ */
+function opensUp(el: HTMLElement | null, height: number): boolean {
+  if (!el) return false;
+  const r = el.getBoundingClientRect();
+  let top = 0;
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY;
+    if (oy === "auto" || oy === "scroll") { top = p.getBoundingClientRect().top; break; }
+  }
+  const below = window.innerHeight - r.bottom - 80;
+  const above = r.top - top - 8;
+  return below < height && above >= height;
+}
+
+/** Aşağı açılan panel görünür alana kaydırılır (alt şerit payı `scroll-mb-24`). */
+function useRevealBelow(open: boolean, up: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open && !up) ref.current?.scrollIntoView?.({ block: "nearest" });
+  }, [open, up]);
+  return ref;
+}
+
 /** Havalimanı kodu — yazdıkça şehir/ülke eşleşmeleri. Enter ilk eşleşmeyi seçer. */
 export function AirportPicker({
   value, onChange, placeholder, id, invalid,
@@ -23,11 +50,14 @@ export function AirportPicker({
   const lang = useUI((s) => s.lang);
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useOutside(ref, () => setOpen(false));
   useEffect(() => { setText(value); }, [value]);
+  useEffect(() => { if (open) setUp(opensUp(ref.current, 260)); }, [open]);
 
   const hits = searchAirports(text, 8);
+  const popRef = useRevealBelow(open && hits.length > 0, up);
   const pick = (code: string) => { onChange(code); setText(code); setOpen(false); };
 
   return (
@@ -44,7 +74,7 @@ export function AirportPicker({
         className="uppercase"
       />
       {open && hits.length > 0 && (
-        <div className="anim-pop absolute left-0 right-0 top-11 z-40 max-h-64 overflow-y-auto rounded-md border border-line bg-panel p-1">
+        <div ref={popRef} className={cn("anim-pop absolute left-0 right-0 z-40 max-h-64 scroll-mb-24 overflow-y-auto rounded-md border border-line bg-panel p-1", up ? "bottom-11" : "top-11")}>
           {hits.map((a) => (
             <button key={a.code} type="button" onClick={() => pick(a.code)}
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-sunken">
@@ -87,6 +117,8 @@ export function DayPicker({
 }) {
   const t = useT();
   const [open, setOpen] = useState(false);
+  const [up, setUp] = useState(false);
+  const popRef = useRevealBelow(open, up);
   const [month, setMonth] = useState(() => { const d = value ? new Date(value) : new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const ref = useRef<HTMLDivElement>(null);
   useOutside(ref, () => setOpen(false));
@@ -110,7 +142,7 @@ export function DayPicker({
     <div ref={ref} className="relative">
       <button
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={() => { if (!open) setUp(opensUp(ref.current, quick ? 340 : 300)); setOpen((o) => !o); }}
         aria-expanded={open}
         aria-invalid={invalid || undefined}
         className={cn("flex h-9 w-full items-center gap-2 rounded-md border bg-panel px-3 text-left text-sm transition-colors",
@@ -122,7 +154,7 @@ export function DayPicker({
       </button>
 
       {open && (
-        <div className="anim-pop absolute left-0 top-11 z-40 w-[290px] rounded-lg border border-line bg-panel p-3">
+        <div ref={popRef} className={cn("anim-pop absolute left-0 z-40 w-[290px] max-w-[calc(100vw-2rem)] scroll-mb-24 rounded-lg border border-line bg-panel p-3", up ? "bottom-11" : "top-11")}>
           {quick && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {([["issue.day.today", 0], ["issue.day.tomorrow", 1], ["issue.day.week", 7]] as const).map(([labelKey, add]) => (

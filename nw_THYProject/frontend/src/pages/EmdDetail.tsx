@@ -59,6 +59,7 @@ export function EmdDetail() {
   return withList(
     <>
       <DetailHead
+        back="/emds"
         title={
           <>
             <span className="num text-[19px] font-semibold text-ink">{emd.emdNumber}</span>
