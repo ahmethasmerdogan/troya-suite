@@ -32,3 +32,18 @@ test("kısayol, palet açıkken yazılan harfle tetiklenmez", async ({ page }) =
   await page.keyboard.type("erv");
   await expect(page.getByText("Eski bilet 2351234567890")).toBeHidden();
 });
+
+test("? tuşu bulunulan ekranın kılavuzunu açar; arama kutusuna yazılan ? açmaz", async ({ page }) => {
+  await page.goto("/tickets/2351234567890");
+  await expect(page.getByRole("heading", { name: "2351234567890" })).toBeVisible();
+  await page.keyboard.press("?");
+  const help = page.getByRole("dialog", { name: /nasıl kullanılır/ });
+  await expect(help).toBeVisible();
+  await expect(help.getByText("Bu yardım")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(help).toBeHidden();
+
+  await page.goto("/search");
+  await page.getByPlaceholder("TKT no · ERDOGAN · PNR · IST · TK198 · kart son4").fill("a?");
+  await expect(page.getByRole("dialog", { name: /nasıl kullanılır/ })).toHaveCount(0);
+});
