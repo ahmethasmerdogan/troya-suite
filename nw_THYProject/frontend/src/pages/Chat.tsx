@@ -82,12 +82,20 @@ export function Chat() {
   const list = thread ? messages[thread] ?? [] : [];
   const onlineCount = others.filter((u) => isOnline(presence, u.id)).length;
 
-  // İlk açılışta ve başka ekrandan gelen istekte doğru sohbeti aç.
+  // İlk açılışta ve başka ekrandan gelen istekte doğru sohbeti aç. İstek
+  // /chat açıkken de gelebilir (kişi kartı → "Mesaj gönder"); o yüzden
+  // bekleyen thread'e abone olunur.
+  const pendingThread = useChat((s) => s.pendingThread);
   useEffect(() => {
-    const pending = consumePendingThread();
-    if (pending) { openThread(pending); return; }
-    if (!thread && channels[0]) setThread(channels[0].id);
-  }, [channels, thread, consumePendingThread]);
+    if (pendingThread) {
+      const p = consumePendingThread();
+      if (p) openThread(p);
+      return;
+    }
+    // Özel kanaldan ayrılınca o kanal artık görünmez — açık kalıp yazılabiliyordu.
+    const hidden = thread && isChannel(thread) && !myChannels.some((c) => c.id === thread);
+    if ((!thread || hidden) && myChannels[0]) setThread(myChannels[0].id);
+  }, [pendingThread, myChannels, thread, consumePendingThread]);
 
   // Sohbet listesi: mesajı olan thread'ler, son mesaja göre; okunmamış üstte.
   const conversations = useMemo(() => {
@@ -458,25 +466,31 @@ function ThreadHead({
         {ch && me && (
           <span className="ml-auto flex items-center gap-1.5">
             {typers.length > 0 && <span className="text-[12px] text-ink-3">{t("chat.typing", { names: typers.join(", ") })}</span>}
-            <Button variant="secondary" size="sm" onClick={() => setMembers(true)}>
-              <UsersRound size={14} strokeWidth={1.75} />
-              {isPrivate ? t("chat.group.memberCount", { n: ch.memberIds!.length }) : t("chat.channel.public")}
-            </Button>
+            {isPrivate ? (
+              <Button variant="secondary" size="sm" onClick={() => setMembers(true)}>
+                <UsersRound size={14} strokeWidth={1.75} />
+                {t("chat.group.memberCount", { n: ch.memberIds!.length })}
+              </Button>
+            ) : (
+              <Pill tone="gray">{t("chat.channel.public")}</Pill>
+            )}
             {isPrivate && (
               <Button variant="ghost" size="sm" onClick={() => toggleChannelMember(ch.id, me)}>
                 {joined ? t("chat.channel.leave") : t("chat.channel.join")}
               </Button>
             )}
-            <MembersModal
-              open={members} onClose={() => setMembers(false)}
-              title={t("chat.members")}
-              users={users.filter((u) => u.id !== me)}
-              selected={(ch.memberIds ?? []).filter((x) => x !== me)}
-              onToggle={(id) => toggleChannelMember(ch.id, id)}
-            />
+            {isPrivate && (
+              <MembersModal
+                open={members} onClose={() => setMembers(false)}
+                title={t("chat.members")}
+                users={users.filter((u) => u.id !== me)}
+                selected={(ch.memberIds ?? []).filter((x) => x !== me)}
+                onToggle={(id) => toggleChannelMember(ch.id, id)}
+              />
+            )}
           </span>
         )}
-        {typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{t("chat.typingBy", { names: typers.join(", ") })}</span>}
+        {!(ch && me) && typers.length > 0 && <span className="ml-auto text-[12px] text-ink-3">{t("chat.typingBy", { names: typers.join(", ") })}</span>}
       </div>
     );
   }
@@ -747,7 +761,7 @@ function NewChannelModal({
   // Aynı adla ikinci kanal açılmaz — iki "QA Kanal" hangisine yazıldığını belirsizleştirir.
   const channels = useChat((s) => s.channels);
   const key = (x: string) => x.trim().toLocaleLowerCase("tr-TR");
-  const taken = name.trim().length > 0 && channels.some((c) => key(c.name) === key(name));
+  const taken = name.trim().length > 0 && channels.some((c) => key(c.name) === key(name) || (!!c.nameEn && key(c.nameEn) === key(name)));
 
   return (
     <Modal

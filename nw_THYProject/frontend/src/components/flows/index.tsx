@@ -359,6 +359,7 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
   const [residual, setResidual] = useState("0");
   const [override, setOverride] = useState("");
   const [manual, setManual] = useState<string | null>(null); // null = sistemin tutarı
+  const [justification, setJustification] = useState("");
   const rule = ruleOfTicket(ticket);
 
   // 15.1 — tarife. Her girdi değişiminde yeniden hesaplanır (saf fonksiyon).
@@ -374,6 +375,10 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
   });
   const amount = manual != null ? parseAmount(manual) || 0 : quote.amount.amount;
   const deviates = manual != null && Math.abs(amount - quote.amount.amount) > 0.5;
+  // Sunucu da aynı sınırı uygular: tahsil edilen − önceki iadeler.
+  const ceiling = ticket.fare.total.amount - (ticket.refunds ?? []).filter((r) => !r.cancelledAt).reduce((s, r) => s + r.amount.amount, 0);
+  const overCeiling = amount > ceiling + 0.01;
+  const needsReason = deviates && justification.trim().length < 5;
   const restricted = /NON[- ]?REF|NONREFUNDABLE/i.test(ticket.endorsement ?? "");
 
   const run = useMutation({
@@ -388,6 +393,7 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
       residual: parseAmount(residual) > 0 ? { amount: parseAmount(residual), currency: quote.amount.currency } : undefined,
       taxOnly, method, waiver: waiver || undefined,
       restrictionOverride: override || undefined,
+      justification: deviates ? justification.trim() : undefined,
       idempotencyKey: op.key(),
     }),
     onSuccess: () => { toast.success(t("flows.refund.toastOk")); refresh(ticket.ticketNumber); onClose(); },
@@ -399,7 +405,7 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
       open={open} onClose={onClose} title="Refund"
       hint={t("flows.refund.hint")}
       width="lg"
-      footer={<Button variant="success" disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.processing") : t("flows.refund.submit")}</Button>}
+      footer={<Button variant="success" disabled={!sel.length || overCeiling || needsReason || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.processing") : t("flows.refund.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         {restricted && (
@@ -519,7 +525,9 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
         <Field
           label={t("flows.refund.amountLabel")}
           hint={manual == null ? t("flows.refund.amountHintAuto") : t("flows.refund.amountHintManual")}
-          error={deviates ? t("flows.refund.deviates", { n: quote.amount.amount.toLocaleString(locale()) }) : undefined}
+          error={overCeiling
+            ? t("flows.refund.overCeiling", { n: ceiling.toLocaleString(locale()), c: quote.amount.currency })
+            : deviates ? t("flows.refund.deviates", { n: quote.amount.amount.toLocaleString(locale()) }) : undefined}
         >
           <div className="flex items-center gap-2">
             <Input
@@ -532,6 +540,12 @@ function RefundFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; 
             )}
           </div>
         </Field>
+
+        {deviates && !overCeiling && (
+          <Field label={t("flows.refund.justification")} required hint={t("flows.refund.justificationHint")}>
+            <Textarea value={justification} onChange={(e) => setJustification(e.target.value)} rows={2} />
+          </Field>
+        )}
 
         <Field label={t("flows.refund.residualLabel")} hint={t("flows.refund.residualHint")}>
           <Input value={residual} onChange={(e) => setResidual(e.target.value.replace(/[^\d]/g, ""))} className="num" inputMode="numeric" />

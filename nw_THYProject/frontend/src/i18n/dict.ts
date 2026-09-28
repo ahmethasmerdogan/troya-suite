@@ -156,6 +156,7 @@ const tr = {
 
   // dokümantasyon + hata yüzeyleri
   "nav.docs": "Dokümantasyon",
+  "nav.landing": "Tanıtım sayfası",
   "nav.guide": "Kullanım Kılavuzu",
   "docs.banner.title": "Sistem Dokümantasyonu",
   "docs.banner.desc": "Troya Suite ne barındırır, neyi çözer, hangi teknolojiler üzerine kuruludur.",
@@ -292,6 +293,7 @@ const en: Record<keyof typeof tr, string> = {
 
   // documentation + error surfaces
   "nav.docs": "Documentation",
+  "nav.landing": "Overview page",
   "nav.guide": "User Guide",
   "docs.banner.title": "System Documentation",
   "docs.banner.desc": "What Troya Suite contains, what it solves, and the technologies it is built on.",

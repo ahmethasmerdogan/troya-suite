@@ -9,6 +9,7 @@ Görsel dil tek kaynak: [`../DESIGN_SYSTEM.md`](../DESIGN_SYSTEM.md). IATA kapsa
 
 ## Modüller
 
+- **Tanıtım** (`/tanitim`, giriş gerektirmez) — sistemi anlatan sayfa: kodla üretilen THY boyalı 3D uçak, İstanbul'dan çıkan interline yaylarıyla 3D küre, kaydırmayla ilerleyen kupon yaşam döngüsü, canlı mini ekranlarla özellikler. 3D sahneler (`three`, `@react-three/*`) ayrı parçada tembel yüklenir; uygulamanın ana paketine girmez.
 - **Panel** (`/`) — KPI'lar, haftalık kesim, bugünün işleri, istasyon duyuruları.
 - **QuickRes** (`/res`, `/res/new`, `/res/availability`, `/res/:pnr`) — PNR arama, oluşturma sihirbazı, sefer programından uygunluk, PNR komutları (XI güzergâh iptali, XE segment iptali, TTL uzatma, RM/OSI notları, RH geçmişi); PNR'dan yolcu başına bilet kesimi.
 - **Troya** — biletleme ve satış sonrası:

@@ -27,7 +27,7 @@ test("kesim onayına çift tıklamak tek bilet keser", async ({ page }) => {
     await box.press("Enter");
   }
   await page.getByRole("button", { name: /Gün.*Ay.*Yıl/ }).click();
-  await page.getByRole("button", { name: "Bugün", exact: true }).click();
+  await page.getByRole("button", { name: "Yarın", exact: true }).click();
   const flight = page.locator("button[aria-pressed]").first();
   await flight.click();
   await page.getByRole("button", { name: /İleri/ }).click();

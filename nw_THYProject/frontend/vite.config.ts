@@ -24,6 +24,10 @@ export default defineConfig({
           if (/[\\/]node_modules[\\/](react|react-dom|scheduler|@tanstack|zustand)[\\/]/.test(id)) {
             return "vendor";
           }
+          // 3D yığını yalnız tanıtım sayfasının sahneleri yükler.
+          if (/[\\/]node_modules[\\/](three|three-stdlib|@react-three|troika-[^\\/]+|camera-controls|maath)[\\/]/.test(id)) {
+            return "three";
+          }
         },
       },
     },

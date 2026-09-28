@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "@tanstack/react-router";
 import { ArrowRight, Eye, EyeOff, LogIn } from "lucide-react";
 import { useUI } from "@/store/ui";
 import { type DemoUser } from "@/domain/users";
@@ -81,6 +82,9 @@ export function Login() {
           <p className="mt-4 text-[15px] leading-relaxed text-white/75">
             {t("shell.login.lede")}
           </p>
+          <Link to="/tanitim" className="mt-6 inline-flex items-center gap-2 rounded-full bg-white px-4 py-2 text-[13px] font-semibold text-[#c70a0c] transition-transform hover:scale-[1.03]">
+            {t("shell.login.intro")} <ArrowRight size={14} />
+          </Link>
         </div>
 
         <div>
@@ -108,6 +112,7 @@ export function Login() {
               <div className="text-[16px] font-semibold tracking-tight text-ink">{t("brand.suite")}</div>
               <div className="text-[12px] text-ink-3">{t("shell.login.tagline")}</div>
             </div>
+            <Link to="/tanitim" className="ml-auto text-[12.5px] font-medium text-brand">{t("shell.login.intro")} ›</Link>
           </div>
 
           <Card className="p-6 sm:p-8">

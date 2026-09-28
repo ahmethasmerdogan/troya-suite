@@ -157,13 +157,17 @@ export function DayPicker({
         <div ref={popRef} className={cn("anim-pop absolute left-0 z-40 w-[290px] max-w-[calc(100vw-2rem)] scroll-mb-24 rounded-lg border border-line bg-panel p-3", up ? "bottom-11" : "top-11")}>
           {quick && (
             <div className="mb-2 flex flex-wrap gap-1.5">
-              {([["issue.day.today", 0], ["issue.day.tomorrow", 1], ["issue.day.week", 7]] as const).map(([labelKey, add]) => (
-                <button key={labelKey} type="button"
-                  onClick={() => { const d = new Date(today); d.setDate(d.getDate() + add); pick(d); }}
-                  className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-brand hover:text-brand">
-                  {t(labelKey)}
-                </button>
-              ))}
+              {([["issue.day.today", 0], ["issue.day.tomorrow", 1], ["issue.day.week", 7]] as const).map(([labelKey, add]) => {
+                const d = new Date(today);
+                d.setDate(d.getDate() + add);
+                return (
+                  <button key={labelKey} type="button" disabled={!!min && ymd(d) < min}
+                    onClick={() => pick(d)}
+                    className="rounded-full border border-line px-2.5 py-1 text-[12px] text-ink-2 transition-colors hover:border-brand hover:text-brand disabled:pointer-events-none disabled:opacity-40">
+                    {t(labelKey)}
+                  </button>
+                );
+              })}
             </div>
           )}
           <div className="mb-2 flex items-center justify-between">

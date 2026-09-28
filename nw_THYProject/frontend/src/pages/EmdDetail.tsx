@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "@tanstack/react-router";
 import { Ban, FileText, Ticket as TicketIcon, Undo2 } from "lucide-react";
@@ -6,6 +7,8 @@ import { useOpKey } from "@/lib/useOpKey";
 import { invalidateRecords } from "@/lib/invalidate";
 import { usePerm } from "@/lib/usePerm";
 import { Button } from "@/components/ui/core";
+import { Modal } from "@/components/ui/overlay";
+import { isRefundable } from "@/domain/couponStatusMachine";
 import { toast } from "@/components/ui/toast";
 import { SplitView, DetailHead, DetailBody } from "@/components/layout/views";
 import { EmdListPane } from "@/components/panes/EmdListPane";
@@ -20,10 +23,16 @@ import { useErrorText } from "@/lib/useErrorText";
 import { formatDate } from "@/lib/utils";
 
 // EMD detay — belge, kuponları ve bağlı bilet linkage'ı.
+// Listeden başka EMD seçilince görünüm yeniden kurulur: işlem anahtarları
+// önceki EMD'den taşınırsa sunucu işlemi "zaten yapıldı" sayıp atlıyordu.
 export function EmdDetail() {
+  const { emdNumber } = useParams({ from: "/emds/$emdNumber" });
+  return <EmdDetailView key={emdNumber} emdNumber={emdNumber} />;
+}
+
+function EmdDetailView({ emdNumber }: { emdNumber: string }) {
   const t = useT();
   const errText = useErrorText();
-  const { emdNumber } = useParams({ from: "/emds/$emdNumber" });
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can, lockHint } = usePerm();
@@ -33,14 +42,15 @@ export function EmdDetail() {
   const refresh = () => invalidateRecords(qc);
   const voidKey = useOpKey();
   const refundKey = useOpKey();
+  const [confirm, setConfirm] = useState<"void" | "refund" | null>(null);
   const voidOp = useMutation({
     mutationFn: () => voidEmd({ emdNumber, idempotencyKey: voidKey.key() }),
-    onSuccess: () => { toast.success(t("misc.emd.voidOk")); refresh(); },
+    onSuccess: () => { voidKey.rotate(); setConfirm(null); toast.success(t("misc.emd.voidOk")); refresh(); },
     onError: (e: Error) => toast.danger(t("misc.emd.voidFail"), errText(e)),
   });
   const refundOp = useMutation({
     mutationFn: () => refundEmd({ emdNumber, idempotencyKey: refundKey.key() }),
-    onSuccess: () => { toast.success(t("misc.emd.refundOk")); refresh(); },
+    onSuccess: () => { refundKey.rotate(); setConfirm(null); toast.success(t("misc.emd.refundOk")); refresh(); },
     onError: (e: Error) => toast.danger(t("misc.emd.refundFail"), errText(e)),
   });
 
@@ -56,8 +66,32 @@ export function EmdDetail() {
       </DetailBody>,
     );
 
+  const refundable = emd.coupons.some((c) => isRefundable(c.status));
+  const voidable = emd.coupons.every((c) => c.status === "O");
+  const busy = voidOp.isPending || refundOp.isPending;
+
   return withList(
     <>
+      <Modal
+        open={confirm !== null}
+        onClose={() => { if (!busy) setConfirm(null); }}
+        title={confirm === "void" ? t("misc.emd.confirmVoid") : t("misc.emd.confirmRefund")}
+        hint={`${emd.emdNumber} · ${emd.passenger.surname}/${emd.passenger.givenName}`}
+        width="sm"
+        footer={
+          <>
+            <Button variant="secondary" disabled={busy} onClick={() => setConfirm(null)}>{t("common.cancel")}</Button>
+            <Button variant={confirm === "void" ? "danger" : "primary"} disabled={busy}
+              onClick={() => (confirm === "void" ? voidOp.mutate() : refundOp.mutate())}>
+              {confirm === "void" ? "Void" : t("misc.emd.refund")}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-[13.5px] leading-relaxed text-ink-2">
+          {confirm === "void" ? t("misc.emd.confirmVoidBody") : t("misc.emd.confirmRefundBody")}
+        </p>
+      </Modal>
       <DetailHead
         back="/emds"
         title={
@@ -73,12 +107,12 @@ export function EmdDetail() {
               onClick={() => navigate({ to: "/emds/$emdNumber/receipt", params: { emdNumber } })}>
               <FileText size={15} strokeWidth={1.75} /> {t("misc.emd.receiptBtn")}
             </Button>
-            <Button variant="secondary" size="sm" disabled={!can("ticket.refund") || refundOp.isPending}
-              title={lockHint("ticket.refund")} onClick={() => refundOp.mutate()}>
+            <Button variant="secondary" size="sm" disabled={!can("ticket.refund") || !refundable || refundOp.isPending}
+              title={lockHint("ticket.refund") ?? (!refundable ? t("misc.emd.noOpen") : undefined)} onClick={() => setConfirm("refund")}>
               <Undo2 size={15} strokeWidth={1.75} /> {t("misc.emd.refund")}
             </Button>
-            <Button variant="danger" size="sm" disabled={!can("ticket.void") || voidOp.isPending}
-              title={lockHint("ticket.void")} onClick={() => voidOp.mutate()}>
+            <Button variant="danger" size="sm" disabled={!can("ticket.void") || !voidable || voidOp.isPending}
+              title={lockHint("ticket.void") ?? (!voidable ? t("misc.emd.noOpen") : undefined)} onClick={() => setConfirm("void")}>
               <Ban size={15} strokeWidth={1.75} /> Void
             </Button>
           </>
