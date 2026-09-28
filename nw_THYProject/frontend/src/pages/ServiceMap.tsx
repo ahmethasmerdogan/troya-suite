@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useRouter } from "@tanstack/react-router";
 import { MOCK_TICKETS, MOCK_EMDS, MOCK_ORDERS } from "@/domain/mockData";
+import { CHECKIN_TICKETS } from "@/domain/checkin";
 import { FLIGHTS } from "@/domain/checkin";
 import { PermGate } from "@/components/layout/PermGate";
 import { useT } from "@/i18n";
@@ -22,7 +23,7 @@ type PartT = { id: string; edge: string };
 const NW = 220, NH = 80;
 
 // ---- gerçek veri sayımları (mevcut sistemden) ----
-const tkN = MOCK_TICKETS.length;
+const tkN = MOCK_TICKETS.length + CHECKIN_TICKETS.length; // Troya deposu = tohum + check-in yolcularının biletleri
 const emdN = MOCK_EMDS.length;
 const ordN = MOCK_ORDERS.length;
 const flN = FLIGHTS.length;
@@ -91,7 +92,7 @@ const hexA = (hex: string, a: number) => { const h = hex.replace("#", ""); retur
 const fmtRate = (x: number) => (x >= 1000 ? (x / 1000).toFixed(1) + "k" : x >= 100 ? String(Math.round(x)) : x.toFixed(1));
 const fmtErr = (x: number) => x.toFixed(1) + "%";
 const fmtLat = (x: number) => (x >= 1000 ? (x / 1000).toFixed(2) + "s" : x < 100 ? x.toFixed(1) + "ms" : Math.round(x) + "ms");
-const errColor = (x: number) => (x >= 3 ? "#EF4444" : x >= 1 ? "#F59E0B" : "var(--text-tertiary)");
+const errColor = (x: number) => (x >= 3 ? "#EF4444" : x >= 1 ? "#F59E0B" : "var(--ink-3)");
 
 export function ServiceMap() {
   return <PermGate perm="ops.view" titleKey="nav.ci.servicemap"><ServiceMapScreen /></PermGate>;
@@ -166,9 +167,9 @@ function ServiceMapScreen() {
     NODES.forEach((n) => {
       const el = nodeEls.current[n.id]; if (!el) return;
       const accent = cm === "status" ? statusColor(n.status) : n.color, st = statusColor(n.status);
-      if (p === "maple") { el.style.background = "var(--bg-surface)"; el.style.border = "1px solid var(--border-subtle)"; el.style.boxShadow = "var(--sm-shadow)"; }
-      else if (p === "neon") { el.style.background = "var(--bg-surface)"; el.style.border = "1px solid " + hexA(accent, 0.55); el.style.boxShadow = `0 0 0 1px ${hexA(accent, 0.14)}, 0 8px 24px rgba(0,0,0,.10), 0 0 22px ${hexA(accent, 0.14)}`; }
-      else { el.style.background = "transparent"; el.style.border = "1px solid var(--border-default)"; el.style.boxShadow = "none"; }
+      if (p === "maple") { el.style.background = "var(--surface)"; el.style.border = "1px solid var(--hair)"; el.style.boxShadow = "var(--sm-shadow)"; }
+      else if (p === "neon") { el.style.background = "var(--surface)"; el.style.border = "1px solid " + hexA(accent, 0.55); el.style.boxShadow = `0 0 0 1px ${hexA(accent, 0.14)}, 0 8px 24px rgba(0,0,0,.10), 0 0 22px ${hexA(accent, 0.14)}`; }
+      else { el.style.background = "transparent"; el.style.border = "1px solid var(--line)"; el.style.boxShadow = "none"; }
       const ab = el.querySelector<HTMLElement>("[data-accent]"); if (ab) { ab.style.background = accent; ab.style.opacity = p === "blueprint" ? "0" : "1"; ab.style.boxShadow = p === "neon" ? "0 0 10px " + accent : "none"; }
       const dot = el.querySelector<HTMLElement>("[data-dot]"); if (dot) { dot.style.background = st; dot.style.color = st; }
       const er = el.querySelector<HTMLElement>("[data-err]"); if (er) er.style.color = errColor(n.err);
@@ -271,29 +272,29 @@ function ServiceMapScreen() {
   const chips = NODES.filter((n) => ["FE", "API", "APP"].includes(n.tag)).slice(0, 7);
   const hv = hovered ? NODE[hovered] : null;
 
-  const seg = (active: boolean): React.CSSProperties => ({ border: "none", borderRadius: 6, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: active ? "var(--accent)" : "transparent", color: active ? "#fff" : "var(--text-secondary)" });
-  const tbtn: React.CSSProperties = { display: "flex", alignItems: "center", gap: 7, background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 8, padding: "7px 11px", color: "var(--text-secondary)", fontSize: 12, fontWeight: 500, cursor: "pointer" };
+  const seg = (active: boolean): React.CSSProperties => ({ border: "none", borderRadius: 6, padding: "5px 11px", fontSize: 12, fontWeight: 600, cursor: "pointer", background: active ? "var(--brand)" : "transparent", color: active ? "#fff" : "var(--ink-2)" });
+  const tbtn: React.CSSProperties = { display: "flex", alignItems: "center", gap: 7, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, padding: "7px 11px", color: "var(--ink-2)", fontSize: 12, fontWeight: 500, cursor: "pointer" };
 
   return createPortal((
-    <div className="servicemap-root" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: "var(--bg-surface)", color: "var(--text-primary)", overflow: "hidden" }}>
+    <div className="servicemap-root" style={{ position: "fixed", inset: 0, zIndex: 60, display: "flex", flexDirection: "column", background: "var(--surface)", color: "var(--ink)", overflow: "hidden" }}>
       <style>{`
-        .servicemap-root{ --sm-dot:rgba(15,23,42,.06); --sm-grid:rgba(37,99,235,.07); --sm-shadow:0 1px 2px rgba(15,23,42,.06),0 4px 14px rgba(15,23,42,.05); }
+        .servicemap-root{ --sm-dot:rgba(15,23,42,.06); --sm-grid:rgba(15,23,42,.05); --sm-shadow:0 1px 2px rgba(15,23,42,.06),0 4px 14px rgba(15,23,42,.05); }
         .dark .servicemap-root{ --sm-dot:rgba(255,255,255,.06); --sm-grid:rgba(120,170,200,.07); --sm-shadow:0 8px 26px rgba(0,0,0,.5); }
         @keyframes sm-spin{to{transform:rotate(360deg);}}
-        .sm-btn:hover{ border-color:var(--border-strong)!important; color:var(--text-primary)!important; }
-        .sm-zoom:hover{ background:var(--bg-sunken)!important; color:var(--text-primary)!important; }
+        .sm-btn:hover{ border-color:var(--line-strong)!important; color:var(--ink)!important; }
+        .sm-zoom:hover{ background:var(--sunken)!important; color:var(--ink)!important; }
         .servicemap-root ::-webkit-scrollbar{width:9px;height:9px;}
-        .servicemap-root ::-webkit-scrollbar-thumb{background:var(--border-default);border-radius:8px;}
+        .servicemap-root ::-webkit-scrollbar-thumb{background:var(--line);border-radius:8px;}
       `}</style>
 
       {/* header */}
       <header style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px 12px", flex: "none" }}>
-        <button onClick={goBack} className="sm-btn" title={t("fix.map.back")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, flex: "none", background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 9, color: "var(--text-secondary)", cursor: "pointer" }}>
+        <button onClick={goBack} className="sm-btn" title={t("fix.map.back")} style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 36, height: 36, flex: "none", background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 9, color: "var(--ink-2)", cursor: "pointer" }}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75"><path d="M15 18l-6-6 6-6" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
         <div style={{ minWidth: 0 }}>
-          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.3px", color: "var(--text-primary)" }}>Service Map</h1>
-          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>{t("fix.map.desc")}</p>
+          <h1 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.3px", color: "var(--ink)" }}>Service Map</h1>
+          <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--ink-2)" }}>{t("fix.map.desc")}</p>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8, flex: "none" }}>
           <button onClick={cycleTime} className="sm-btn" style={tbtn}>
@@ -310,14 +311,14 @@ function ServiceMapScreen() {
 
       {/* sub-toolbar */}
       <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "0 22px 12px", flex: "none", flexWrap: "wrap" }}>
-        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}>RENK</span>
-        <div style={{ display: "flex", gap: 2, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 3 }}>
+        <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--ink-3)" }}>RENK</span>
+        <div style={{ display: "flex", gap: 2, background: "var(--sunken)", border: "1px solid var(--hair)", borderRadius: 8, padding: 3 }}>
           <button onClick={() => setColorMode("service")} style={seg(colorMode === "service")}>{t("fix.map.byService")}</button>
           <button onClick={() => setColorMode("status")} style={seg(colorMode === "status")}>{t("fix.map.byStatus")}</button>
         </div>
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--text-tertiary)" }}>{t("fix.map.style")}</span>
-          <div style={{ display: "flex", gap: 2, background: "var(--bg-sunken)", border: "1px solid var(--border-subtle)", borderRadius: 8, padding: 3 }}>
+          <span style={{ fontSize: 10, fontWeight: 600, letterSpacing: "0.08em", color: "var(--ink-3)" }}>{t("fix.map.style")}</span>
+          <div style={{ display: "flex", gap: 2, background: "var(--sunken)", border: "1px solid var(--hair)", borderRadius: 8, padding: 3 }}>
             <button onClick={() => setPreset("maple")} style={seg(preset === "maple")}>Sade</button>
             <button onClick={() => setPreset("neon")} style={seg(preset === "neon")}>Neon</button>
             <button onClick={() => setPreset("blueprint")} style={seg(preset === "blueprint")}>Şema</button>
@@ -326,13 +327,13 @@ function ServiceMapScreen() {
       </div>
 
       {/* canvas viewport */}
-      <div ref={viewportEl} onMouseDown={onViewportDown} style={{ position: "relative", flex: 1, margin: "0 12px 12px", borderRadius: 12, border: "1px solid var(--border-subtle)", overflow: "hidden", background: "var(--bg-page)", cursor: "grab" }}>
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(640px 440px at 18% 6%, var(--accent-soft), transparent 60%)", opacity: 0.5 }} />
+      <div ref={viewportEl} onMouseDown={onViewportDown} style={{ position: "relative", flex: 1, margin: "0 12px 12px", borderRadius: 12, border: "1px solid var(--hair)", overflow: "hidden", background: "var(--canvas)", cursor: "grab" }}>
+        <div style={{ position: "absolute", inset: 0, pointerEvents: "none", background: "radial-gradient(640px 440px at 18% 6%, var(--brand-soft), transparent 60%)", opacity: 0.5 }} />
 
         <div ref={worldEl} style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1, transformOrigin: "0 0" }}>
           {GROUPS.map((g) => (
-            <div key={g.id} ref={(el) => { groupEls.current[g.id] = el; }} style={{ position: "absolute", left: 0, top: 0, border: "1px solid var(--border-default)", borderRadius: 16, background: "var(--accent-soft)", opacity: 0.55, pointerEvents: "none", boxSizing: "border-box" }}>
-              <span style={{ position: "absolute", left: 14, top: -9, background: "var(--bg-surface)", padding: "2px 9px", border: "1px solid var(--border-default)", borderRadius: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--accent)" }}>{g.label}</span>
+            <div key={g.id} ref={(el) => { groupEls.current[g.id] = el; }} style={{ position: "absolute", left: 0, top: 0, border: "1px solid var(--line)", borderRadius: 16, background: "var(--brand-soft)", opacity: 0.55, pointerEvents: "none", boxSizing: "border-box" }}>
+              <span style={{ position: "absolute", left: 14, top: -9, background: "var(--surface)", padding: "2px 9px", border: "1px solid var(--line)", borderRadius: 6, fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", color: "var(--brand)" }}>{g.label}</span>
             </div>
           ))}
 
@@ -343,20 +344,20 @@ function ServiceMapScreen() {
 
           {NODES.map((node) => (
             <div key={node.id} ref={(el) => { nodeEls.current[node.id] = el; }} onMouseDown={(e) => nodeDown(node.id, e)} onMouseEnter={() => { if (!drag.current && !pan.current) setHovered(node.id); }} onMouseLeave={() => setHovered((h) => (h === node.id ? null : h))}
-              style={{ position: "absolute", top: 0, left: 0, width: NW, boxSizing: "border-box", background: "var(--bg-surface)", border: "1px solid var(--border-subtle)", borderRadius: 10, padding: "9px 12px 11px", cursor: "grab", userSelect: "none", overflow: "hidden" }}>
+              style={{ position: "absolute", top: 0, left: 0, width: NW, boxSizing: "border-box", background: "var(--surface)", border: "1px solid var(--hair)", borderRadius: 10, padding: "9px 12px 11px", cursor: "grab", userSelect: "none", overflow: "hidden" }}>
               <div data-accent style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 3, background: node.color }} />
               <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                 <span data-dot style={{ width: 7, height: 7, borderRadius: "50%", background: ST[node.status], flex: "none", boxShadow: "0 0 8px currentColor" }} />
-                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--text-primary)", letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.name}</span>
-                <span style={{ marginLeft: "auto", fontSize: 8, fontWeight: 700, color: "var(--text-tertiary)", letterSpacing: "0.1em", flex: "none" }}>{node.tag}</span>
+                <span style={{ fontSize: 12.5, fontWeight: 600, color: "var(--ink)", letterSpacing: "-0.2px", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{node.name}</span>
+                <span style={{ marginLeft: "auto", fontSize: 8, fontWeight: 700, color: "var(--ink-3)", letterSpacing: "0.1em", flex: "none" }}>{node.tag}</span>
               </div>
               <div style={{ display: "flex", alignItems: "flex-end", gap: 14, marginTop: 10 }}>
                 <Metric label="İSTEK" value={fmtRate(node.rate)} />
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={statLabel}>HATA</span><span data-err style={{ fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{fmtErr(node.err)}</span></div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={statLabel}>HATA</span><span data-err style={{ fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>{fmtErr(node.err)}</span></div>
                 <Metric label="GECİKME" value={fmtLat(node.lat)} />
-                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, color: "var(--text-tertiary)" }}>
+                <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 5, color: "var(--ink-3)" }}>
                   <svg width="11" height="11" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><rect x="2.6" y="2.6" width="9.8" height="9.8" rx="2.2" /><path d="M2.6 7.5 H12.4" /></svg>
-                  <span style={{ fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{node.count}</span>
+                  <span style={{ fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>{node.count}</span>
                 </div>
               </div>
             </div>
@@ -364,17 +365,17 @@ function ServiceMapScreen() {
         </div>
 
         {/* zoom */}
-        <div style={{ position: "absolute", left: 14, bottom: 50, display: "flex", flexDirection: "column", gap: 1, background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 8, overflow: "hidden", boxShadow: "var(--sm-shadow)" }}>
+        <div style={{ position: "absolute", left: 14, bottom: 50, display: "flex", flexDirection: "column", gap: 1, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 8, overflow: "hidden", boxShadow: "var(--sm-shadow)" }}>
           <button onClick={() => zoomBy(1.25)} className="sm-zoom" style={zoomBtn}>+</button>
-          <button onClick={() => zoomBy(0.8)} className="sm-zoom" style={{ ...zoomBtn, borderTop: "1px solid var(--border-subtle)" }}>−</button>
-          <button onClick={fitView} className="sm-zoom" style={{ ...zoomBtn, borderTop: "1px solid var(--border-subtle)" }}><svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M2.5 5.5 V2.5 H5.5 M9.5 2.5 H12.5 V5.5 M12.5 9.5 V12.5 H9.5 M5.5 12.5 H2.5 V9.5" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
+          <button onClick={() => zoomBy(0.8)} className="sm-zoom" style={{ ...zoomBtn, borderTop: "1px solid var(--hair)" }}>−</button>
+          <button onClick={fitView} className="sm-zoom" style={{ ...zoomBtn, borderTop: "1px solid var(--hair)" }}><svg width="14" height="14" viewBox="0 0 15 15" fill="none" stroke="currentColor" strokeWidth="1.3"><path d="M2.5 5.5 V2.5 H5.5 M9.5 2.5 H12.5 V5.5 M12.5 9.5 V12.5 H9.5 M5.5 12.5 H2.5 V9.5" strokeLinecap="round" strokeLinejoin="round" /></svg></button>
         </div>
 
         {/* legend */}
-        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 16, padding: "10px 14px", background: "linear-gradient(to top, var(--bg-page), transparent)", pointerEvents: "none" }}>
-          <span style={{ fontSize: 10.5, color: "var(--text-tertiary)", flex: "none" }}>Düğümleri sürükle · Zoom için kaydır</span>
+        <div style={{ position: "absolute", left: 0, right: 0, bottom: 0, display: "flex", alignItems: "center", gap: 16, padding: "10px 14px", background: "linear-gradient(to top, var(--canvas), transparent)", pointerEvents: "none" }}>
+          <span style={{ fontSize: 10.5, color: "var(--ink-3)", flex: "none" }}>Düğümleri sürükle · Zoom için kaydır</span>
           <div style={{ display: "flex", alignItems: "center", gap: 12, overflow: "hidden", flex: 1, minWidth: 0 }}>
-            {chips.map((c) => (<span key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}><span style={{ width: 7, height: 7, borderRadius: 2, background: c.color }} /><span style={{ fontSize: 10.5, color: "var(--text-secondary)" }}>{c.name}</span></span>))}
+            {chips.map((c) => (<span key={c.id} style={{ display: "flex", alignItems: "center", gap: 6, flex: "none" }}><span style={{ width: 7, height: 7, borderRadius: 2, background: c.color }} /><span style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{c.name}</span></span>))}
           </div>
           <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 14, flex: "none" }}>
             <Legend color={ST.healthy} label={`Sağlıklı ${counts.h}`} />
@@ -384,30 +385,30 @@ function ServiceMapScreen() {
         </div>
 
         {/* minimap */}
-        <div ref={minimapEl} onMouseDown={onMinimapDown} style={{ position: "absolute", right: 14, bottom: 50, width: 188, height: 118, background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 10, overflow: "hidden", boxShadow: "var(--sm-shadow)", cursor: "pointer" }}>
+        <div ref={minimapEl} onMouseDown={onMinimapDown} style={{ position: "absolute", right: 14, top: 14, width: 188, height: 118, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden", boxShadow: "var(--sm-shadow)", cursor: "pointer" }}>
           <svg width="188" height="118" style={{ position: "absolute", left: 0, top: 0 }}>
-            {NODES.map((n) => (<rect key={n.id} ref={(el) => { miniEls.current[n.id] = el; }} rx="1.4" width="6" height="3.2" />))}
-            <rect ref={miniRectEl} fill="var(--accent-soft)" stroke="var(--accent)" strokeWidth="1" rx="2" />
+            {NODES.map((n) => (<rect key={n.id} ref={(el) => { miniEls.current[n.id] = el; }} rx="1.4" width="6" height="3.2" fill="var(--ink-3)" />))}
+            <rect ref={miniRectEl} fill="var(--brand)" fillOpacity={0.08} stroke="var(--brand)" strokeWidth="1" rx="2" />
           </svg>
         </div>
 
         {/* tooltip */}
         {hv && (
-          <div ref={tipEl} style={{ position: "absolute", left: 0, top: 0, zIndex: 30, pointerEvents: "none", minWidth: 196, background: "var(--bg-surface)", border: "1px solid var(--border-default)", borderRadius: 11, padding: "11px 13px", boxShadow: "var(--sm-shadow)" }}>
+          <div ref={tipEl} style={{ position: "absolute", left: 0, top: 0, zIndex: 30, pointerEvents: "none", minWidth: 196, background: "var(--surface)", border: "1px solid var(--line)", borderRadius: 11, padding: "11px 13px", boxShadow: "var(--sm-shadow)" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ width: 8, height: 8, borderRadius: "50%", background: ST[hv.status], boxShadow: `0 0 8px ${ST[hv.status]}`, flex: "none" }} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", letterSpacing: "-0.2px" }}>{hv.name}</span>
-              <span style={{ marginLeft: "auto", fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", color: "var(--text-tertiary)" }}>{hv.tag}</span>
+              <span style={{ fontSize: 13, fontWeight: 700, color: "var(--ink)", letterSpacing: "-0.2px" }}>{hv.name}</span>
+              <span style={{ marginLeft: "auto", fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", color: "var(--ink-3)" }}>{hv.tag}</span>
             </div>
             <div style={{ marginTop: 9, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "9px 12px" }}>
               <TipCell label="İSTEK/S" value={fmtRate(hv.rate)} />
-              <TipCell label="HATA" value={fmtErr(hv.err)} color={typeof errColor(hv.err) === "string" ? errColor(hv.err) : "var(--text-primary)"} />
+              <TipCell label="HATA" value={fmtErr(hv.err)} color={typeof errColor(hv.err) === "string" ? errColor(hv.err) : "var(--ink)"} />
               <TipCell label="ADET" value={String(hv.count)} />
-              <TipCell label="P50" value={fmtLat(hv.lat)} color="var(--text-secondary)" />
-              <TipCell label="P95" value={fmtLat(hv.lat * 1.7)} color="var(--text-secondary)" />
-              <TipCell label="P99" value={fmtLat(hv.lat * 2.6)} color="var(--text-secondary)" />
+              <TipCell label="P50" value={fmtLat(hv.lat)} color="var(--ink-2)" />
+              <TipCell label="P95" value={fmtLat(hv.lat * 1.7)} color="var(--ink-2)" />
+              <TipCell label="P99" value={fmtLat(hv.lat * 2.6)} color="var(--ink-2)" />
             </div>
-            <div style={{ marginTop: 9, paddingTop: 8, borderTop: "1px solid var(--border-subtle)", fontSize: 10.5, color: "var(--text-tertiary)" }}>
+            <div style={{ marginTop: 9, paddingTop: 8, borderTop: "1px solid var(--hair)", fontSize: 10.5, color: "var(--ink-3)" }}>
               {t("fix.map.statusLabel")}: <span style={{ color: ST[hv.status], fontWeight: 600 }}>{t(hv.status === "healthy" ? "fix.map.healthy" : hv.status === "degraded" ? "fix.map.degraded" : "fix.map.down")}</span>
             </div>
           </div>
@@ -415,26 +416,26 @@ function ServiceMapScreen() {
       </div>
 
       {/* gerçek veri özeti */}
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, padding: "0 22px 14px", fontSize: 11, color: "var(--text-tertiary)", flex: "none" }}>
-        <span><b style={{ color: "var(--text-secondary)" }}>{tkN}</b> bilet</span>
-        <span><b style={{ color: "var(--text-secondary)" }}>{emdN}</b> EMD</span>
-        <span><b style={{ color: "var(--text-secondary)" }}>{ordN}</b> order</span>
-        <span><b style={{ color: "var(--text-secondary)" }}>{flN}</b> uçuş</span>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 14, padding: "0 22px 14px", fontSize: 11, color: "var(--ink-3)", flex: "none" }}>
+        <span><b style={{ color: "var(--ink-2)" }}>{tkN}</b> bilet</span>
+        <span><b style={{ color: "var(--ink-2)" }}>{emdN}</b> EMD</span>
+        <span><b style={{ color: "var(--ink-2)" }}>{ordN}</b> order</span>
+        <span><b style={{ color: "var(--ink-2)" }}>{flN}</b> uçuş</span>
         <span style={{ marginLeft: "auto" }}>Event-sourced · CQRS read model · {NODES.length} servis</span>
       </div>
     </div>
   ), document.body);
 }
 
-const statLabel: React.CSSProperties = { fontSize: 7.5, fontWeight: 500, color: "var(--text-tertiary)", letterSpacing: "0.06em" };
-const zoomBtn: React.CSSProperties = { width: 30, height: 30, border: "none", background: "transparent", color: "var(--text-secondary)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
+const statLabel: React.CSSProperties = { fontSize: 7.5, fontWeight: 500, color: "var(--ink-3)", letterSpacing: "0.06em" };
+const zoomBtn: React.CSSProperties = { width: 30, height: 30, border: "none", background: "transparent", color: "var(--ink-2)", fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" };
 
 function Metric({ label, value }: { label: string; value: string }) {
-  return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={statLabel}>{label}</span><span style={{ fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--text-secondary)" }}>{value}</span></div>;
+  return <div style={{ display: "flex", flexDirection: "column", gap: 4 }}><span style={statLabel}>{label}</span><span style={{ fontSize: 11.5, fontWeight: 600, fontVariantNumeric: "tabular-nums", color: "var(--ink-2)" }}>{value}</span></div>;
 }
 function Legend({ color, label }: { color: string; label: string }) {
-  return <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: color, boxShadow: `0 0 7px ${color}` }} /><span style={{ fontSize: 10.5, color: "var(--text-secondary)" }}>{label}</span></span>;
+  return <span style={{ display: "flex", alignItems: "center", gap: 6 }}><span style={{ width: 7, height: 7, borderRadius: "50%", background: color, boxShadow: `0 0 7px ${color}` }} /><span style={{ fontSize: 10.5, color: "var(--ink-2)" }}>{label}</span></span>;
 }
-function TipCell({ label, value, color = "var(--text-primary)" }: { label: string; value: string; color?: string }) {
-  return <div><div style={{ fontSize: 7.5, fontWeight: 500, color: "var(--text-tertiary)", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div><div style={{ fontSize: 12, fontWeight: 600, fontVariantNumeric: "tabular-nums", color }}>{value}</div></div>;
+function TipCell({ label, value, color = "var(--ink)" }: { label: string; value: string; color?: string }) {
+  return <div><div style={{ fontSize: 7.5, fontWeight: 500, color: "var(--ink-3)", letterSpacing: "0.05em", marginBottom: 4 }}>{label}</div><div style={{ fontSize: 12, fontWeight: 600, fontVariantNumeric: "tabular-nums", color }}>{value}</div></div>;
 }

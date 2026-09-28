@@ -5,7 +5,7 @@ import {
   AlertTriangle, ArrowLeft, ArrowLeftRight, Ban, Building2, CalendarClock, ChevronDown,
   CreditCard, FileOutput, HeartPulse, Leaf, Luggage, Scale, SpellCheck, PauseOctagon, Plane, Printer, Stamp, Ticket as TicketIcon, Undo2, User, UserX, KeyRound, RotateCcw,
 } from "lucide-react";
-import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, newIdempotencyKey } from "@/domain/api";
+import { acknowledgeScheduleChange, getTicket, isControlOverdue, listEmdsForTicket, listGroupTickets, listTickets, newIdempotencyKey } from "@/domain/api";
 import { memosForTicket } from "@/domain/memos";
 import { toast } from "@/components/ui/toast";
 import { ssrLabel } from "@/domain/ssr";
@@ -55,10 +55,14 @@ export function TicketDetail() {
   // paylaşım kapalı: yenileme = yeniden çizim.
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["ticket", ticketNumber],
-    queryFn: async () => { const t = await getTicket(ticketNumber); return t ? { ...t } : t; },
+    queryFn: async () => { const t = await getTicket(ticketNumber); return t ? { ...t } : null; },
     structuralSharing: false,
   });
   const { data: emds } = useQuery({ queryKey: ["emdsFor", ticketNumber], queryFn: () => listEmdsForTicket(ticketNumber) });
+  const { data: known } = useQuery({
+    queryKey: ["ticketsAll"], queryFn: listTickets,
+    select: (list) => new Set(list.map((x) => x.ticketNumber)),
+  });
 
   // `?flow=` tek sefer tüketilir; yoksa kapatınca yeniden açılır.
   const consumed = useRef(false);
@@ -195,10 +199,14 @@ export function TicketDetail() {
                 })}
                 {p.infant && <OutlineBadge tone="violet">{t("ticket.detail.infant", { name: `${p.infant.surname}/${p.infant.givenName}` })}</OutlineBadge>}
                 {ticket.tourCode && <OutlineBadge tone="gray">Tour {ticket.tourCode}</OutlineBadge>}
-                {ticket.conjunctionTickets?.map((tn) => (
+                {/* Bağlı bilet bu sistemde kayıtlıysa açılır; değilse (başka
+                    sistemde kesilmiş) yalnız bilgi olarak durur — "bulunamadı"ya gitmez. */}
+                {ticket.conjunctionTickets?.map((tn) => known?.has(tn) ? (
                   <Link key={tn} to="/tickets/$ticketNumber" params={{ ticketNumber: tn }}>
                     <OutlineBadge tone="gray">Conj {tn}</OutlineBadge>
                   </Link>
+                ) : (
+                  <OutlineBadge key={tn} tone="gray">Conj {tn}</OutlineBadge>
                 ))}
                 {ticket.endorsement && <OutlineBadge tone="amber">{ticket.endorsement}</OutlineBadge>}
                 {ticket.ptc === "CHD" && <OutlineBadge tone="violet">CHD</OutlineBadge>}

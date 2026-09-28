@@ -273,7 +273,7 @@ function RaiseMemoModal({ initialTicket, onClose, onDone }: { initialTicket?: st
   const [amounts, setAmounts] = useState<Record<keyof MemoAmounts, string>>({ fare: "", tax: "", commission: "", adminFee: "150" });
   const [note, setNote] = useState("");
   const { data: ticket, isFetching } = useQuery({
-    queryKey: ["ticket", tn], queryFn: () => getTicket(tn), enabled: /^\d{13}$/.test(tn),
+    queryKey: ["ticket", tn], queryFn: async () => (await getTicket(tn)) ?? null, enabled: /^\d{13}$/.test(tn),
   });
   const num = (v: string) => parseAmount(v);
   const parsed: MemoAmounts = { fare: num(amounts.fare), tax: num(amounts.tax), commission: num(amounts.commission), adminFee: type === "ADM" ? num(amounts.adminFee) : 0 };

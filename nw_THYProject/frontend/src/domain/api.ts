@@ -1222,6 +1222,14 @@ const EMD_PRESETS = [
   { rfisc: "0G6", desc: "Evcil hayvan (kabin, PETC)", amount: 1500 },
   { rfisc: "0IK", desc: "Wi-Fi paketi", amount: 350 },
 ];
+function seedEmdStatus(t: Ticket, type: EmdType): CouponStatus {
+  if (type === "A") {
+    const s = t.coupons[0]?.status;
+    return s === "V" || s === "R" || s === "E" || s === "F" ? s : "O";
+  }
+  return t.coupons.every((c) => c.status === "V") ? "V" : "O";
+}
+
 function seedEmds(tickets: Ticket[]): Emd[] {
   const out: Emd[] = [];
   tickets.forEach((t, i) => {
@@ -1236,7 +1244,10 @@ function seedEmds(tickets: Ticket[]): Emd[] {
       issuedAt: t.issuedAt,
       associatedTicket: t.ticketNumber,
       associatedCouponSeq: type === "A" ? 1 : undefined,
-      coupons: [{ seq: 1, status: "O", rfisc: p.rfisc, description: p.desc, value: { amount: p.amount, currency: "TRY" } }],
+      // Statü bağlı biletten türer: void/iade edilmiş biletin EMD-A'sı açık
+      // görünüyordu (5.3). EMD-A kuponu ET kuponunu izler; EMD-S ise ancak
+      // satışın tamamı void edildiyse düşer.
+      coupons: [{ seq: 1, status: seedEmdStatus(t, type), rfisc: p.rfisc, description: p.desc, value: { amount: p.amount, currency: "TRY" } }],
       total: { amount: p.amount, currency: "TRY" },
     });
   });

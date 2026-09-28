@@ -22,7 +22,7 @@ const FLOW: Order["status"][] = ["Created", "Confirmed", "Fulfilled", "Closed"];
 export function OrderDetail() {
   const t = useT();
   const { orderId } = useParams({ from: "/orders/$orderId" });
-  const { data: order, isLoading } = useQuery({ queryKey: ["order", orderId], queryFn: () => getOrder(orderId) });
+  const { data: order, isLoading } = useQuery({ queryKey: ["order", orderId], queryFn: async () => (await getOrder(orderId)) ?? null });
 
   const withList = (detail: React.ReactNode) => (
     <SplitView list={<OrderListPane selected={orderId} />} detail={detail} />

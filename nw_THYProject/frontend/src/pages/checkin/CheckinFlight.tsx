@@ -75,7 +75,7 @@ export function CheckinFlight() {
   /** APIS bilgisi girilecek yolcu (uluslararası uçuşta zorunlu). */
   const [apisFor, setApisFor] = useState<CheckinPassenger | null>(null);
 
-  const { data: flight, isLoading } = useQuery({ queryKey: ["flight", flightId], queryFn: () => getFlight(flightId) });
+  const { data: flight, isLoading } = useQuery({ queryKey: ["flight", flightId], queryFn: async () => (await getFlight(flightId)) ?? null });
   const { data: pax } = useQuery({ queryKey: ["pax", flightId], queryFn: () => listPassengers(flightId) });
 
   const refreshAll = (tn?: string) => {

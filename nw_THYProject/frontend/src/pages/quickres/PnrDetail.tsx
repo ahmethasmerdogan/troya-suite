@@ -35,7 +35,7 @@ export function PnrDetail() {
   // Depo yerinde değişir; sorgu her seferinde yeni üst nesne döndürsün ki ekran yeniden çizilsin.
   const { data: pnr, isLoading } = useQuery({
     queryKey: ["pnr", rl],
-    queryFn: async () => { const p = await getPnr(rl); return p ? { ...p } : p; },
+    queryFn: async () => { const p = await getPnr(rl); return p ? { ...p } : null; },
     structuralSharing: false,
   });
   const [menu, setMenu] = useState(false);

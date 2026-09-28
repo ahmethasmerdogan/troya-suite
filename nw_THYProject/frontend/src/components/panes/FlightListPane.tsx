@@ -57,7 +57,7 @@ export function FlightListPane({ selected }: { selected?: string }) {
             return (
               <ListRow
                 key={f.flightId}
-                label={`${f.carrier}${f.flightNumber} · ${f.origin}→${f.destination}`}
+                label={`${flightCode(f.carrier, f.flightNumber)} · ${f.origin}→${f.destination}`}
                 selected={f.flightId === selected}
                 onClick={() => navigate({ to: "/checkin/$flightId", params: { flightId: f.flightId } })}
               >

@@ -29,6 +29,7 @@ import { StatusPill } from "@/components/domain/StatusPill";
 import { Money } from "@/components/domain/Money";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/core";
 import { Drawer } from "@/components/ui/overlay";
+import { DayPicker } from "@/components/ui/pickers";
 import { Banner } from "@/components/ui/banner";
 import { Inset, Line, Rule } from "@/components/ui/surface";
 import { toast } from "@/components/ui/toast";
@@ -779,7 +780,8 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
   const [endorseTo, setEndorseTo] = useState("LH");
   const [carrier, setCarrier] = useState("LH");
   const [flightNumber, setFlightNumber] = useState("1304");
-  const [date, setDate] = useState("");
+  // Yeni uçuş günü ilk açık kuponun günüyle başlar; boş gönderilemez.
+  const [date, setDate] = useState(() => ticket.coupons.find((c) => ["O", "A", "I"].includes(c.status))?.segment.departure.slice(0, 10) ?? "");
 
   const run = useMutation({
     mutationFn: () => irropReroute({
@@ -794,7 +796,7 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
     <Drawer
       open={open} onClose={onClose} title={t("flows.irrop.title")}
       hint={t("flows.irrop.hint")}
-      footer={<Button disabled={!sel.length || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.irrop.submit")}</Button>}
+      footer={<Button disabled={!sel.length || !date || !/^[A-Z0-9]{2}$/.test(endorseTo) || !/\d/.test(flightNumber) || run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.applying") : t("flows.irrop.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <div>
@@ -810,7 +812,7 @@ function IrropFlow({ ticket, open, onClose }: { ticket: Ticket; open: boolean; o
           <Field label={t("flows.irrop.endorseTo")}><Input value={endorseTo} onChange={(e) => setEndorseTo(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
           <Field label={t("flows.irrop.newCarrier")}><Input value={carrier} onChange={(e) => setCarrier(e.target.value.toUpperCase())} maxLength={2} className="uppercase" /></Field>
           <Field label={t("flows.common.newFlightNo")}><Input value={flightNumber} onChange={(e) => setFlightNumber(e.target.value)} /></Field>
-          <Field label={t("flows.irrop.date")} className="col-span-2"><Input type="date" value={date} onChange={(e) => setDate(e.target.value)} /></Field>
+          <Field label={t("flows.irrop.date")} className="col-span-2"><DayPicker value={date} onChange={setDate} quick={false} /></Field>
         </div>
       </div>
     </Drawer>
@@ -1027,7 +1029,7 @@ function EmdFlow({ ticket, open, baggage, onClose }: { ticket: Ticket; open: boo
       open={open} onClose={onClose}
       title={baggage ? t("flows.emd.titleBaggage") : t("flows.emd.title")}
       hint={t("flows.emd.hint")}
-      footer={<Button variant="success" disabled={run.isPending} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.issuing") : t("flows.emd.submit")}</Button>}
+      footer={<Button variant="success" disabled={run.isPending || !(parseAmount(amount) > 0)} onClick={() => run.mutate()}>{run.isPending ? t("flows.common.issuing") : t("flows.emd.submit")}</Button>}
     >
       <div className="flex flex-col gap-4">
         <Field label={t("flows.emd.typeLabel")} hint={t("flows.emd.typeHint")}>

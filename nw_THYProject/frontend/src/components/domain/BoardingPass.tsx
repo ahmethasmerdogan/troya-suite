@@ -40,9 +40,9 @@ export function BoardingPass({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2.5 bg-[var(--brand)] px-5 py-2.5 text-white">
             <BrandMark size={18} variant="bare" className="text-white" />
-            <span className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
+            <span lang="en" className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
             <span className="ml-auto text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
-              Biniş Kartı · Boarding Pass
+              <span lang="tr">Biniş Kartı</span> · <span lang="en">Boarding Pass</span>
             </span>
           </div>
 
@@ -98,7 +98,7 @@ export function BoardingPass({
               <span className="num">PNR {pax.pnr}</span>
               <span className="num">{pax.cabin === "Business" ? "BUSINESS" : "ECONOMY"}</span>
               {pax.ff && <span className="num">FF {pax.ff}</span>}
-              <span className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
+              <span lang="en" className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
             </div>
           </div>
         </div>

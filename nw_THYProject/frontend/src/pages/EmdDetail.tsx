@@ -25,7 +25,7 @@ export function EmdDetail() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { can, lockHint } = usePerm();
-  const { data: emd, isLoading } = useQuery({ queryKey: ["emd", emdNumber], queryFn: () => getEmd(emdNumber) });
+  const { data: emd, isLoading } = useQuery({ queryKey: ["emd", emdNumber], queryFn: async () => (await getEmd(emdNumber)) ?? null });
 
   // EMD'nin bağlı bileti, order'ı ve raporlar da değişir (lib/invalidate).
   const refresh = () => invalidateRecords(qc);

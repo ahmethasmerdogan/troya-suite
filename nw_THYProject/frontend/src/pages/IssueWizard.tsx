@@ -9,7 +9,7 @@ import { getPnr, paxKey, unticketedPassengers, type ReservationSegment } from "@
 import { searchFlights, fmtDuration, type FlightItem } from "@/domain/flights";
 import { computeFareOffers, fareForPtc, CHILD_DISCOUNT, type FareOffer, type Ptc } from "@/domain/pricing";
 import { Tip } from "@/components/tips/Tip";
-import { co2PerPax } from "@/domain/co2";
+import { cabinOfRbd, co2PerPax } from "@/domain/co2";
 import { SSR_CATALOG, ssrCategoryLabel, ssrDefLabel, type SsrCategory } from "@/domain/ssr";
 import { fareRuleFor, ruleSummary } from "@/domain/fareRules";
 import { FIELD_HELP } from "@/domain/fieldHelp";
@@ -124,6 +124,9 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
   // --- ücret
   const [offer, setOffer] = useState<FareOffer | null>(null);
   const [cabinFilter, setCabinFilter] = useState<string>("all");
+  // PNR'dan gelindiyse tutulan kabin: ücret listesi ona süzülür, farklı kabin
+  // seçilirse uyarılır (önce Y rezervasyona sessizce Business bilet kesilebiliyordu).
+  const [booked, setBooked] = useState<{ rbd: string; cabin: string } | null>(null);
 
   // --- ödeme
   const [fop, setFop] = useState<FormOfPaymentType>("credit");
@@ -141,7 +144,7 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
   // --- QuickRes'ten gelindiyse formu rezervasyondan doldur (?pnr=XQ7T2M)
   const { pnr: srcRl } = useSearch({ from: "/issue" });
   const { data: srcPnr } = useQuery({
-    queryKey: ["pnr", srcRl], queryFn: () => getPnr(srcRl!), enabled: !!srcRl,
+    queryKey: ["pnr", srcRl], queryFn: async () => (await getPnr(srcRl!)) ?? null, enabled: !!srcRl,
   });
   const filled = useRef(false);
   useEffect(() => {
@@ -159,6 +162,12 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
     if (srcPnr.segments[0]) setCarrier(srcPnr.segments[0].carrier);
     setPnr(srcPnr.recordLocator);
     if (srcPnr.segments.length) setLegs(srcPnr.segments.map(legFromSegment));
+    const rbd = srcPnr.segments.find((s) => s.status !== "XX")?.rbd;
+    if (rbd) {
+      const cabin = cabinOfRbd(rbd);
+      setBooked({ rbd, cabin });
+      setCabinFilter(cabin);
+    }
   }, [srcPnr]);
 
   // Her adımın kendi zorunlulukları var; eksikse İLERLEMEZ ve neyin eksik
@@ -331,7 +340,7 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
           <Card data-tour="issue.form" className="p-5">
             {step === 0 && <PaxStep pax={pax} setPax={setPax} carrier={carrier} setCarrier={setCarrier} pnr={pnr} setPnr={setPnr} errors={errors} companions={companions} setCompanions={setCompanions} />}
             {step === 1 && <LegStep legs={legs} setLegs={setLegs} errors={errors} />}
-            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} />}
+            {step === 2 && <FareStep offers={offers} offer={offer} setOffer={setOffer} cabin={cabinFilter} setCabin={setCabinFilter} error={errors.offer} legs={legs} booked={booked} />}
             {step === 3 && <PayStep fop={fop} setFop={setFop} detail={fopDetail} setDetail={setFopDetail} error={errors.fop} />}
             {step === 4 && <ReviewStep pax={pax} carrier={carrier} legs={legs} offer={offer} fop={fop} detail={fopDetail} />}
             {isGroup && offer && (step === 2 || step === 4) && <GroupFareTable rows={groupRows} total={collect!} />}
@@ -840,8 +849,8 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
 
 /* --- 2 · ücret -------------------------------------------------------- */
 function FareStep({
-  offers, offer, setOffer, cabin, setCabin, error, legs,
-}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string; legs: Leg[] }) {
+  offers, offer, setOffer, cabin, setCabin, error, legs, booked,
+}: { offers: FareOffer[]; offer: FareOffer | null; setOffer: (o: FareOffer) => void; cabin: string; setCabin: (c: string) => void; error?: string; legs: Leg[]; booked?: { rbd: string; cabin: string } | null }) {
   const t = useT();
   const lang = useUI((s) => s.lang); // ürün açıklaması ve ceza kuralı domainden gelir, dili burada seçilir
   const cabins = ["all", ...Array.from(new Set(offers.map((o) => o.cabin)))];
@@ -861,6 +870,9 @@ function FareStep({
       </div>
 
       {error && <Alert tone="danger" title={error} />}
+      {booked && (offer && offer.cabin !== booked.cabin
+        ? <Alert tone="warning" title={t("issue.fare.bookedMismatch", { rbd: booked.rbd, cabin: booked.cabin, chosen: offer.cabin })} />
+        : <Alert tone="info" title={t("issue.fare.booked", { rbd: booked.rbd, cabin: booked.cabin })} />)}
 
       {offers.length === 0 ? (
         <Empty title={t("issue.fare.emptyTitle")} hint={t("issue.fare.emptyHint")} />
@@ -944,9 +956,11 @@ function FareStep({
  * yapabileceği asgari şey numarayı hiç tutmamaktır.)
  */
 export function maskCardInput(raw: string): string {
-  const digits = raw.replace(/\D/g, "").slice(0, 19);
-  if (digits.length <= 4) return digits;
-  return "X".repeat(digits.length - 4) + digits.slice(-4);
+  // Alandaki "X"ler daha önce maskelenmiş hanelerdir — atılırsa tek tek
+  // yazarken her tuşta sayı kayboluyor, sonuç "X1234" kalıyordu.
+  const s = raw.toUpperCase().replace(/[^0-9X]/g, "").slice(0, 19);
+  if (s.length <= 4) return s;
+  return "X".repeat(s.length - 4) + s.slice(-4);
 }
 const FOPS: { id: FormOfPaymentType; labelKey: Key; icon: React.ReactNode }[] = [
   { id: "credit", labelKey: "issue.fop.credit", icon: <CreditCard size={16} strokeWidth={1.75} /> },

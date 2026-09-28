@@ -233,7 +233,15 @@ function Users() {
       />
       <RoleModal
         user={roleFor} onClose={() => setRoleFor(null)}
-        onSubmit={(role, reason) => { if (roleFor) assignRole(actor, roleFor.id, role, reason); setRoleFor(null); }}
+        onSubmit={(role, reason) => {
+          if (roleFor) {
+            assignRole(actor, roleFor.id, role, reason);
+            // Kendi rolünü değiştiren yetkili yeni yetkilerle devam eder —
+            // önce çıkış yapana kadar eski rolün ekranları açık kalıyordu.
+            if (roleFor.id === me?.id) useUI.getState().setRole(role);
+          }
+          setRoleFor(null);
+        }}
       />
       <StatusModal
         user={statusFor} onClose={() => setStatusFor(null)}
@@ -273,7 +281,10 @@ function UserFormModal({
   }, [open, initial]);
 
   const set = <K extends keyof NewUserInput>(k: K, val: NewUserInput[K]) => setV((x) => ({ ...x, [k]: val }));
-  const valid = v.name.trim().length > 2 && /.+@.+\..+/.test(v.email) && v.title.trim().length > 1;
+  // E-posta kimliktir: başka bir personelde kayıtlıysa ikinci hesap açılmaz
+  // (önce aynı adrese sessizce "e.demir2" açılıyordu).
+  const emailTaken = users.some((u) => u.id !== initial?.id && u.email.trim().toLowerCase() === v.email.trim().toLowerCase());
+  const valid = v.name.trim().length > 2 && /.+@.+\..+/.test(v.email) && !emailTaken && v.title.trim().length > 1;
 
   return (
     <Modal
@@ -287,7 +298,7 @@ function UserFormModal({
         <Field label={t("admin.form.name")} required>
           <Input value={v.name} onChange={(e) => set("name", e.target.value)} placeholder="Elif Demir" />
         </Field>
-        <Field label={t("admin.form.email")} required hint={t("admin.form.emailHint")}>
+        <Field label={t("admin.form.email")} required hint={t("admin.form.emailHint")} error={emailTaken ? t("admin.form.emailTaken") : undefined}>
           <Input value={v.email} onChange={(e) => set("email", e.target.value)} placeholder="e.demir@thy.com" />
         </Field>
         <Field label={t("admin.form.jobTitle")} required>

@@ -70,7 +70,8 @@ export function TicketDocument({
       <div className="flex flex-col sm:flex-row">
         {/* ---------- gövde ---------- */}
         <div className="min-w-0 flex-1">
-          <DocBand title="Elektronik Bilet · E-Ticket" note={ticket.ticketNumber} />
+          {/* Her parça kendi diliyle büyütülür: Türkçe kural "Ticket"ı "TİCKET" yapıyordu. */}
+          <DocBand title={<><span lang="tr">Elektronik Bilet</span> · <span lang="en">E-Ticket</span></>} note={ticket.ticketNumber} />
 
           <div className="px-5 py-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
@@ -144,7 +145,7 @@ export function TicketDocument({
                   {mins < 0 ? d("ticket.doc.departed") : d("ticket.doc.timeLeft", { v: fmtLeft(mins, lang) })}
                 </span>
               )}
-              <span className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
+              <span lang="en" className="ml-auto uppercase tracking-[0.1em]">A Star Alliance Member ✦</span>
             </div>
           </div>
         </div>

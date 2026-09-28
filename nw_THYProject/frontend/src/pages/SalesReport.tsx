@@ -154,6 +154,11 @@ export function SalesReport() {
         return <Money value={r.amount} size="sm" tone={sign < 0 ? "out" : undefined} />;
       },
     }),
+    // Tutar sütunu karışık para birimlidir (JPY, EUR, TRY): dosyada sayı
+    // kalsın diye para birimi ayrı sütunda (ekranda tutarın yanında yazar).
+    col.accessor((r) => r.money?.currency ?? r.amount?.currency ?? "", {
+      id: "currency", header: t("search.col.currency"), meta: { exportOnly: true },
+    }),
   ] as ColumnDef<TransactionRow, unknown>[];
 
   return (

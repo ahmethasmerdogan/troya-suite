@@ -534,7 +534,7 @@ function RefViewer({ refItem, onClose }: { refItem: ChatRef; onClose: () => void
   const t = useT();
   const { data: ticket, isLoading } = useQuery({
     queryKey: ["ticket", refItem.id],
-    queryFn: () => getTicket(refItem.id),
+    queryFn: async () => (await getTicket(refItem.id)) ?? null,
   });
 
   return (
@@ -734,6 +734,10 @@ function NewChannelModal({
   const [desc, setDesc] = useState("");
   const [sel, setSel] = useState<string[]>([]);
   useEffect(() => { if (open) { setName(""); setDesc(""); setSel([]); } }, [open]);
+  // Aynı adla ikinci kanal açılmaz — iki "QA Kanal" hangisine yazıldığını belirsizleştirir.
+  const channels = useChat((s) => s.channels);
+  const key = (x: string) => x.trim().toLocaleLowerCase("tr-TR");
+  const taken = name.trim().length > 0 && channels.some((c) => key(c.name) === key(name));
 
   return (
     <Modal
@@ -741,13 +745,13 @@ function NewChannelModal({
       hint={t("chat.newChannel.hint")}
       width="sm"
       footer={
-        <Button variant="success" disabled={name.trim().length < 2} onClick={() => onCreate(name, desc, sel)}>
+        <Button variant="success" disabled={name.trim().length < 2 || taken} onClick={() => onCreate(name, desc, sel)}>
           {t("chat.newChannel.submit")}
         </Button>
       }
     >
       <div className="flex flex-col gap-4">
-        <Field label={t("chat.newChannel.name")} required>
+        <Field label={t("chat.newChannel.name")} required error={taken ? t("chat.newChannel.taken") : undefined}>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("chat.newChannel.namePlaceholder")} maxLength={40} />
         </Field>
         <Field label={t("chat.newChannel.desc")} hint={t("chat.newChannel.descHint")}>

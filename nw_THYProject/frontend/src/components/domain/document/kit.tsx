@@ -24,11 +24,11 @@ export function DocSheet({ children, className }: { children: ReactNode; classNa
 }
 
 /** Üstteki THY bandı — belgenin kim tarafından düzenlendiğini söyler. */
-export function DocBand({ title, note }: { title: string; note?: string }) {
+export function DocBand({ title, note }: { title: ReactNode; note?: string }) {
   return (
     <div className="flex items-center gap-2.5 bg-[var(--brand)] px-5 py-2.5 text-white">
       <BrandMark size={18} variant="bare" className="text-white" />
-      <span className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
+      <span lang="en" className="text-[12px] font-semibold uppercase tracking-[0.14em]">Turkish Airlines</span>
       <span className="ml-auto truncate text-[10.5px] font-semibold uppercase tracking-[0.14em] text-white/80">
         {title}
       </span>

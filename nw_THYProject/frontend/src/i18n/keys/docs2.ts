@@ -29,7 +29,7 @@ export const tr = {
 
   // --- /guide: bilet kesmek ---
   "docs2.guide.issue.title": "Bilet kesmek",
-  "docs2.guide.issue.s1": "Soldaki raydan Troya modülüne geçin, ardından Bilet Kes'e basın.",
+  "docs2.guide.issue.s1": "Üst menüden Troya modülüne geçin, ardından Bilet Kes'e basın.",
   "docs2.guide.issue.s2": "Yolcu bilgilerini pasaporttaki ile birebir girin; sistem büyük harfe çevirir.",
   "docs2.guide.issue.s3": "Güzergâh ve tarihi girin, çıkan uçuş listesinden uçuşu seçin — sefer no elle yazılmaz.",
   "docs2.guide.issue.s4": "Sistem ücret tarifesini çıkarır; duruma uygun ücreti seçin (RBD ve fare basis otomatik oluşur).",
@@ -40,7 +40,7 @@ export const tr = {
   "docs2.guide.find.title": "Bilet bulmak",
   "docs2.guide.find.s1": "Bilet Ara ekranında tek çubuk yeter: bilet no, PNR, yolcu soyadı, havalimanı, uçuş no ya da kartın son 4 hanesi.",
   "docs2.guide.find.s2": "Daha dar arama için Gelişmiş'e basıp tarih aralığı ve kimlik gibi alanları kullanın.",
-  "docs2.guide.find.s3": "Sol listeden kayda tıklayın; sağda bilet açılır, liste yerinde kalır.",
+  "docs2.guide.find.s3": "Sonuç listesinde kayda tıklayın; bilet kaydı açılır. Listeye geri tuşuyla, arama kutusu yazdığınızı koruyarak dönülür.",
   "docs2.guide.find.s4": "Her yerden ⌘K ile de arayabilirsiniz: 13 hane belge, 6 karakter PNR olarak algılanır.",
 
   // --- /guide: değişiklik, iade, iptal ---
@@ -77,7 +77,7 @@ export const en: Record<keyof typeof tr, string> = {
 
   // --- /guide: issuing a ticket ---
   "docs2.guide.issue.title": "Issuing a ticket",
-  "docs2.guide.issue.s1": "Switch to the Troya module from the rail on the left, then press Issue Ticket.",
+  "docs2.guide.issue.s1": "Switch to the Troya module from the top menu, then press Issue Ticket.",
   "docs2.guide.issue.s2": "Enter the passenger details exactly as they appear in the passport; the system converts them to upper case.",
   "docs2.guide.issue.s3": "Enter the route and the date, then pick the flight from the list that appears — the flight number is never typed by hand.",
   "docs2.guide.issue.s4": "The system quotes the fares; select the one that fits the case (RBD and fare basis are filled in automatically).",
@@ -88,7 +88,7 @@ export const en: Record<keyof typeof tr, string> = {
   "docs2.guide.find.title": "Finding a ticket",
   "docs2.guide.find.s1": "On the Search Tickets screen a single bar is enough: ticket number, PNR, passenger surname, airport, flight number or the last 4 digits of the card.",
   "docs2.guide.find.s2": "To narrow the search, press Advanced and use fields such as the date range and the identity document.",
-  "docs2.guide.find.s3": "Click a record in the list on the left; the ticket opens on the right and the list stays in place.",
+  "docs2.guide.find.s3": "Click a record in the result list to open the ticket record. The back button returns to the list with your search kept.",
   "docs2.guide.find.s4": "You can also search from anywhere with ⌘K: 13 digits are read as a document, 6 characters as a PNR.",
 
   // --- /guide: change, refund, void ---

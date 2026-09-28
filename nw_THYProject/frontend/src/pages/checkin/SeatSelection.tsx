@@ -9,13 +9,14 @@ import { denialReason, paxSeatNotes, seatDenial } from "@/domain/seatRules";
 import { layoutFor } from "@/domain/aircraftLayout";
 import { CabinMap, CabinLegend, blockedSummary } from "@/components/checkin/CabinMap";
 import { Button, Field, Input } from "@/components/ui/core";
-import { PageTitle, Panel, PanelHead, PanelBody, Meta, MetaGrid } from "@/components/ui/surface";
+import { PageTitle, Panel, PanelHead, PanelBody, Meta, MetaGrid, Empty } from "@/components/ui/surface";
 import { Tip } from "@/components/tips/Tip";
 import { Banner } from "@/components/ui/banner";
 import { Pill } from "@/components/ui/pill";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, translate } from "@/i18n";
+import { flightCode } from "@/lib/utils";
 import { useUI } from "@/store/ui";
 
 /**
@@ -40,7 +41,7 @@ export function SeatSelection() {
   const [seat, setSeat] = useState<string | null>(null);
   const [bags, setBags] = useState(1);
 
-  const { data: flight } = useQuery({ queryKey: ["flight", flightId], queryFn: () => getFlight(flightId) });
+  const { data: flight } = useQuery({ queryKey: ["flight", flightId], queryFn: async () => (await getFlight(flightId)) ?? null });
   const { data: pax } = useQuery({ queryKey: ["pax", flightId], queryFn: () => listPassengers(flightId) });
   const { data: seats, isLoading } = useQuery({ queryKey: ["seatmap", flightId], queryFn: () => getSeatMap(flightId) });
 
@@ -88,6 +89,10 @@ export function SeatSelection() {
     onError: (e: Error) => toast.danger(t("checkin.toast.acceptFailed"), e.message),
   });
 
+  // Veri geldi ama yolcu/uçuş yok (bozuk adres): sonsuz iskelet yerine açık bir mesaj.
+  if (!isLoading && pax && flight !== undefined && (!person || !flight)) {
+    return <Empty title={t("notfound.title")} hint={t("notfound.desc")} />;
+  }
   if (isLoading || !person || !flight) return <Skeleton className="h-96 w-full" />;
 
   const layout = layoutFor(flight.aircraft.type);
@@ -104,7 +109,7 @@ export function SeatSelection() {
     <>
       <PageTitle
         title={t("checkin.seat.title")}
-        hint={`${person.surname}/${person.givenName} · ${flight.carrier}${flight.flightNumber} · ${flight.origin} → ${flight.destination}`}
+        hint={`${person.surname}/${person.givenName} · ${flightCode(flight.carrier, flight.flightNumber)} · ${flight.origin} → ${flight.destination}`}
       />
       {late && lateReason && (
         <Banner kind="warning" className="mb-4" title={t("late.banner", { reason: lang === "en" ? lateReason.en : lateReason.tr, by: late.approvedBy })}>
