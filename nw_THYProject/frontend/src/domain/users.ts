@@ -8,6 +8,22 @@ export type Unit = "Biletleme" | "İstasyon Operasyon" | "Check-in" | "Gelir Kor
 
 export const UNITS: Unit[] = ["Biletleme", "İstasyon Operasyon", "Check-in", "Gelir Koruma", "Yönetim"];
 
+const UNIT_EN: Record<Unit, string> = {
+  "Biletleme": "Ticketing",
+  "İstasyon Operasyon": "Station Operations",
+  "Check-in": "Check-in",
+  "Gelir Koruma": "Revenue Protection",
+  "Yönetim": "Management",
+};
+
+/**
+ * Birimin seçilen dildeki adı. Kayıtta (ve denetim kaydında) Türkçe ad
+ * saklanır; İngilizce arayüz yalnız gösterirken çevirir.
+ */
+export function unitLabel(unit: string, lang: "tr" | "en" = "tr"): string {
+  return lang === "en" ? UNIT_EN[unit as Unit] ?? unit : unit;
+}
+
 export interface DemoUser {
   id: string; // kullanıcı adı
   name: string;

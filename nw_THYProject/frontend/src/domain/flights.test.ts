@@ -34,5 +34,7 @@ describe("flights / availability", () => {
   it("geçersiz güzergâh boş; fmtDuration okunur", () => {
     expect(searchFlights("IS", "LHR")).toHaveLength(0);
     expect(fmtDuration(135)).toBe("2s 15d");
+    expect(fmtDuration(135, "en")).toBe("2h 15m");
+    expect(fmtDuration(45, "en")).toBe("45m");
   });
 });

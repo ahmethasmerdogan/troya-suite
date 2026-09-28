@@ -24,6 +24,7 @@ import {
   Alert, Button, Card, InsetPanel, Modal, ModalClose, OutlineBadge, RadioCards, StatusPill,
 } from "@/ui";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
 import { useOpKey } from "@/lib/useOpKey";
@@ -103,6 +104,7 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
   const op = useOpKey();
   const qc = useQueryClient();
   const t = useT();
+  const errText = useErrorText();
   const navigate = useNavigate();
   const [step, setStep] = useState(0);
   const [issued, setIssued] = useState<Ticket | null>(null);
@@ -268,7 +270,7 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
       idempotencyKey: op.key(),
     }),
     onSuccess: (r) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssuedGroup(r); setIssued(r.tickets[0]); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   const issue = useMutation({
@@ -292,7 +294,7 @@ function IssueWizardForm({ onNew }: { onNew: () => void }) {
       idempotencyKey: op.key(),
     }),
     onSuccess: (t) => { op.rotate(); invalidateRecords(qc); setConfirming(false); setIssued(t); },
-    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), e.message); },
+    onError: (e: Error) => { setConfirming(false); toast.danger(t("issue.toast.failed"), errText(e)); },
   });
 
   if (issued) {
@@ -759,6 +761,7 @@ function PaxStep({
 /* --- 1 · sefer -------------------------------------------------------- */
 function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) => void; errors: Record<string, string> }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const set = (i: number, patch: Partial<Leg>) =>
     // Güzergâh/tarih değişirse seçim de rezervasyon seferi de düşer.
     setLegs(legs.map((l, j) => (i === j ? { ...l, ...patch, ...(patch.flight === undefined && (patch.origin || patch.destination || patch.date) ? { flight: null, booked: undefined } : {}) } : l)));
@@ -815,7 +818,7 @@ function LegStep({ legs, setLegs, errors }: { legs: Leg[]; setLegs: (l: Leg[]) =
                         <span className="mx-1.5 text-ink-3">→</span>
                         {new Date(f.arrival).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}
                       </span>
-                      <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin)}</span>
+                      <span className="num text-[12px] text-ink-3">{fmtDuration(f.durationMin, lang)}</span>
                       {f.id === leg.booked?.id ? (
                         <OutlineBadge className="ml-auto">{t("issue.leg.booked")}</OutlineBadge>
                       ) : (
@@ -929,7 +932,7 @@ function FareStep({
                       const kg = l.origin && l.destination ? co2PerPax(l.origin, l.destination, o.cabin, l.flight?.aircraft) : undefined;
                       return kg === undefined ? sum : (sum ?? 0) + kg;
                     }, undefined)} />
-                    <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{o.seatNote}</StatusPill>
+                    <StatusPill tone={o.seatSelection === "included" ? "green" : "amber"}>{lang === "en" ? o.seatNoteEn : o.seatNote}</StatusPill>
                     <span className="num ml-1 text-[11.5px] text-ink-3">{t("issue.fare.seatsLeft", { n: o.seatsLeft })}</span>
                   </span>
                   {/* Ceza kuralı satış anında görünür — yolcuya doğru bilgi verilsin. */}

@@ -14,6 +14,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { toast } from "@/components/ui/toast";
 import { usePerm } from "@/lib/usePerm";
 import { useT, type Key } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +35,7 @@ export function DocsModal({
   flight, pax, onClose, onSaved,
 }: { flight: DepartureFlight; pax: CheckinPassenger; onClose: () => void; onSaved: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const { can } = usePerm();
@@ -47,7 +49,7 @@ export function DocsModal({
   const [otb, setOtb] = useState("");
 
   const done = (p: CheckinPassenger) => { toast.success(t("docs.toast.saved"), `${p.surname}/${p.givenName}`); onSaved(); };
-  const fail = (e: Error) => toast.danger(t("docs.toast.failed"), e.message);
+  const fail = (e: Error) => toast.danger(t("docs.toast.failed"), errText(e));
   const saveExpiry = useMutation({ mutationFn: () => recordPassportExpiry(flight.flightId, pax.id, expiry), onSuccess: done, onError: fail });
   const savePermit = useMutation({
     mutationFn: () => recordTravelPermit(flight.flightId, pax.id, { type: ptype, number: pnum, validUntil: puntil }),

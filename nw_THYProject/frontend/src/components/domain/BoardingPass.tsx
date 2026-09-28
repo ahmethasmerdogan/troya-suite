@@ -3,6 +3,7 @@ import type { CheckinPassenger, DepartureFlight } from "@/domain/checkin";
 import { airportByCode } from "@/domain/airports";
 import { BrandMark } from "@/components/BrandMark";
 import { useT } from "@/i18n";
+import { useUI } from "@/store/ui";
 import { cn, flightCode, locale } from "@/lib/utils";
 
 /**
@@ -26,6 +27,8 @@ export function BoardingPass({
   className?: string;
 }) {
   const t = useT();
+  // Şehir adı arayüz diliyle: İngilizce arayüzde "Londra" değil "London".
+  const en = useUI((s) => s.lang) === "en";
   const from = airportByCode(flight.origin);
   const to = airportByCode(flight.destination);
   const dep = new Date(flight.departure);
@@ -55,7 +58,7 @@ export function BoardingPass({
             <div className="mt-5 flex items-center gap-4">
               <div className="min-w-0">
                 <div className="num text-[30px] font-semibold leading-none tracking-tight text-ink">{flight.origin}</div>
-                <div className="mt-1 truncate text-[11.5px] text-ink-3">{from?.city ?? ""}</div>
+                <div className="mt-1 truncate text-[11.5px] text-ink-3">{(en ? from?.cityEn : from?.city) ?? ""}</div>
               </div>
               <div className="flex min-w-0 flex-1 flex-col items-center">
                 <span className="num text-[11px] text-ink-3">{flightCode(flight.carrier, flight.flightNumber)}</span>
@@ -72,7 +75,7 @@ export function BoardingPass({
               </div>
               <div className="min-w-0 text-right">
                 <div className="num text-[30px] font-semibold leading-none tracking-tight text-ink">{flight.destination}</div>
-                <div className="mt-1 truncate text-[11.5px] text-ink-3">{to?.city ?? ""}</div>
+                <div className="mt-1 truncate text-[11.5px] text-ink-3">{(en ? to?.cityEn : to?.city) ?? ""}</div>
               </div>
             </div>
 

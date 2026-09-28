@@ -23,6 +23,7 @@
  */
 import { getTicket } from "./api";
 import { DEMO_NOW } from "./demoClock";
+import { LocalizedError } from "./errors";
 import { MOCK_TICKETS } from "./mockData";
 import type { Money, Ticket } from "./types";
 
@@ -98,7 +99,8 @@ export const ISSUE_LIMIT_MONTHS = 9;
 const DAY = 86_400_000;
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export class MemoError extends Error {}
+/** Dekont kuralı ihlali — Türkçe mesaj + İngilizce karşılık (errors.ts). */
+export class MemoError extends LocalizedError {}
 
 /**
  * BSP fatura dönemi — ayı dört döneme böler (1–7, 8–15, 16–23, 24–son).
@@ -175,7 +177,7 @@ async function raiseMemoRun(input: RaiseMemoInput): Promise<Memo> {
   const prior = keys.get(input.idempotencyKey);
   if (prior) return MEMOS.find((m) => m.id === prior)!;
   const t = await getTicket(input.ticketNumber);
-  if (!t) throw new MemoError("Bilet bulunamadı.");
+  if (!t) throw new MemoError("Bilet bulunamadı.", "Ticket not found.");
   return raiseCore(t, input);
 }
 
@@ -183,24 +185,24 @@ async function raiseMemoRun(input: RaiseMemoInput): Promise<Memo> {
 function raiseCore(t: Ticket, input: RaiseMemoInput): Memo {
   const prior = keys.get(input.idempotencyKey);
   if (prior) return MEMOS.find((m) => m.id === prior)!;
-  if (!t.agent) throw new MemoError("Bu bilet havayolunun kendi kanalından satılmış — ADM/ACM yalnız acente satışına kesilir.");
-  if (!MEMO_REASONS[input.type].some((r) => r.code === input.reason)) throw new MemoError("Gerekçe bu dekont türüne ait değil.");
-  if (input.reason === "OTHER" && !input.note?.trim()) throw new MemoError("\"Diğer\" gerekçesinde açıklama zorunlu.");
+  if (!t.agent) throw new MemoError("Bu bilet havayolunun kendi kanalından satılmış — ADM/ACM yalnız acente satışına kesilir.", "This ticket was sold through the airline's own channel — ADM/ACM are raised only on agency sales.");
+  if (!MEMO_REASONS[input.type].some((r) => r.code === input.reason)) throw new MemoError("Gerekçe bu dekont türüne ait değil.", "The reason does not belong to this memo type.");
+  if (input.reason === "OTHER" && !input.note?.trim()) throw new MemoError("\"Diğer\" gerekçesinde açıklama zorunlu.", "A description is required for the \"Other\" reason.");
   const a = input.amounts;
   if ([a.fare, a.tax, a.commission, a.adminFee].some((x) => !Number.isFinite(x) || x < 0))
-    throw new MemoError("Tutar kalemleri sıfır ya da pozitif olmalı.");
-  if (input.type === "ACM" && a.adminFee > 0) throw new MemoError("ACM'de işlem ücreti olmaz — işlem ücreti yalnız ADM'de alınır.");
+    throw new MemoError("Tutar kalemleri sıfır ya da pozitif olmalı.", "Amount lines must be zero or positive.");
+  if (input.type === "ACM" && a.adminFee > 0) throw new MemoError("ACM'de işlem ücreti olmaz — işlem ücreti yalnız ADM'de alınır.", "An ACM carries no admin fee — the admin fee is charged only on an ADM.");
   const total = sum(a);
-  if (total <= 0) throw new MemoError("Dekont tutarı sıfırdan büyük olmalı.");
+  if (total <= 0) throw new MemoError("Dekont tutarı sıfırdan büyük olmalı.", "The memo amount must be greater than zero.");
 
   const now = input.at ?? new Date().toISOString();
   if (input.type === "ADM") {
     const limit = addMonths(memoAnchorDate(t), ISSUE_LIMIT_MONTHS);
     if (Date.parse(now) > limit)
-      throw new MemoError(`ADM süresi geçti — son uçuş/iade tarihinden itibaren ${ISSUE_LIMIT_MONTHS} ay içinde kesilir (Res. 850m).`);
+      throw new MemoError(`ADM süresi geçti — son uçuş/iade tarihinden itibaren ${ISSUE_LIMIT_MONTHS} ay içinde kesilir (Res. 850m).`, `ADM time limit exceeded — it must be raised within ${ISSUE_LIMIT_MONTHS} months of the last flight/refund date (Res. 850m).`);
     const dup = MEMOS.find((m) => m.type === "ADM" && m.ticketNumber === t.ticketNumber && m.reason === input.reason && m.status !== "withdrawn");
     // Faturalanmış ADM de sayılır: aynı usulsüzlük iki kez tahsil edilmez.
-    if (dup) throw new MemoError(`Bu bilet için aynı gerekçeyle bir ADM zaten var (${dup.number}) — mükerrer dekont kesilmez.`);
+    if (dup) throw new MemoError(`Bu bilet için aynı gerekçeyle bir ADM zaten var (${dup.number}) — mükerrer dekont kesilmez.`, `An ADM with the same reason already exists for this ticket (${dup.number}) — duplicate memos are not raised.`);
   }
 
   counter += 1;
@@ -230,7 +232,7 @@ function raiseCore(t: Ticket, input: RaiseMemoInput): Memo {
 
 function find(id: string): Memo {
   const m = MEMOS.find((x) => x.id === id);
-  if (!m) throw new MemoError("Dekont bulunamadı.");
+  if (!m) throw new MemoError("Dekont bulunamadı.", "Memo not found.");
   return m;
 }
 
@@ -244,11 +246,11 @@ export async function disputeMemo(id: string, reason: string, nowMs = Date.now()
 }
 function disputeCore(id: string, reason: string, nowMs: number): Memo {
   const m = find(id);
-  if (m.type !== "ADM") throw new MemoError("ACM'ye itiraz edilmez — acente lehine bir kayıttır.");
-  if (m.status !== "issued") throw new MemoError("Yalnız kesilmiş, faturalanmamış ADM'ye itiraz edilir.");
-  if (m.dispute) throw new MemoError("Bu ADM'ye bir kez itiraz edildi.");
-  if (m.reviewUntil && nowMs > Date.parse(m.reviewUntil)) throw new MemoError(`${REVIEW_DAYS} günlük inceleme süresi doldu — itiraz kabul edilmez.`);
-  if (reason.trim().length < 5) throw new MemoError("İtiraz gerekçesi yazılmalı.");
+  if (m.type !== "ADM") throw new MemoError("ACM'ye itiraz edilmez — acente lehine bir kayıttır.", "An ACM cannot be disputed — it is an entry in the agent's favour.");
+  if (m.status !== "issued") throw new MemoError("Yalnız kesilmiş, faturalanmamış ADM'ye itiraz edilir.", "Only an issued, unbilled ADM can be disputed.");
+  if (m.dispute) throw new MemoError("Bu ADM'ye bir kez itiraz edildi.", "This ADM has already been disputed once.");
+  if (m.reviewUntil && nowMs > Date.parse(m.reviewUntil)) throw new MemoError(`${REVIEW_DAYS} günlük inceleme süresi doldu — itiraz kabul edilmez.`, `The ${REVIEW_DAYS}-day review period has ended — the dispute cannot be accepted.`);
+  if (reason.trim().length < 5) throw new MemoError("İtiraz gerekçesi yazılmalı.", "A dispute reason must be entered.");
   const at = new Date(nowMs).toISOString();
   m.status = "disputed";
   m.dispute = { at, reason: reason.trim() };
@@ -260,7 +262,7 @@ function disputeCore(id: string, reason: string, nowMs: number): Memo {
 export async function resolveDispute(id: string, accept: boolean, by: string, note?: string): Promise<Memo> {
   await delay(300);
   const m = find(id);
-  if (m.status !== "disputed" || !m.dispute) throw new MemoError("Karara bağlanacak açık itiraz yok.");
+  if (m.status !== "disputed" || !m.dispute) throw new MemoError("Karara bağlanacak açık itiraz yok.", "There is no open dispute to resolve.");
   const at = new Date().toISOString();
   m.dispute = { ...m.dispute, resolution: accept ? "accepted" : "rejected", resolvedAt: at, note: note?.trim() || undefined };
   if (accept) {
@@ -274,10 +276,16 @@ export async function resolveDispute(id: string, accept: boolean, by: string, no
 }
 
 /** Bu dekont şimdi faturaya (BSP billing) alınabilir mi? Hayırsa nedeni. */
-export function billingBlock(m: Memo, nowMs = Date.now()): string | null {
-  if (m.status !== "issued") return m.status === "disputed" ? "İtiraz açık — karara bağlanmadan faturalanmaz." : "Bu dekont faturalanamaz.";
+export function billingBlock(m: Memo, nowMs = Date.now(), lang: "tr" | "en" = "tr"): string | null {
+  const en = lang === "en";
+  if (m.status !== "issued") {
+    if (m.status === "disputed") return en ? "A dispute is open — it cannot be billed until resolved." : "İtiraz açık — karara bağlanmadan faturalanmaz.";
+    return en ? "This memo cannot be billed." : "Bu dekont faturalanamaz.";
+  }
   if (m.type === "ADM" && !m.dispute?.resolution && m.reviewUntil && nowMs <= Date.parse(m.reviewUntil))
-    return `Acentenin ${REVIEW_DAYS} günlük inceleme süresi ${m.reviewUntil.slice(0, 10)} tarihinde dolar — önce faturalanmaz.`;
+    return en
+      ? `The agent's ${REVIEW_DAYS}-day review period ends on ${m.reviewUntil.slice(0, 10)} — it cannot be billed before then.`
+      : `Acentenin ${REVIEW_DAYS} günlük inceleme süresi ${m.reviewUntil.slice(0, 10)} tarihinde dolar — önce faturalanmaz.`;
   return null;
 }
 
@@ -288,7 +296,7 @@ export async function billMemo(id: string, by: string, nowMs = Date.now()): Prom
 function billCore(id: string, by: string, nowMs: number): Memo {
   const m = find(id);
   const block = billingBlock(m, nowMs);
-  if (block) throw new MemoError(block);
+  if (block) throw new MemoError(block, billingBlock(m, nowMs, "en") ?? undefined);
   const at = new Date(nowMs).toISOString();
   m.status = "billed";
   m.billingPeriod = billingPeriodOf(at);
@@ -303,9 +311,9 @@ export async function withdrawMemo(id: string, by: string, reason: string): Prom
 }
 function withdrawCore(id: string, by: string, reason: string): Memo {
   const m = find(id);
-  if (m.status === "billed") throw new MemoError("Faturalanmış dekont geri çekilmez — ters kayıt için ACM kesilir.");
-  if (m.status === "withdrawn") throw new MemoError("Dekont zaten geri çekilmiş.");
-  if (reason.trim().length < 3) throw new MemoError("Geri çekme gerekçesi yazılmalı.");
+  if (m.status === "billed") throw new MemoError("Faturalanmış dekont geri çekilmez — ters kayıt için ACM kesilir.", "A billed memo cannot be withdrawn — raise an ACM to reverse it.");
+  if (m.status === "withdrawn") throw new MemoError("Dekont zaten geri çekilmiş.", "The memo has already been withdrawn.");
+  if (reason.trim().length < 3) throw new MemoError("Geri çekme gerekçesi yazılmalı.", "A withdrawal reason must be entered.");
   const at = new Date().toISOString();
   // İtirazdaki ADM'yi geri çekmek itirazı kabul etmektir — itiraz açık kalmaz.
   if (m.dispute && !m.dispute.resolution) m.dispute = { ...m.dispute, resolution: "accepted", resolvedAt: at, note: reason.trim() };

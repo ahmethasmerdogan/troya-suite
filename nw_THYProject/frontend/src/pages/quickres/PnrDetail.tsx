@@ -20,6 +20,7 @@ import { Banner } from "@/components/ui/banner";
 import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT } from "@/i18n";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 import { cn, formatDateTime, flightCode } from "@/lib/utils";
 
@@ -28,6 +29,7 @@ import { cn, formatDateTime, flightCode } from "@/lib/utils";
 export function PnrDetail() {
   const { pnr: rl } = useParams({ from: "/res/$pnr" });
   const t = useT();
+  const errText = useErrorText();
   const lang = useUI((s) => s.lang);
   const user = useUI((s) => s.user);
   const navigate = useNavigate();
@@ -49,7 +51,7 @@ export function PnrDetail() {
     qc.invalidateQueries({ queryKey: ["pnrs"] });
     qc.invalidateQueries({ queryKey: ["queues"] });
   };
-  const fail = (e: Error) => toast.danger(t("res.toast.failed"), e.message);
+  const fail = (e: Error) => toast.danger(t("res.toast.failed"), errText(e));
   const by = user?.name ?? "—";
   const ttlMut = useMutation({ mutationFn: () => extendTtl(rl, by), onSuccess: () => { toast.success(t("res.toast.ttl"), rl); refresh(); }, onError: fail });
   const segMut = useMutation({ mutationFn: (i: number) => cancelSegment(rl, i, by), onSuccess: () => { toast.success(t("res.toast.segCancelled"), rl); refresh(); }, onError: fail });
@@ -251,11 +253,12 @@ export function PnrDetail() {
 
 function CancelPnrModal({ pnr, by, onClose, onDone }: { pnr: Pnr; by: string; onClose: () => void; onDone: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const [reason, setReason] = useState("");
   const m = useMutation({
     mutationFn: () => cancelPnr(pnr.recordLocator, by, reason.trim() || undefined),
     onSuccess: () => { toast.success(t("res.toast.cancelled"), pnr.recordLocator); onDone(); },
-    onError: (e: Error) => toast.danger(t("res.toast.failed"), e.message),
+    onError: (e: Error) => toast.danger(t("res.toast.failed"), errText(e)),
   });
   return (
     <Modal open onClose={onClose} width="sm" title={t("res.cancel.title")}
@@ -278,12 +281,13 @@ function CancelPnrModal({ pnr, by, onClose, onDone }: { pnr: Pnr; by: string; on
 
 function RemarkModal({ rl, by, onClose, onDone }: { rl: string; by: string; onClose: () => void; onDone: () => void }) {
   const t = useT();
+  const errText = useErrorText();
   const [kind, setKind] = useState<PnrRemark["kind"]>("RM");
   const [text, setText] = useState("");
   const m = useMutation({
     mutationFn: () => addRemark(rl, kind, text, by),
     onSuccess: () => { toast.success(t("res.toast.remark"), rl); onDone(); },
-    onError: (e: Error) => toast.danger(t("res.toast.failed"), e.message),
+    onError: (e: Error) => toast.danger(t("res.toast.failed"), errText(e)),
   });
   return (
     <Modal open onClose={onClose} width="md" title={t("res.remark.title")}

@@ -211,7 +211,7 @@ export function FinancialReport() {
               <div className="flex flex-col gap-2">
                 {rep.vatByRate.map((v) => (
                   <div key={`${v.currency}-${v.rate}`} className="flex flex-wrap items-baseline gap-x-6 gap-y-1 rounded-md border border-line px-3 py-2">
-                    <span className="num text-[13px] font-semibold text-ink">%{(v.rate * 100).toFixed(0)}</span>
+                    <span className="num text-[13px] font-semibold text-ink">{t("report.fin.ratePct", { n: (v.rate * 100).toFixed(0) })}</span>
                     <span className="num text-[12px] text-ink-3">{t("report.fin.docCount", { n: v.count })}</span>
                     <span className="text-[12.5px] text-ink-2">{t("report.fin.base")}</span>
                     <Money value={{ amount: v.base, currency: v.currency }} size="sm" />

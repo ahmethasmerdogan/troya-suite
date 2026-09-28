@@ -28,6 +28,11 @@ export const tr = {
   "ticket.detail.control.overdueNote": " — kontrol sahibi statü iletmedi ya da iade etmedi (1.1.4.1).",
   "ticket.detail.control.withinNote": " (1.1.4.1: 72 saat).",
   "ticket.detail.control.manage": "Kontrolü yönet",
+  // kontrol rozeti (ControlIndicator)
+  "ticket.control.atVc": "Kontrol Validating Carrier'da",
+  "ticket.control.holder": "Kontrol: {holder}",
+  "ticket.control.leaseEnd": "Lease bitiş: {at}",
+  "ticket.control.hoursLeft": " · {n} sa",
 
   "ticket.detail.noOpen.title": "İşlem yapılamaz",
   "ticket.detail.noOpen.body":
@@ -234,6 +239,10 @@ export const en: Record<keyof typeof tr, string> = {
   "ticket.detail.control.overdueNote": " — the control holder neither reported a status nor returned control (1.1.4.1).",
   "ticket.detail.control.withinNote": " (1.1.4.1: 72 hours).",
   "ticket.detail.control.manage": "Manage control",
+  "ticket.control.atVc": "Control is with the Validating Carrier",
+  "ticket.control.holder": "Control: {holder}",
+  "ticket.control.leaseEnd": "Lease ends: {at}",
+  "ticket.control.hoursLeft": " · {n} h",
 
   "ticket.detail.noOpen.title": "No operation possible",
   "ticket.detail.noOpen.body":

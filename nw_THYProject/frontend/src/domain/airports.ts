@@ -97,6 +97,27 @@ export const AIRPORTS: Airport[] = [
   { code: "MEX", city: "Meksiko", cityEn: "Mexico City", country: "Meksika", countryCode: "MX" },
 ];
 
+/**
+ * Ülkenin İngilizce adı (ISO-2 → ad). `country` alanı Türkçedir; İngilizce
+ * arayüzde havalimanı listesi "İspanya" değil "Spain" göstersin diye.
+ */
+const COUNTRY_EN: Record<string, string> = {
+  AE: "United Arab Emirates", AR: "Argentina", AT: "Austria", AZ: "Azerbaijan", BE: "Belgium",
+  BG: "Bulgaria", BR: "Brazil", CA: "Canada", CH: "Switzerland", CN: "China", CZ: "Czechia",
+  DE: "Germany", DK: "Denmark", EG: "Egypt", ES: "Spain", ET: "Ethiopia", FR: "France",
+  GB: "United Kingdom", GR: "Greece", HK: "Hong Kong", HU: "Hungary", IE: "Ireland", IL: "Israel",
+  IN: "India", IT: "Italy", JO: "Jordan", JP: "Japan", KE: "Kenya", KR: "South Korea",
+  KZ: "Kazakhstan", LB: "Lebanon", MA: "Morocco", MX: "Mexico", MY: "Malaysia", NL: "Netherlands",
+  NO: "Norway", PL: "Poland", PT: "Portugal", QA: "Qatar", RO: "Romania", SA: "Saudi Arabia",
+  SE: "Sweden", SG: "Singapore", TH: "Thailand", TR: "Türkiye", UA: "Ukraine", US: "United States",
+  UZ: "Uzbekistan", ZA: "South Africa",
+};
+
+/** Havalimanının ülke adı seçilen dilde (İngilizce karşılık yoksa Türkçe ad). */
+export function countryName(a: Airport, lang: "tr" | "en"): string {
+  return lang === "en" ? COUNTRY_EN[a.countryCode] ?? a.country : a.country;
+}
+
 const norm = (s: string) =>
   s.toLocaleLowerCase("tr-TR").replace(/ı/g, "i").replace(/ş/g, "s").replace(/ğ/g, "g").replace(/ü/g, "u").replace(/ö/g, "o").replace(/ç/g, "c");
 
@@ -111,7 +132,7 @@ export function searchAirports(query: string, limit = 8): Airport[] {
   if (!q) return AIRPORTS.slice(0, limit);
   const scored = AIRPORTS.map((a) => {
     const code = a.code.toLowerCase();
-    const hay = norm(`${a.code} ${a.city} ${a.cityEn} ${a.country}`);
+    const hay = norm(`${a.code} ${a.city} ${a.cityEn} ${a.country} ${COUNTRY_EN[a.countryCode] ?? ""}`);
     let score = -1;
     if (code === q) score = 100;
     else if (code.startsWith(q)) score = 90;

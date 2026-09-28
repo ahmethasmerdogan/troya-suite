@@ -131,20 +131,24 @@ export function ticketValidity(t: Ticket, now: number): TicketValidity {
   };
 }
 
-/** Değişiklik (exchange/revalidation) yapılabilir mi; değilse gerekçesi. */
-export function changeBlockedByValidity(t: Ticket, now: number): string | undefined {
+/** Değişiklik (exchange/revalidation) yapılabilir mi; değilse gerekçesi (dil: varsayılan tr). */
+export function changeBlockedByValidity(t: Ticket, now: number, lang: "tr" | "en" = "tr"): string | undefined {
   const v = ticketValidity(t, now);
   if (v.state === "expired") {
-    return `Bilet geçerlilik süresi ${v.until.slice(0, 10)} tarihinde doldu — yalnız iade edilebilir (Handbook 12.9.1).`;
+    return lang === "en"
+      ? `The ticket's validity ended on ${v.until.slice(0, 10)} — it can only be refunded (Handbook 12.9.1).`
+      : `Bilet geçerlilik süresi ${v.until.slice(0, 10)} tarihinde doldu — yalnız iade edilebilir (Handbook 12.9.1).`;
   }
   return undefined;
 }
 
-/** Yeni uçuş tarihi geçerlilik sonunu aşıyor mu (12.4.1). */
-export function beyondValidity(t: Ticket, departureIso: string, now: number): string | undefined {
+/** Yeni uçuş tarihi geçerlilik sonunu aşıyor mu (12.4.1). Dil: varsayılan tr. */
+export function beyondValidity(t: Ticket, departureIso: string, now: number, lang: "tr" | "en" = "tr"): string | undefined {
   const v = ticketValidity(t, now);
   if (Date.parse(departureIso) > Date.parse(v.until)) {
-    return `Yeni uçuş tarihi bilet geçerliliğinin (${v.until.slice(0, 10)}) dışında kalıyor — bilet bu tarihe uzatılamaz (Handbook 12.4.1).`;
+    return lang === "en"
+      ? `The new flight date falls outside the ticket's validity (${v.until.slice(0, 10)}) — the ticket cannot be extended to this date (Handbook 12.4.1).`
+      : `Yeni uçuş tarihi bilet geçerliliğinin (${v.until.slice(0, 10)}) dışında kalıyor — bilet bu tarihe uzatılamaz (Handbook 12.4.1).`;
   }
   return undefined;
 }
@@ -157,17 +161,18 @@ export interface IllnessInput {
 
 /**
  * Hastalık uzatmasının hesabı (13.10) — komut da önizleme de bunu çağırır.
- * Uzatma geçerliliği asla KISALTMAZ.
+ * Uzatma geçerliliği asla KISALTMAZ. Red gerekçesi iki dilli döner
+ * (`error` Türkçe, `errorEn` İngilizce); hangisi gösterilecek sunum seçer.
  */
-export function illnessExtension(t: Ticket, input: IllnessInput, now: number): { until: string } | { error: string } {
-  if (!travelCommenced(t)) return { error: "Hastalık uzatması yalnız yolculuk başladıktan sonra verilir (Handbook 13.10)." };
-  if (t.validityExtension) return { error: "Bu bilete geçerlilik uzatması zaten verilmiş — uzatma bir kez verilir (13.10)." };
-  if (!t.coupons.some((c) => UNUSED.includes(c.status))) return { error: "Kullanılmamış kupon yok — uzatılacak yolculuk kalmadı." };
+export function illnessExtension(t: Ticket, input: IllnessInput, now: number): { until: string } | { error: string; errorEn: string } {
+  if (!travelCommenced(t)) return { error: "Hastalık uzatması yalnız yolculuk başladıktan sonra verilir (Handbook 13.10).", errorEn: "An illness extension is granted only after travel has commenced (Handbook 13.10)." };
+  if (t.validityExtension) return { error: "Bu bilete geçerlilik uzatması zaten verilmiş — uzatma bir kez verilir (13.10).", errorEn: "This ticket has already had a validity extension — it is granted only once (13.10)." };
+  if (!t.coupons.some((c) => UNUSED.includes(c.status))) return { error: "Kullanılmamış kupon yok — uzatılacak yolculuk kalmadı.", errorEn: "No unused coupons — there is no remaining journey to extend." };
   const cert = Date.parse(`${input.certificateDate}T00:00:00Z`);
   const fit = Date.parse(`${input.fitToTravelDate}T00:00:00Z`);
-  if (Number.isNaN(cert) || Number.isNaN(fit)) return { error: "Rapor ve elverişlilik tarihleri zorunlu." };
-  if (fit < cert) return { error: "Seyahate elverişlilik tarihi rapor tarihinden önce olamaz." };
-  if (cert > now) return { error: "Sağlık raporu ileri tarihli olamaz." };
+  if (Number.isNaN(cert) || Number.isNaN(fit)) return { error: "Rapor ve elverişlilik tarihleri zorunlu.", errorEn: "Certificate and fit-to-travel dates are required." };
+  if (fit < cert) return { error: "Seyahate elverişlilik tarihi rapor tarihinden önce olamaz.", errorEn: "The fit-to-travel date cannot be before the certificate date." };
+  if (cert > now) return { error: "Sağlık raporu ileri tarihli olamaz.", errorEn: "The medical certificate cannot be future-dated." };
 
   const current = Date.parse(ticketValidity(t, now).until);
   const target = input.fareKind === "special"
@@ -175,6 +180,6 @@ export function illnessExtension(t: Ticket, input: IllnessInput, now: number): {
     : endOfDay(Math.min(fit, addMonths(input.certificateDate, 3))); // normal: rapordan en çok 3 ay
   // Uzatma geçerliliği asla kısaltmaz; bir gün bile kazandırmıyorsa bir kez
   // kullanılabilen hak boşa harcanmasın diye verilmez.
-  if (target <= current) return { error: "Bu tarihlerle bilet zaten daha uzun süre geçerli — uzatmaya gerek yok (uzatma hakkı bir kez kullanılır)." };
+  if (target <= current) return { error: "Bu tarihlerle bilet zaten daha uzun süre geçerli — uzatmaya gerek yok (uzatma hakkı bir kez kullanılır).", errorEn: "With these dates the ticket is already valid for longer — no extension needed (the extension can be used only once)." };
   return { until: new Date(target).toISOString() };
 }

@@ -84,7 +84,7 @@ export function Profile() {
 
           {team.length > 0 && (
             <Panel>
-              <PanelHead title={t("admin.profile.team")} hint={t("admin.profile.teamHint", { n: team.length })} />
+              <PanelHead title={t("admin.profile.team")} hint={t(team.length === 1 ? "admin.profile.teamHint.one" : "admin.profile.teamHint", { n: team.length })} />
               <PanelBody className="flex flex-col gap-1.5 pt-1">
                 {team.map((member) => (
                   <div key={member.id} className="flex items-center gap-2.5 border-b border-hair py-2 last:border-0">

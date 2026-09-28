@@ -17,6 +17,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "@/components/ui/toast";
 import { useT, translate } from "@/i18n";
 import { flightCode } from "@/lib/utils";
+import { useErrorText } from "@/lib/useErrorText";
 import { useUI } from "@/store/ui";
 
 /**
@@ -34,6 +35,7 @@ export function SeatSelection() {
   const lateReason = LATE_REASONS.find((r) => r.code === search.late);
   const late = lateReason ? { reason: lateReason.code as LateReason, note: search.note, approvedBy: user?.name ?? "—" } : undefined;
   const t = useT();
+  const errText = useErrorText();
   // Kural gerekçeleri (koltuk reddi, kısıt notları) domainden iki dilli gelir.
   const lang = useUI((s) => s.lang);
   const navigate = useNavigate();
@@ -71,7 +73,7 @@ export function SeatSelection() {
         } catch (e) {
           // Sıralı kullanım ihlali gibi kural hataları kabulü geri almaz;
           // operatöre bildirilir (kupon elle düzeltilir).
-          couponWarning = (e as Error).message;
+          couponWarning = errText(e);
         }
       }
       return { pax: p, couponWarning };
@@ -86,7 +88,7 @@ export function SeatSelection() {
       invalidateRecords(qc);
       navigate({ to: "/checkin/$flightId", params: { flightId } });
     },
-    onError: (e: Error) => toast.danger(t("checkin.toast.acceptFailed"), e.message),
+    onError: (e: Error) => toast.danger(t("checkin.toast.acceptFailed"), errText(e)),
   });
 
   // Veri geldi ama yolcu/uçuş yok (bozuk adres): sonsuz iskelet yerine açık bir mesaj.
