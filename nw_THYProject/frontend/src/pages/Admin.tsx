@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useParams } from "@tanstack/react-router";
 import { Check, UserPlus, X } from "lucide-react";
 import { listRevenueAlerts, queryTransactions } from "@/domain/api";
-import { UNITS, type DemoUser } from "@/domain/users";
+import { UNITS, unitLabel, type DemoUser } from "@/domain/users";
 import { useUsers, type NewUserInput } from "@/store/users";
 import {
   ROLE_ORDER, can, permissionLabel, permissionsFor, roleDesc, roleLabel, type Permission, type Role,
@@ -183,7 +183,7 @@ function Users() {
                   <span className="text-[13.5px] font-medium text-ink">{u.name}</span>
                   {u.id === me?.id && <Pill tone="blue">{t("admin.users.you")}</Pill>}
                 </div>
-                <div className="num text-[11.5px] text-ink-3">{u.id} · {u.title} · {u.unit} · {u.location}</div>
+                <div className="num text-[11.5px] text-ink-3">{u.id} · {u.title} · {unitLabel(u.unit, lang)} · {u.location}</div>
               </div>
               <Pill tone="gray">{roleLabel(u.role, lang)}</Pill>
               <Pill tone={u.status === "active" ? "green" : "red"}>{u.status === "active" ? t("admin.users.active") : t("admin.users.inactive")}</Pill>
@@ -295,7 +295,7 @@ function UserFormModal({
         </Field>
         <Field label={t("admin.form.unit")}>
           <Select value={v.unit} onChange={(e) => set("unit", e.target.value as NewUserInput["unit"])}>
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
+            {UNITS.map((u) => <option key={u} value={u}>{unitLabel(u, lang)}</option>)}
           </Select>
         </Field>
         <Field label={t("admin.form.location")}>

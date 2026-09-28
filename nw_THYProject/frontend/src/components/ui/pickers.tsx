@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-react";
-import { searchAirports } from "@/domain/airports";
+import { countryName, searchAirports } from "@/domain/airports";
 import { Input } from "@/components/ui/core";
 import { useOutside } from "@/components/ui/overlay";
 import { useT } from "@/i18n";
+import { useUI } from "@/store/ui";
 import { cn, locale } from "@/lib/utils";
 
 /* ====================================================================
@@ -19,6 +20,7 @@ import { cn, locale } from "@/lib/utils";
 export function AirportPicker({
   value, onChange, placeholder, id, invalid,
 }: { value: string; onChange: (v: string) => void; placeholder: string; id?: string; invalid?: boolean }) {
+  const lang = useUI((s) => s.lang);
   const [text, setText] = useState(value);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -47,7 +49,7 @@ export function AirportPicker({
             <button key={a.code} type="button" onClick={() => pick(a.code)}
               className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[13px] hover:bg-sunken">
               <span className="num font-semibold text-ink">{a.code}</span>
-              <span className="min-w-0 flex-1 truncate text-ink-2">{a.city} · {a.country}</span>
+              <span className="min-w-0 flex-1 truncate text-ink-2">{lang === "en" ? a.cityEn : a.city} · {countryName(a, lang)}</span>
             </button>
           ))}
         </div>

@@ -131,6 +131,8 @@ export const tr = {
   "admin.profile.chainHint": "Onay ve yetki devri bu hat üzerinden yürür.",
   "admin.profile.team": "Bana bağlı personel",
   "admin.profile.teamHint": "{n} kişi",
+  // Tekil biçim — Türkçede sayıdan sonra çoğul eki yok, İngilizcede "1 person".
+  "admin.profile.teamHint.one": "{n} kişi",
   "admin.profile.perms": "Rolüm ve yetkilerim",
   "admin.profile.permCount": "{n} / {total} yetki",
   "admin.profile.needRole": "{role} ve üzeri gerekir",
@@ -153,6 +155,7 @@ export const tr = {
   "admin.person.manager": "Bağlı olduğu",
   "admin.person.team": "Ekibi",
   "admin.person.teamValue": "{n} kişi · {names}",
+  "admin.person.teamValue.one": "{n} kişi · {names}",
   "admin.person.message": "Mesaj gönder",
 
   // ---- Ekran yardımı (kabuk) ----
@@ -374,6 +377,7 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.profile.chainHint": "Approvals and delegation of authority follow this line.",
   "admin.profile.team": "My direct reports",
   "admin.profile.teamHint": "{n} people",
+  "admin.profile.teamHint.one": "{n} person",
   "admin.profile.perms": "My role and permissions",
   "admin.profile.permCount": "{n} / {total} permissions",
   "admin.profile.needRole": "{role} or above required",
@@ -396,6 +400,7 @@ export const en: Record<keyof typeof tr, string> = {
   "admin.person.manager": "Reports to",
   "admin.person.team": "Team",
   "admin.person.teamValue": "{n} people · {names}",
+  "admin.person.teamValue.one": "{n} person · {names}",
   "admin.person.message": "Send message",
 
   // ---- Ekran yardımı (kabuk) ----

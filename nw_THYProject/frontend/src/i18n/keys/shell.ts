@@ -13,6 +13,7 @@ export const tr = {
   "shell.notices.empty": "Açık duyuru yok.",
   "shell.role.demo": "Rol (demo)",
   "shell.recordList": "Kayıt listesi",
+  "shell.close": "Kapat",
 
   // duyuru şeridi + zil
   "shell.notice.critical": "Kritik",
@@ -81,6 +82,7 @@ export const en: Record<keyof typeof tr, string> = {
   "shell.notices.empty": "No open announcements.",
   "shell.role.demo": "Role (demo)",
   "shell.recordList": "Record list",
+  "shell.close": "Close",
 
   "shell.notice.critical": "Critical",
   "shell.notice.warning": "Warning",

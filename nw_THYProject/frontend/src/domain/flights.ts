@@ -107,8 +107,9 @@ export function searchFlights(origin: string, destination: string, startDateISO?
   return out;
 }
 
-/** Süreyi "2s 15d" biçiminde okunur yapar. */
-export function fmtDuration(min: number): string {
+/** Süreyi "2s 15d" (İngilizcede "2h 15m") biçiminde okunur yapar. Dil: varsayılan tr. */
+export function fmtDuration(min: number, lang: "tr" | "en" = "tr"): string {
   const h = Math.floor(min / 60), m = min % 60;
-  return h > 0 ? `${h}s ${pad(m)}d` : `${m}d`;
+  const [hu, mu] = lang === "en" ? ["h", "m"] : ["s", "d"];
+  return h > 0 ? `${h}${hu} ${pad(m)}${mu}` : `${m}${mu}`;
 }

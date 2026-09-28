@@ -77,7 +77,7 @@ export function HubControl() {
       />
 
       <div data-tour="ops.kpis" className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        <Stat label="OTP / D0" value={`%${k?.otpD0 ?? 0}`} tone="var(--t-green-i)" hint={t("checkin.hub.kpi.otp.hint")} />
+        <Stat label="OTP / D0" value={t("checkin.hub.kpi.otp.value", { n: k?.otpD0 ?? 0 })} tone="var(--t-green-i)" hint={t("checkin.hub.kpi.otp.hint")} />
         <Stat label={t("checkin.hub.kpi.boarding")} value={k?.byStage.boarding ?? 0} />
         <Stat label={t("checkin.hub.kpi.alerts")} value={(k?.openCritical ?? 0) + (k?.openWarning ?? 0)} tone="var(--t-red-i)" hint={t("checkin.hub.kpi.alerts.hint", { n: k?.openCritical ?? 0 })} />
         <Stat label={t("checkin.hub.kpi.boardedAccepted")} value={`${k?.boarded ?? 0}/${k?.accepted ?? 0}`} hint={t("checkin.hub.kpi.noShow", { n: k?.noShow ?? 0 })} />
@@ -184,7 +184,7 @@ export function HubControl() {
 
           {selected && (
             <Panel>
-              <PanelHead title={`${selected.flightNumber} · ${selected.destCity}`} hint={`${selected.aircraftType} · ${selected.registration}`} />
+              <PanelHead title={`${selected.flightNumber} · ${lang === "en" ? selected.destCityEn : selected.destCity}`} hint={`${selected.aircraftType} · ${selected.registration}`} />
               <PanelBody className="flex flex-col gap-4">
                 <div>
                   <div className="microlabel mb-2">{t("checkin.hub.funnel")}</div>

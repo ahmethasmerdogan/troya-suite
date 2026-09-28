@@ -99,6 +99,8 @@ export interface OpsFlight {
   origin: string;
   destination: string;
   destCity: string;
+  /** Varış şehrinin İngilizce adı (sunum dili seçer). */
+  destCityEn: string;
   departure: string; // ISO (STD)
   etd?: string; // rötarlıysa
   gate?: string;
@@ -249,6 +251,7 @@ export async function getOpsBoard(): Promise<OpsBoard> {
       origin: f.origin,
       destination: f.destination,
       destCity: airportByCode(f.destination)?.city ?? f.destination,
+      destCityEn: airportByCode(f.destination)?.cityEn ?? f.destination,
       departure: f.departure,
       etd: delayed ? new Date(new Date(f.departure).getTime() + (f.delayMin ?? 20 + (seed % 40)) * 60000).toISOString() : undefined,
       gate: f.gate,

@@ -29,6 +29,8 @@ export interface FareOffer {
   seatSelection: "included" | "paid";
   /** Personele gösterilecek koltuk hakkı özeti. */
   seatNote: string;
+  /** Aynı özetin İngilizcesi (sunum dili seçer). */
+  seatNoteEn: string;
   /** Bagaj hakkı (kg) — checked baggage. */
   baggageKg: number;
   cabinBaggageKg: number;
@@ -136,6 +138,11 @@ function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: 
     : classicish
       ? "Standart koltuk ücretsiz seçilir"
       : "Koltuk seçimi ücretli (EMD ile)";
+  const seatNoteEn = flexish
+    ? "Whole cabin — front rows & extra legroom included"
+    : classicish
+      ? "Standard seat selection is free"
+      : "Seat selection is paid (via EMD)";
   const milesPct = flexish ? (ft.cabin === "Business" ? 150 : 125) : classicish ? 100 : ft.id.endsWith("-saver") ? 70 : 50;
 
   // Kalan koltuk: ucuz ücretlerde daha az (aciliyet). Deterministik.
@@ -156,6 +163,7 @@ function offerFor(ft: FareType, distanceKm: number, legs: number, demandFactor: 
     changeable: ft.changeable,
     seatSelection,
     seatNote,
+    seatNoteEn,
     baggageKg: BAGGAGE_KG[ft.id] ?? 20,
     cabinBaggageKg: ft.cabin === "Business" ? 8 : 8,
     milesPct,

@@ -192,9 +192,9 @@ export const en: Record<keyof typeof tr, string> = {
   "search.orders.items": "{n} items",
   "search.orders.count": "{n} orders",
 
-  // "Fazla Bagaj" bir ÖRNEK arama terimi: EMD açıklamaları veride Türkçe
-  // duruyor, çevrilmiş bir terim hiçbir kayda eşleşmezdi.
-  "search.emds.placeholder": "EMD no · ERDOGAN · 0CC · Fazla Bagaj · linked TKT no",
+  // Örnek arama terimi İngilizce arayüzde Türkçe görünmesin: "Extra Baggage"
+  // açıklamalı bir EMD veride var (mockData, 0CC), yani örnek yine eşleşir.
+  "search.emds.placeholder": "EMD no · ERDOGAN · 0CC · Extra Baggage · linked TKT no",
   "search.emds.empty.title": "No matching EMDs found",
   "search.emds.empty.hint": "Try an EMD number, passenger name or RFISC.",
   "search.emds.count": "{n} EMD",

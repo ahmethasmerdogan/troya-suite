@@ -8,6 +8,7 @@ import {
   type ChatRef, type PresenceStatus,
 } from "@/domain/chat";
 import { useUsers } from "@/store/users";
+import { unitLabel } from "@/domain/users";
 import { usePerm } from "@/lib/usePerm";
 import { PersonCard } from "@/components/domain/PersonCard";
 import { roleLabel } from "@/domain/auth";
@@ -771,6 +772,7 @@ function NewChatModal({
   onPick: (id: string) => void;
 }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const [q, setQ] = useState("");
   useEffect(() => { if (open) setQ(""); }, [open]);
   const hits = users.filter((u) => {
@@ -796,7 +798,7 @@ function NewChatModal({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-medium text-ink">{u.name}</span>
-                <span className="block truncate text-[11.5px] text-ink-3">{u.title} · {u.unit}</span>
+                <span className="block truncate text-[11.5px] text-ink-3">{u.title} · {unitLabel(u.unit, lang)}</span>
               </span>
             </button>
           ))}
@@ -857,6 +859,7 @@ function MemberPicker({
   onToggle: (id: string) => void;
 }) {
   const t = useT();
+  const lang = useUI((s) => s.lang);
   const [q, setQ] = useState("");
   const hits = users.filter((u) => {
     const s = q.trim().toLocaleLowerCase("tr-TR");
@@ -890,7 +893,7 @@ function MemberPicker({
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] text-ink">{u.name}</span>
-                <span className="block truncate text-[11px] text-ink-3">{u.title} · {u.unit}</span>
+                <span className="block truncate text-[11px] text-ink-3">{u.title} · {unitLabel(u.unit, lang)}</span>
               </span>
             </button>
           );
