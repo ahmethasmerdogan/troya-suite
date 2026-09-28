@@ -31,12 +31,12 @@
 
 import type { CouponStatus, Money, TaxFeeCharge, Ticket } from "./types";
 import { airportByCode } from "./airports";
-import { cheapestTotal } from "./pricing";
+import { computeFareOffers } from "./pricing";
 import { convert } from "./fx";
 import { isTfcRefundable, taxByCode, tfcRefundReason, type TfcRefundBasis } from "./taxCodes";
 import { isFinal } from "./couponStatus";
 import {
-  computePenalty, fareRuleFor, isFareRefundable, waives,
+  computePenalty, fareRuleFor, isFareRefundable, penaltyInCurrency, waives,
   type FareRule, type PenaltyRule, type WaiverCode,
 } from "./fareRules";
 import { fareTypeByCoupon } from "./fareTypes";
@@ -363,7 +363,10 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
 
   if (refundType === "voluntary" && !input.taxOnly && !waiverApplies) {
     const after = afterDeparture(ticket, couponSeqs);
-    const applicable = after ? rule?.refund?.afterDeparture ?? rule?.refund?.beforeDeparture : rule?.refund?.beforeDeparture;
+    const applicable = penaltyInCurrency(
+      after ? rule?.refund?.afterDeparture ?? rule?.refund?.beforeDeparture : rule?.refund?.beforeDeparture,
+      ticket.fare.baseFare.currency,
+    );
     const p = computePenalty(applicable, base, selected.length);
     if (p) {
       penalty = p.amount;
@@ -372,7 +375,7 @@ export function quoteRefund(input: RefundQuoteInput): RefundQuote {
     }
   }
   if (noShow && refundType === "voluntary" && !waiverApplies) {
-    const ns = computePenalty(rule?.refund?.noShow, base, 1);
+    const ns = computePenalty(penaltyInCurrency(rule?.refund?.noShow, ticket.fare.baseFare.currency), base, 1);
     if (ns) {
       noShowFee = ns.amount;
       notes.push("No-show ücreti ayrı bir kalemdir; iptal cezasına EKLENİR.");
@@ -551,13 +554,20 @@ function expandTfcs(tfcs: TaxFeeCharge[], ticket: Ticket, selectedSeqs: number[]
   return out;
 }
 
+/**
+ * Kullanılmayan taşımanın tek yön ÇIPLAK ücreti, biletin para biriminde
+ * (15.1.2(b)). Vergiler iade dökümünde ayrı kalem olduğu için buraya girmez;
+ * tarife TRY üretir, EUR/USD bilette kur çevrilir.
+ */
 function oneWayFareOfUnused(ticket: Ticket, seqs: number[]): number | null {
   const cs = ticket.coupons.filter((c) => seqs.includes(c.seq)).sort((a, b) => a.seq - b.seq);
   if (!cs.length) return null;
   const legs = cs.map((c) => ({ origin: c.segment.origin, destination: c.segment.destination }));
   const cabin = cabinOfRbd(cs[0].segment.rbd);
-  const q = cheapestTotal(legs, cabin);
-  return q ? q.amount : null;
+  const offers = computeFareOffers(legs).filter((o) => o.cabin === cabin);
+  if (!offers.length) return null;
+  const cheapest = offers.reduce((min, o) => (o.total.amount < min.total.amount ? o : min));
+  return convert(cheapest.baseFare.amount, cheapest.baseFare.currency, ticket.fare.baseFare.currency);
 }
 
 function cabinOfRbd(rbd: string): "Economy" | "Premium" | "Business" {

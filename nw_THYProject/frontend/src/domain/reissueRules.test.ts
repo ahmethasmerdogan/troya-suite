@@ -1,5 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { quoteReissue } from "./reissueRules";
+import { ticketValidity } from "./validity";
+import { demoNow } from "./demoClock";
 import type { CouponStatus, Segment, TaxFeeCharge, Ticket } from "./types";
 
 // Handbook 12.5 / 12.7 / 12.11 — ADC, PD vergi matrisi, residual.
@@ -210,7 +212,10 @@ describe("12.1.1 / 12.4.1 — fiyatlama tabanı ve geçerlilik", () => {
       newSegments: [seg("IST", "JFK"), seg("JFK", "LAX")],
     });
     expect(q.basis).toBe("original_issue_date");
-    expect(new Date(q.validUntil).getFullYear()).toBe(2027); // kesim 2026 + 1
+    // 12.4.1: yeni bilet, orijinal satış tarihinde kesilmiş olsaydı geçerli
+    // olacak bitişle sınırlıdır — orijinal biletin kendi bitişi (yolculuk
+    // başlangıcından bir yıl). Yeni kesim tarihinden taze bir yıl VERİLMEZ.
+    expect(q.validUntil).toBe(ticketValidity(t, demoNow()).until);
     expect(q.notes.join(" ")).toMatch(/taze bir yıl kazandırmaz/);
   });
 

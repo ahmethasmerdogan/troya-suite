@@ -159,6 +159,12 @@ export interface RefundRecord {
   sac?: string;
   /** Refund-Cancel ile geri alındıysa (12.13.2). */
   cancelledAt?: string;
+  /** İade olayının parasal dökümü — geri almada her kalem ters çevrilir. */
+  money?: EventMoney;
+  /** İadeyle kesilen voucher / "For Refund Only" belgeleri. */
+  documents?: string[];
+  /** Kademeyle iade edilen bağlı EMD-A'lar (5.3). */
+  emdA?: string[];
 }
 
 export type LifecycleEventType =
@@ -192,7 +198,8 @@ export type LifecycleEventType =
   | "RightsAssessed"
   | "NameCorrected"
   | "ScheduleChanged"
-  | "ScheduleChangeAcknowledged";
+  | "ScheduleChangeAcknowledged"
+  | "BaggageRecorded";
 
 /**
  * Olayın parasal dökümü — raporlama bunun üzerinden yürür.
@@ -266,6 +273,11 @@ export interface Ticket {
   agent?: { iata: string; name: string; city: string };
   /** Yolcu tipi — ADT yetişkin, CHD çocuk (2–11). Verilmezse ADT. */
   ptc?: "ADT" | "CHD";
+  /**
+   * 12.4.1 — yolculuğu başlamış biletin reissue'unda yeni bilet orijinalin
+   * geçerlilik bitişini taşır (reissue taze bir yıl kazandırmaz). ISO.
+   */
+  validityLimit?: string;
   history: LifecycleEvent[];
 }
 

@@ -16,7 +16,7 @@
  *     vardır; bu sürede BSPlink üzerinden itiraz edebilir. Süre dolmadan ya
  *     da itiraz açıkken ADM faturaya (BSP billing) giremez.
  *   · İtiraz kabul edilirse ADM geri çekilir; reddedilirse faturalanabilir.
- *   · Aynı bilet için aynı gerekçeyle ikinci açık ADM kesilmez.
+ *   · Aynı bilet için aynı gerekçeyle ikinci ADM (açık ya da faturalanmış) kesilmez.
  *
  * Tutar dökümü: ücret farkı + vergi farkı + komisyon farkı + işlem ücreti.
  * Tutarlar biletin para biriminde tutulur.
@@ -115,17 +115,26 @@ function sum(a: MemoAmounts): number {
   return Math.round((a.fare + a.tax + a.commission + a.adminFee) * 100) / 100;
 }
 
-/** Biletin son uçuş (ya da iade) tarihi — 9 aylık kesim sınırı buradan sayılır. */
+/**
+ * Biletin son uçuş ya da iade tarihi — 9 aylık kesim sınırı buradan sayılır.
+ * İkisinin SONRAKİSİ alınır ve geri alınmış iade sayılmaz: erken bir kuponun
+ * iadesi, sonradan uçulan yolculuğun ADM süresini kısaltmamalı.
+ */
 export function memoAnchorDate(t: Ticket): string {
-  const refund = t.history.filter((h) => h.type === "CouponRefunded").map((h) => h.occurredAt).sort().at(-1);
-  if (refund) return refund;
-  return t.coupons.map((c) => c.segment.departure).sort().at(-1) ?? t.issuedAt;
+  const refunds = t.refunds
+    ? t.refunds.filter((r) => !r.cancelledAt).map((r) => r.at)
+    : t.history.filter((h) => h.type === "CouponRefunded").map((h) => h.occurredAt);
+  const departures = t.coupons.map((c) => c.segment.departure);
+  return [...refunds, ...departures].sort().at(-1) ?? t.issuedAt;
 }
 
+/** n ay sonrası; ay sonu hedef ayın son gününe sıkıştırılır (31 Mayıs + 9 ay = 28 Şubat). */
 function addMonths(iso: string, n: number): number {
   const d = new Date(iso);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.getTime();
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + n;
+  const day = Math.min(d.getUTCDate(), new Date(Date.UTC(y, m + 1, 0)).getUTCDate());
+  return Date.UTC(y, m, day, d.getUTCHours(), d.getUTCMinutes(), d.getUTCSeconds(), d.getUTCMilliseconds());
 }
 
 /* ===================================================================
@@ -181,7 +190,8 @@ function raiseCore(t: Ticket, input: RaiseMemoInput): Memo {
     if (Date.parse(now) > limit)
       throw new MemoError(`ADM süresi geçti — son uçuş/iade tarihinden itibaren ${ISSUE_LIMIT_MONTHS} ay içinde kesilir (Res. 850m).`);
     const dup = MEMOS.find((m) => m.type === "ADM" && m.ticketNumber === t.ticketNumber && m.reason === input.reason && m.status !== "withdrawn");
-    if (dup) throw new MemoError(`Bu bilet için aynı gerekçeyle açık bir ADM var (${dup.number}) — mükerrer dekont kesilmez.`);
+    // Faturalanmış ADM de sayılır: aynı usulsüzlük iki kez tahsil edilmez.
+    if (dup) throw new MemoError(`Bu bilet için aynı gerekçeyle bir ADM zaten var (${dup.number}) — mükerrer dekont kesilmez.`);
   }
 
   counter += 1;
@@ -287,8 +297,11 @@ function withdrawCore(id: string, by: string, reason: string): Memo {
   if (m.status === "billed") throw new MemoError("Faturalanmış dekont geri çekilmez — ters kayıt için ACM kesilir.");
   if (m.status === "withdrawn") throw new MemoError("Dekont zaten geri çekilmiş.");
   if (reason.trim().length < 3) throw new MemoError("Geri çekme gerekçesi yazılmalı.");
+  const at = new Date().toISOString();
+  // İtirazdaki ADM'yi geri çekmek itirazı kabul etmektir — itiraz açık kalmaz.
+  if (m.dispute && !m.dispute.resolution) m.dispute = { ...m.dispute, resolution: "accepted", resolvedAt: at, note: reason.trim() };
   m.status = "withdrawn";
-  m.history.push(ev("withdrawn", by, `Geri çekildi · ${reason.trim()}`, `Withdrawn · ${reason.trim()}`));
+  m.history.push(ev("withdrawn", by, `Geri çekildi · ${reason.trim()}`, `Withdrawn · ${reason.trim()}`, at));
   return m;
 }
 

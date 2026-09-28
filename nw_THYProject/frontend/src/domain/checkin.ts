@@ -7,28 +7,76 @@ import {
   layoutFor, zoneOfRow, seatPosition, seatCount, configString, lastRow, type AircraftLayout,
   type CabinZone, type CabinClass,
 } from "./aircraftLayout";
-import { MOCK_TICKETS } from "./mockData";
 import { checkTravelDocs, type DocCheckResult, type TravelPermit } from "./travelDocs";
-import { generateTickets } from "./genTickets";
+import { buildTicketNumber } from "./ticketNumber";
+import { foldIncludes } from "./text";
+import { computeFareOffers, routeDistanceKm } from "./pricing";
+import type { CouponStatus, LifecycleEvent, Ticket } from "./types";
 
 /**
- * Check-in yolcusuna GERÇEK bir bilet bağla.
+ * Check-in yolcusunun bileti — yolcunun KENDİ adına, O uçuşa ait tek kuponlu
+ * bir ET. Kupon statüsü yolcunun DCS durumuyla aynıdır (kabul edilmemiş O,
+ * kabul C, binmiş L, kalkmış uçuşta binmiş F).
  *
- * Üretilen yolculara rastgele 13 hane yazmak, "check-in kuponu O→C taşır"
- * vaadini sessizce boşa çıkarıyordu: numara hiçbir bilete denk gelmediği için
- * `advanceCouponStatus` hiçbir şey yapmadan dönüyordu. Artık numaralar açık
- * kuponu olan gerçek biletlerden seçilir.
+ * Önce üretilen yolcular mock depodaki RASTGELE biletlere bağlanıyordu: ad ve
+ * güzergâh tutmuyor, aynı bilet birden çok yolcuya düşüyordu — bir yolcuyu
+ * kabul etmek başka bir yolcunun kuponunu C yapıyordu. Bu biletler Troya
+ * deposuna eklenir (`api.ts` store'u), böylece iki modül aynı kaydı görür.
  */
-const LINKABLE = [...MOCK_TICKETS, ...generateTickets(30)]
-  .filter((t) => t.coupons.some((c) => c.status === "O"))
-  .map((t) => ({
-    ticketNumber: t.ticketNumber,
-    couponSeq: t.coupons.find((c) => c.status === "O")!.seq,
-  }));
+export const CHECKIN_TICKETS: Ticket[] = [];
+let checkinSerial = 810000000;
+const WANTS_TICKET = new Set<string>();
 
-function pickRealTicket(rng: () => number, want: boolean): { ticketNumber?: string; couponSeq?: number } {
-  if (!want || LINKABLE.length === 0) return {};
-  return LINKABLE[Math.floor(rng() * LINKABLE.length)];
+function couponStatusFor(pax: CheckinPassenger, flight: DepartureFlight): CouponStatus {
+  const departed = flight.status === "departed" || flight.status === "closed";
+  if (pax.status === "boarded") return departed ? "F" : "L";
+  if (pax.status === "checked_in") return "C";
+  return "O";
+}
+
+function ticketFor(pax: CheckinPassenger, flight: DepartureFlight): Ticket {
+  const ticketNumber = buildTicketNumber("235", String(checkinSerial++));
+  const dep = Date.parse(flight.departure);
+  const minutes = Math.round((routeDistanceKm([{ origin: flight.origin, destination: flight.destination }]) / 800) * 60 + 30);
+  const arrival = new Date(dep + minutes * 60000).toISOString();
+  const issuedAt = new Date(dep - 20 * 86400000).toISOString();
+  const offers = computeFareOffers([{ origin: flight.origin, destination: flight.destination }]);
+  const offer = offers.find((o) => o.id === (pax.cabin === "Business" ? "biz-classic" : "eco-classic")) ?? offers[0];
+  const status = couponStatusFor(pax, flight);
+  const ev = (id: string, type: LifecycleEvent["type"], at: number, s: CouponStatus, detail?: string, extra: Partial<LifecycleEvent> = {}): LifecycleEvent => ({
+    id, type, occurredAt: new Date(at).toISOString(), actor: `${flight.carrier} / DCS`, couponSeq: 1, status: s, detail, ...extra,
+  });
+  const history: LifecycleEvent[] = [
+    ev("ci1", "TicketIssued", dep - 20 * 86400000, "O", "Bilet kesildi", {
+      couponSeq: undefined, actor: `${flight.carrier} / Web`,
+      money: { currency: offer.total.currency, gross: offer.total.amount, vat: offer.vat.amount, vatRate: offer.vat.rate },
+    }),
+    ev("ci2", "CouponAdded", dep - 20 * 86400000 + 1000, "O", `${flight.origin}→${flight.destination} ${flight.flightNumber}`),
+  ];
+  if (status !== "O") history.push(ev("ci3", "CouponCheckedIn", dep - 90 * 60000, "C"));
+  if (status === "L" || status === "F") history.push(ev("ci4", "CouponLifted", dep - 25 * 60000, "L"));
+  if (status === "F") history.push(ev("ci5", "CouponFlown", dep + minutes * 60000, "F", "Uçuş tamamlandı"));
+  return {
+    ticketNumber,
+    pnr: pax.pnr,
+    passenger: { surname: pax.surname, givenName: pax.givenName },
+    validatingCarrier: flight.carrier,
+    issuedAt,
+    formOfPayment: { type: "cash" },
+    control: { holder: flight.carrier, isValidatingCarrier: true },
+    coupons: [{
+      seq: 1,
+      status,
+      segment: {
+        origin: flight.origin, destination: flight.destination, marketingCarrier: flight.carrier, operatingCarrier: flight.carrier,
+        flightNumber: flight.flightNumber, rbd: offer.rbd, departure: flight.departure, arrival,
+        fareBasis: offer.fareBasis, reservationStatus: "HK",
+      },
+      ...(offer.baggageKg ? { baggage: { allowance: { type: "weight" as const, value: offer.baggageKg, unit: "K" as const } } } : {}),
+    }],
+    fare: { baseFare: offer.baseFare, totalTfc: offer.totalTfc, total: offer.total, tfcs: offer.tfcs, vat: offer.vat },
+    history,
+  };
 }
 
 export type FlightStatus = "scheduled" | "checkin_open" | "boarding" | "departed" | "closed";
@@ -144,16 +192,19 @@ for (const f of FLIGHTS) {
   f.checkedIn = Math.min(f.checkedIn, f.capacity);
 }
 
+// El yazımı yolculardan biletli olanlar — bilet aşağıda kendi adlarına kesilir.
+WANTS_TICKET.add("p1").add("p4");
+
 const PASSENGERS: Record<string, CheckinPassenger[]> = {
   "TK198-D": [
-    { id: "p1", surname: "ERDOGAN", givenName: "AHMET", pnr: "XQ7T2M", ticketNumber: "2351234567890", couponSeq: 1, cabin: "Business", status: "not_checked", bags: 1, ff: "TK 233 445 566", nationalId: "12345678901", passport: "U07654321", passportExpiry: "2031-04-18", nationality: "TR", apis: true },
+    { id: "p1", surname: "ERDOGAN", givenName: "AHMET", pnr: "XQ7T2M", cabin: "Business", status: "not_checked", bags: 1, ff: "TK 233 445 566", nationalId: "12345678901", passport: "U07654321", passportExpiry: "2031-04-18", nationality: "TR", apis: true },
     { id: "p2", surname: "TANAKA", givenName: "KENJI", pnr: "JJ22KK", cabin: "Economy", status: "checked_in", seat: "23C", bags: 2, sequenceNumber: 41, passport: "TK9981234", passportExpiry: "2030-11-02", nationality: "JP", apis: true },
     { id: "p3", surname: "SMITH", givenName: "JOHN", pnr: "PP90AB", cabin: "Economy", status: "not_checked", bags: 0, passport: "557120098", passportExpiry: "2029-06-30", nationality: "US", apis: false, ssr: ["WCHR"] },
     { id: "p8", surname: "KAYA", givenName: "MERVE", pnr: "XQ7T2M", cabin: "Business", status: "checked_in", seat: "3A", bags: 1, sequenceNumber: 12, nationalId: "23456789012", passport: "U08123456", passportExpiry: "2032-01-09", nationality: "TR", apis: true },
     { id: "p9", surname: "WANG", givenName: "LEI", pnr: "CN44ZZ", cabin: "Economy", status: "not_checked", bags: 2, passport: "EJ7766554", passportExpiry: "2030-03-15", nationality: "CN", apis: true, infant: true, visa: { type: "JP", number: "JPV448120", validUntil: "2027-02-28" } },
   ],
   "TK21-D": [
-    { id: "p4", surname: "YILMAZ", givenName: "ELIF", pnr: "LM4K9Z", ticketNumber: "2359988776655", couponSeq: 1, cabin: "Economy", status: "not_checked", bags: 1, nationalId: "34567890123", passport: "U05551122", passportExpiry: "2030-08-21", nationality: "TR", apis: true, ssr: ["PETC"], visa: { type: "UK", number: "GBV0912733", validUntil: "2027-05-31" } },
+    { id: "p4", surname: "YILMAZ", givenName: "ELIF", pnr: "LM4K9Z", cabin: "Economy", status: "not_checked", bags: 1, nationalId: "34567890123", passport: "U05551122", passportExpiry: "2030-08-21", nationality: "TR", apis: true, ssr: ["PETC"], visa: { type: "UK", number: "GBV0912733", validUntil: "2027-05-31" } },
     { id: "p5", surname: "MUELLER", givenName: "HANS", pnr: "DE77QW", cabin: "Business", status: "checked_in", seat: "2A", bags: 1, sequenceNumber: 8, passport: "C01X9988", passportExpiry: "2031-09-12", nationality: "DE", apis: true, visa: { type: "ETA", number: "ETA7745120", validUntil: "2028-03-01" } },
     { id: "p10", surname: "BROWN", givenName: "EMMA", pnr: "GB12MN", cabin: "Economy", status: "not_checked", bags: 1, passport: "509887766", passportExpiry: "2029-12-01", nationality: "GB", apis: false, ssr: ["UMNR"], child: true },
   ],
@@ -223,14 +274,15 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
     const row = zone.fromRow + Math.floor(rng() * (zone.toRow - zone.fromRow + 1));
     const col = zoneCols[Math.floor(rng() * zoneCols.length)];
     const hasTicket = rng() < 0.5;
+    // Eski rastgele-bilet seçimi akıştan bir sayı tüketiyordu; akış kaymasın
+    // (yolcu adları, koltuklar ve testlerin dayandığı veri aynı kalsın) diye
+    // sayı yine çekilir, bilet ise aşağıda yolcunun kendisi için kesilir.
+    if (hasTicket) { rng(); WANTS_TICKET.add(`${flight.flightId}-g${n}`); }
     out.push({
       id: `${flight.flightId}-g${n}`,
       surname: LAST[Math.floor(rng() * LAST.length)],
       givenName: FIRST[Math.floor(rng() * FIRST.length)],
       pnr: pnrOf(rng),
-      // Bilet numarası UYDURULMAZ: gerçek bilet store'undan seçilir, yoksa
-      // check-in kuponu ilerletemez ve cross-modül linkage sessizce ölürdü.
-      ...pickRealTicket(rng, hasTicket),
       cabin: biz ? "Business" : "Economy",
       status,
       seat: seated ? `${row}${col}` : undefined,
@@ -253,6 +305,14 @@ function genFor(flight: DepartureFlight, existing: CheckinPassenger[]): CheckinP
 for (const flight of FLIGHTS) {
   PASSENGERS[flight.flightId] = genFor(flight, PASSENGERS[flight.flightId] ?? []);
   for (const p of PASSENGERS[flight.flightId]) if (p.id.includes("-g")) seedDocs(flight, p);
+  // Biletli yolcuya kendi bileti kesilir (el yazımı ERDOGAN/YILMAZ dahil).
+  for (const p of PASSENGERS[flight.flightId]) {
+    if (!WANTS_TICKET.has(p.id)) continue;
+    const t = ticketFor(p, flight);
+    CHECKIN_TICKETS.push(t);
+    p.ticketNumber = t.ticketNumber;
+    p.couponSeq = 1;
+  }
 }
 
 /**
@@ -360,11 +420,14 @@ export interface CheckinWindow {
 
 export function checkinWindow(flight: DepartureFlight, now = Date.now()): CheckinWindow {
   const dep = Date.parse(flight.departure);
-  const mins = Math.round((dep - now) / 60000);
+  // Durum KESİN süreyle belirlenir; yuvarlanmış dakika yalnız gösterim içindir
+  // (kalkışa 15.4 dk kala kapı henüz kapanmamıştır).
+  const exact = (dep - now) / 60000;
+  const mins = Math.round(exact);
   const closeMin = isInternational(flight) ? CHECKIN_CLOSE_MIN.international : CHECKIN_CLOSE_MIN.domestic;
   const closesAt = new Date(dep - closeMin * 60000).toISOString();
   const gone = flight.status === "departed" || flight.status === "closed";
-  const state: CheckinWindowState = gone || mins <= GATE_CLOSE_MIN ? "closed" : mins <= closeMin ? "late" : "open";
+  const state: CheckinWindowState = gone || exact <= GATE_CLOSE_MIN ? "closed" : exact <= closeMin ? "late" : "open";
   return { state, minsToDeparture: mins, closeMin, closesAt };
 }
 
@@ -484,7 +547,8 @@ export async function recordApis(
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
   if (!pax) throw new Error("Yolcu bulunamadı");
   if (!data.passport.trim()) throw new Error("Pasaport numarası zorunlu");
-  if (data.nationality.trim().length !== 2) throw new Error("Uyruk iki harfli ülke kodu olmalı (ISO-2)");
+  if (!/^[A-Z]{2}$/.test(data.nationality.trim().toUpperCase())) throw new Error("Uyruk iki harfli ülke kodu olmalı (ISO-2, ör. TR)");
+  if (!/^[A-Z0-9]{5,12}$/.test(data.passport.trim().toUpperCase())) throw new Error("Pasaport numarası 5–12 harf/rakam olmalı");
   pax.passport = data.passport.trim().toUpperCase();
   pax.nationality = data.nationality.trim().toUpperCase();
   pax.apis = true;
@@ -497,6 +561,14 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
   if (!pax) throw new Error("Yolcu bulunamadı");
   const flightRef = FLIGHTS.find((f) => f.flightId === input.flightId);
   const firstAcceptance = pax.status === "not_checked";
+  // Koltuk değiştirme yalnız kabul edilmiş ve henüz binmemiş yolcuda, uçuş
+  // kapanmadan yapılır — aksi hâlde binmiş yolcu "kabul edildi"ye geri düşerdi.
+  if (!firstAcceptance) {
+    if (pax.status === "boarded") throw new Error("Yolcu uçağa binmiş — koltuk değiştirilemez.");
+    if (pax.status !== "checked_in") throw new Error("Bu yolcu için kabul işlemi yapılamaz.");
+    if (flightRef && (flightRef.status === "departed" || flightRef.status === "closed"))
+      throw new Error("Uçuş kapatıldı — koltuk değiştirilemez.");
+  }
   // Kabul penceresi — yalnız İLK kabulde (koltuk değiştirmek kabul değildir).
   if (flightRef && firstAcceptance) {
     const w = checkinWindow(flightRef);
@@ -504,6 +576,7 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
     if (w.state === "late") {
       if (!input.late) throw new Error(`Kontuar kapandı (kalkıştan ${w.closeMin} dk önce) — geç kabul süpervizör onayı ve gerekçe ister.`);
       if (input.late.reason === "OTHER" && !input.late.note?.trim()) throw new Error("\"Diğer\" gerekçesinde açıklama zorunlu.");
+      if (!input.late.approvedBy?.trim()) throw new Error("Geç kabulü onaylayan süpervizör kayda geçmeli.");
     }
   }
   // APIS kapısı — uluslararası uçuşta eksik bilgiyle kabul yok.
@@ -547,11 +620,29 @@ export async function checkInPassenger(input: CheckInInput): Promise<CheckinPass
 // HUB Kontrol board'unun canlı yansıtması için: bu oturumda elle bindirilen yolcu sayısı (uçuş başına).
 const manualBoarded: Record<string, number> = {};
 export function manualBoardedCount(flightId: string): number { return manualBoarded[flightId] ?? 0; }
+/** Manifestte (bu ekranda işlem yapılabilen yolcular) binmiş görünen yolcu sayısı. */
+export function manifestBoardedCount(flightId: string): number {
+  return (PASSENGERS[flightId] ?? []).filter((p) => p.status === "boarded").length;
+}
+/** Manifest — pano ve uçuş detayı aynı yolcuları göstersin diye senkron erişim. */
+export function manifestOf(flightId: string): CheckinPassenger[] {
+  return PASSENGERS[flightId] ?? [];
+}
+/** Bu oturumda kapatılan uçuşun binmeyen (no-show) sayısı; kapatılmadıysa undefined. */
+const closedNoShow: Record<string, number> = {};
+export function closedOutNoShow(flightId: string): number | undefined { return closedNoShow[flightId]; }
+
+/** Kapanmış uçuşta DCS işlemi yapılmaz — kuponlar F'ye geçti, sayılar kesinleşti. */
+function assertFlightOpen(flightId: string) {
+  const f = FLIGHTS.find((x) => x.flightId === flightId);
+  if (f && (f.status === "departed" || f.status === "closed")) throw new Error("Uçuş kapatıldı — bu işlem yapılamaz.");
+}
 
 export async function boardPassenger(flightId: string, passengerId: string): Promise<CheckinPassenger> {
   await delay(300);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
   if (!pax) throw new Error("Yolcu bulunamadı");
+  assertFlightOpen(flightId);
   if (pax.status !== "checked_in") throw new Error("Önce check-in yapılmalı");
   pax.status = "boarded";
   manualBoarded[flightId] = (manualBoarded[flightId] ?? 0) + 1; // HUB board canlı senkron
@@ -569,6 +660,7 @@ export async function undoCheckIn(flightId: string, passengerId: string): Promis
   await delay(400);
   const pax = PASSENGERS[flightId]?.find((p) => p.id === passengerId);
   if (!pax) throw new Error("Yolcu bulunamadı");
+  assertFlightOpen(flightId);
   if (pax.status === "boarded") throw new Error("Yolcu uçağa binmiş — check-in geri alınamaz.");
   if (pax.status !== "checked_in") throw new Error("Bu yolcu zaten kabul edilmemiş.");
   pax.status = "not_checked";
@@ -582,6 +674,7 @@ export async function undoCheckIn(flightId: string, passengerId: string): Promis
 /** Kabul edilmiş tüm yolcuları tek işlemde bindir (gate'te olağan toplu aksiyon). */
 export async function boardAll(flightId: string): Promise<CheckinPassenger[]> {
   await delay(600);
+  assertFlightOpen(flightId);
   const list = PASSENGERS[flightId] ?? [];
   const target = list.filter((p) => p.status === "checked_in");
   if (!target.length) throw new Error("Bindirilecek kabul edilmiş yolcu yok.");
@@ -615,6 +708,7 @@ export async function closeOutFlight(flightId: string): Promise<CloseOutResult> 
   // Kabul edilmiş ama binmemiş yolcular no-show'dur.
   const noShow = list.filter((p) => p.status === "checked_in");
   flight.status = "departed";
+  closedNoShow[flightId] = noShow.length;
   return { flight, boarded, noShow };
 }
 
@@ -632,8 +726,8 @@ export async function searchPassengers(query: string): Promise<PaxHit[]> {
         pax.surname, pax.givenName, `${pax.surname}/${pax.givenName}`, pax.pnr,
         pax.nationalId, pax.passport, pax.ticketNumber, flight.flightNumber,
         flight.origin, flight.destination,
-      ].filter(Boolean).join(" ").toUpperCase();
-      if (hay.includes(q)) hits.push({ pax, flight });
+      ].filter(Boolean).join(" ");
+      if (foldIncludes(hay, q)) hits.push({ pax, flight });
     }
   }
   return hits;

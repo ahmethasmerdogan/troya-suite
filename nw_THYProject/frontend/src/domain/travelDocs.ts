@@ -115,11 +115,17 @@ export function requirementText(r: EntryRequirement, lang: "tr" | "en" = "tr"): 
   return REQ_TEXT[r][lang];
 }
 
-/** a tarihine n ay ekle (YYYY-MM-DD). */
+/**
+ * a tarihine n ay ekle (YYYY-MM-DD). Ay sonu hedef ayın son gününe sıkıştırılır:
+ * 30 Kasım + 3 ay = 28/29 Şubat, 2 Mart DEĞİL (aksi hâlde geçerli pasaport
+ * "yetersiz" sayılırdı).
+ */
 function addMonths(isoDate: string, n: number): string {
   const d = new Date(`${isoDate.slice(0, 10)}T00:00:00Z`);
-  d.setUTCMonth(d.getUTCMonth() + n);
-  return d.toISOString().slice(0, 10);
+  const y = d.getUTCFullYear();
+  const m = d.getUTCMonth() + n;
+  const day = Math.min(d.getUTCDate(), new Date(Date.UTC(y, m + 1, 0)).getUTCDate());
+  return new Date(Date.UTC(y, m, day)).toISOString().slice(0, 10);
 }
 
 /**

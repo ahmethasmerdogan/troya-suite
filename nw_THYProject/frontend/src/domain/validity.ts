@@ -93,7 +93,9 @@ export function ticketValidity(t: Ticket, now: number): TicketValidity {
   const commenced = travelCommenced(t);
   const basis = commenced ? "travel" : "issue";
   const from = commenced ?? t.issuedAt;
-  const base = endOfDay(addYears(from, 1));
+  const own = endOfDay(addYears(from, 1));
+  // 12.4.1: reissue edilmiş bilet orijinalin bitişini aşamaz.
+  const base = t.validityLimit ? Math.min(own, Date.parse(t.validityLimit)) : own;
   const ext = t.validityExtension;
   const untilMs = ext ? Math.max(base, Date.parse(ext.until)) : base;
 

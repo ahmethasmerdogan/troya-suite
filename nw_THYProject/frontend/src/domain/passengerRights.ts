@@ -143,10 +143,12 @@ export function assessRights(i: DisruptionInput): RightsAssessment {
   const band = bandOf(km ?? 0, intraEu);
 
   // Bakım hakkı (md. 6 / 9) — rötar bant eşiğini aşınca; 5 saatte iade seçeneği.
+  // İptal (md. 5(1)(b)) ve uçağa kabul edilmeme (md. 4(3)) bakım hakkını ve
+  // md. 8 iade seçeneğini rötar eşiğine bakmadan doğurur; eşik yalnız rötarda.
   const care: CareEntitlement = {
-    meals: i.kind !== "denied_boarding" ? i.arrivalDelayMin >= BAND_THRESHOLD_MIN[band] : true,
+    meals: i.kind === "delay" ? i.arrivalDelayMin >= BAND_THRESHOLD_MIN[band] : true,
     hotel: i.arrivalDelayMin >= 8 * 60,
-    refundOption: i.kind === "cancellation" || i.arrivalDelayMin >= 5 * 60,
+    refundOption: i.kind !== "delay" || i.arrivalDelayMin >= 5 * 60,
   };
 
   const regimes: RegimeResult[] = (["SHY", "EU261", "UK261"] as Regime[]).map((regime) => {

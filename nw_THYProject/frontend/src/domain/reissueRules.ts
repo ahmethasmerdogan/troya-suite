@@ -30,10 +30,12 @@
 
 import type { Money, TaxFeeCharge, Ticket } from "./types";
 import { isTfcRefundable } from "./taxCodes";
-import { computePenalty, fareRuleFor, isFareRefundable, waives, type WaiverCode } from "./fareRules";
+import { computePenalty, fareRuleFor, isFareRefundable, penaltyInCurrency, waives, type WaiverCode } from "./fareRules";
 import { fareTypeByCoupon } from "./fareTypes";
 import { couponUsed, penaltyHowEn } from "./refundRules";
 import { classifyChange, pricingBasis, type ChangeAnalysis } from "./changeRules";
+import { ticketValidity } from "./validity";
+import { demoNow } from "./demoClock";
 
 export type TfcDisposition =
   | "pd_carry_forward"          // 12.5(c)(i)  — değişmedi
@@ -202,7 +204,10 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
     notesEn.push(`Waiver (${input.waiver}) — the fare rule removes the change fee.`);
   } else {
     const after = anyFlown || new Date(ticket.coupons[0]?.segment.departure ?? 0).getTime() < Date.now();
-    const applicable = after ? rule?.change?.afterDeparture ?? rule?.change?.beforeDeparture : rule?.change?.beforeDeparture;
+    const applicable = penaltyInCurrency(
+      after ? rule?.change?.afterDeparture ?? rule?.change?.beforeDeparture : rule?.change?.beforeDeparture,
+      ticket.fare.baseFare.currency,
+    );
     const p = computePenalty(applicable, oldFare);
     if (p) {
       penalty = p.amount;
@@ -258,17 +263,20 @@ export function quoteReissue(input: ReissueQuoteInput): ReissueQuote {
   }
 
   // --- geçerlilik (12.4.1 vs 12.9.1) ---
+  // 12.4.1: yeni biletin geçerliliği, orijinal satış tarihinde kesilmiş olsaydı
+  // geçerli olacak bitişle sınırlıdır — yani orijinal biletin bitişi. Komut da
+  // yeni bilete aynı sınırı yazar (`validityLimit`), iki taraf aynı tarihi söyler.
   const validUntil = basis === "original_issue_date"
-    ? plusOneYear(ticket.issuedAt)
+    ? ticketValidity(ticket, demoNow()).until
     : plusOneYear(input.newSegments[0]?.departure);
   notes.push(
     basis === "original_issue_date"
-      ? "12.4.1: reissue taze bir yıl kazandırmaz — geçerlilik ORİJİNAL SATIŞ TARİHİNE göre hesaplanır."
+      ? "12.4.1: reissue taze bir yıl kazandırmaz — yeni bilet orijinal biletin geçerlilik bitişini taşır."
       : "12.9.1: hiç kullanılmamış biletin exchange'inde geçerlilik seyahat başlangıcından itibaren bir yıldır.",
   );
   notesEn.push(
     basis === "original_issue_date"
-      ? "12.4.1: a reissue does not grant a fresh year — validity is computed from the ORIGINAL DATE OF SALE."
+      ? "12.4.1: a reissue does not grant a fresh year — the new ticket carries the original ticket's validity end."
       : "12.9.1: on the exchange of a completely unused ticket, validity runs one year from the commencement of travel.",
   );
 

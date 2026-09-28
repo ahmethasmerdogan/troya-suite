@@ -1,7 +1,7 @@
 // HUB Kontrol / Operasyon domaini — biletten kalkışa kadar uçuş ve yolcu operasyonunu izler.
 // Araştırma temeli: EUROCONTROL A-CDM, IATA AHM/PSCRM, kupon FSM (O→A→C→L→F).
 // Mock: checkin FLIGHTS'tan türetilir + deterministik (seeded) operasyonel ekstralar.
-import { FLIGHTS, manualBoardedCount, type DepartureFlight } from "./checkin";
+import { FLIGHTS, closedOutNoShow, manifestBoardedCount, manifestOf, manualBoardedCount, type DepartureFlight } from "./checkin";
 import { airportByCode } from "./airports";
 import { assessRights, payableRegime } from "./passengerRights";
 
@@ -166,8 +166,18 @@ function buildPaxList(f: DepartureFlight, accepted: number, boarded: number, con
   const seed = hash(f.flightId);
   const rnd = (n: number) => ((seed >> (n % 28)) & 0xff) / 255;
   const list: OpsPax[] = [];
+  // Önce manifestteki GERÇEK kabul edilmiş yolcular (ad, koltuk, biniş durumu
+  // check-in ekranıyla aynı); toplamın kalanı sentez örnekle doldurulur.
+  // Önceden "binmeyenler" listesi manifestte olmayan uydurma adlar gösteriyordu.
+  const real = manifestOf(f.flightId).filter((p) => p.status !== "not_checked").slice(0, accepted);
+  let boardedLeft = boarded;
+  for (const p of real) {
+    const on = p.status === "boarded" && boardedLeft > 0;
+    if (on) boardedLeft -= 1;
+    list.push({ name: `${p.surname}/${p.givenName}`, seat: p.seat ?? "—", cabin: p.cabin, boarded: on, bags: p.bags, special: p.ssr?.[0] });
+  }
   const bizCap = Number((f.aircraft.config.match(/C(\d+)/) || [])[1] ?? 12);
-  for (let i = 0; i < accepted; i++) {
+  for (let i = real.length; i < accepted; i++) {
     const r = (hash(f.flightId + "p" + i) % 1000) / 1000;
     const cabin = i < Math.min(bizCap, Math.round(accepted * 0.12)) ? "Business" : "Economy";
     const row = 1 + Math.floor((hash(f.flightId + "r" + i) % f.aircraft.rows));
@@ -175,7 +185,7 @@ function buildPaxList(f: DepartureFlight, accepted: number, boarded: number, con
     list.push({
       name: `${SURNAMES[hash(f.flightId + "s" + i) % SURNAMES.length]}/${GIVENS[hash(f.flightId + "g" + i) % GIVENS.length]}`,
       seat, cabin,
-      boarded: i < boarded,
+      boarded: i - real.length < boardedLeft,
       bags: r < 0.2 ? 0 : r < 0.7 ? 1 : 2,
       connecting: i < connectingRisk ? CONN[i % CONN.length] : undefined,
       mctMin: i < connectingRisk ? 25 + (hash(f.flightId + "m" + i) % 30) : undefined,
@@ -216,13 +226,22 @@ export function flightLiveStatus(f: DepartureFlight, now = Date.now()): FlightOp
  * aynı sayıyı gösterir.
  */
 export function flightBoarded(f: DepartureFlight, status: FlightOpsStatus): number {
+  // Oturumda kapatılan uçuş: binmeyenler kesinleşti — "hepsi bindi" sayılmaz.
+  const closedNs = closedOutNoShow(f.flightId);
+  if (closedNs != null) return Math.max(0, f.checkedIn - closedNs);
   const seed = hash(f.flightId);
   const progressByStatus: Record<FlightOpsStatus, number> = {
     scheduled: 0, checkin_open: 0, checkin_closed: 0, go_to_gate: 0,
     boarding: 0.35 + (seed % 40) / 100, final_call: 0.82 + (seed % 12) / 100,
     gate_closed: 0.95, boarding_complete: 0.99, pushback: 1, departed: 1,
   };
-  return Math.min(f.checkedIn, Math.round(f.checkedIn * progressByStatus[status]) + manualBoardedCount(f.flightId));
+  // Manifestte binmiş görünen yolcular toplamın alt kümesidir: sentez taban
+  // onlardan az olamaz (TK198 "0/246 bindi" derken listede 7 binmiş vardı).
+  // Oturumda elle bindirilenler canlı senkron için ayrıca eklenir.
+  const manual = manualBoardedCount(f.flightId);
+  const seededManifest = Math.max(0, manifestBoardedCount(f.flightId) - manual);
+  const synthetic = Math.round(f.checkedIn * progressByStatus[status]);
+  return Math.min(f.checkedIn, Math.max(synthetic, seededManifest) + manual);
 }
 
 export async function getOpsBoard(): Promise<OpsBoard> {

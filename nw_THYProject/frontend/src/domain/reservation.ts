@@ -5,6 +5,8 @@ import { searchFlights } from "./flights";
 import { computeFareOffers } from "./pricing";
 import type { CabinName } from "./fareTypes";
 import type { Passenger } from "./types";
+import { airportByCode } from "./airports";
+import { foldIncludes } from "./text";
 
 export type PnrStatus = "active" | "ticketed" | "cancelled";
 /**
@@ -49,7 +51,7 @@ export interface PnrRemark {
   at: string;
 }
 
-export type PnrAction = "created" | "ticketed" | "renamed" | "ttl_extended" | "segment_cancelled" | "cancelled" | "remark";
+export type PnrAction = "created" | "ticketed" | "unticketed" | "renamed" | "ttl_extended" | "segment_cancelled" | "cancelled" | "remark";
 export interface PnrHistoryEntry {
   at: string;
   by: string;
@@ -211,7 +213,7 @@ export async function searchPnrs(query: string): Promise<PnrSummary[]> {
   return MOCK_PNRS.filter(
     (p) =>
       p.recordLocator.includes(q) ||
-      p.passengers.some((pax) => pax.surname.toUpperCase().includes(q) || pax.givenName.toUpperCase().includes(q)) ||
+      p.passengers.some((pax) => foldIncludes(pax.surname, q) || foldIncludes(pax.givenName, q) || foldIncludes(`${pax.surname}/${pax.givenName}`, q)) ||
       p.segments.some((s) => s.origin === q || s.destination === q),
   ).map(summary);
 }
@@ -281,6 +283,44 @@ function log(p: Pnr, by: string, action: PnrAction, text: string, textEn: string
  * Ad düzeltmesini PNR'a yansıt: bilet adı PNR'dakiyle birebir aynı kalmalı
  * (Handbook 2.3). Biletlenmiş yolcu kaydı da yeni adla taşınır.
  */
+/**
+ * Standart kesim süresi: rezervasyondan 72 saat (SSR ADTK), ama ilk kalkıştan
+ * 2 saat önceyi geçemez — yakın uçuşta süre kalkıştan sonraya düşer ve süre
+ * kuyruğu (Q8) rezervasyonu hiç yakalamaz. Kalkışa 2 saatten az kalmışsa şimdi.
+ */
+function standardTtl(segments: ReservationSegment[], nowMs: number): string {
+  const deps = segments.filter((s) => s.status !== "XX").map((s) => Date.parse(s.departure)).filter(Number.isFinite);
+  const cap = deps.length ? Math.min(...deps) - 2 * 3_600_000 : Infinity;
+  return new Date(Math.max(nowMs, Math.min(nowMs + 72 * 3_600_000, cap))).toISOString();
+}
+
+/**
+ * Bilet void edildi ya da tamamen iade edildi: yolcu yeniden biletsizdir.
+ * Numara PNR'dan düşer, rezervasyon yeniden "aktif" olur ve kesim süresi
+ * yeniden başlar — aksi hâlde aynı yolcuya bilet "mükerrer" diye reddedilir,
+ * rezervasyon da hiç iptal edilemezdi.
+ */
+export function detachTicketFromPnr(
+  recordLocator: string,
+  ticketNumber: string,
+  pax: { surname: string; givenName: string },
+  why: "void" | "refund",
+): Pnr | undefined {
+  const p = pnrByLocator(recordLocator);
+  if (!p || !p.ticketNumbers.includes(ticketNumber)) return undefined;
+  p.ticketNumbers = p.ticketNumbers.filter((n) => n !== ticketNumber);
+  const k = paxKey(pax);
+  p.ticketedPax = (p.ticketedPax ?? []).filter((x) => x !== k);
+  if (p.status === "ticketed") {
+    p.status = "active";
+    p.ttl = standardTtl(p.segments, Date.now());
+  }
+  log(p, "Troya", "unticketed",
+    `Bilet ${why === "void" ? "void edildi" : "iade edildi"} · ${ticketNumber} · ${k} yeniden biletsiz`,
+    `Ticket ${why === "void" ? "voided" : "refunded"} · ${ticketNumber} · ${k} unticketed again`);
+  return p;
+}
+
 export function renamePnrPassenger(recordLocator: string, from: Passenger, to: Passenger): void {
   const p = pnrByLocator(recordLocator);
   if (!p) return;
@@ -321,6 +361,8 @@ export async function cancelSegment(recordLocator: string, index: number, by: st
   const p = pnrByLocator(recordLocator);
   if (!p) throw new Error("PNR bulunamadı");
   if (p.status !== "active") throw new Error("Yalnız biletlenmemiş, aktif rezervasyonda segment iptal edilir.");
+  if ((p.ticketedPax?.length ?? 0) > 0 || p.ticketNumbers.length > 0)
+    throw new Error("Bu rezervasyonda bileti kesilmiş yolcu var — segment iptali biletli kuponu açıkta bırakır; önce bilet üzerinde değişiklik (exchange) ya da iade yapın.");
   const seg = p.segments[index];
   if (!seg || seg.status === "XX") throw new Error("Segment bulunamadı ya da zaten iptal.");
   if (activeSegments(p).length <= 1) throw new Error("Son segment iptal edilemez — rezervasyonu iptal edin.");
@@ -368,6 +410,20 @@ export interface CreatePnrInput {
 }
 export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
   await delay(600);
+  // Arayüz atlatılsa bile kayıt bu kapıdan geçer: yolcu adı, bilinen
+  // havalimanları, farklı kalkış/varış, taşıyıcı + rakamlı sefer numarası.
+  if (!input.passengers.length) throw new Error("En az bir yolcu gerekir.");
+  if (input.passengers.some((p) => p.surname.trim().length < 2 || !p.givenName.trim()))
+    throw new Error("Her yolcunun soyadı (en az 2 harf) ve adı zorunlu.");
+  if (!input.segments.length) throw new Error("En az bir segment gerekir.");
+  for (const s of input.segments) {
+    const where = `${s.origin}-${s.destination}`;
+    if (!airportByCode(s.origin) || !airportByCode(s.destination)) throw new Error(`${where}: bilinmeyen havalimanı kodu.`);
+    if (s.origin === s.destination) throw new Error(`${where}: kalkış ve varış aynı olamaz.`);
+    if (!/^[A-Z0-9]{2}$/.test(s.carrier)) throw new Error(`${where}: taşıyıcı kodu 2 karakter olmalı.`);
+    if (!/^([A-Z0-9]{2})?\d{1,4}[A-Z]?$/.test(s.flightNumber.trim().toUpperCase())) throw new Error(`${where}: sefer numarası rakam olmalı (ör. 1591).`);
+    if (Number.isNaN(Date.parse(s.departure))) throw new Error(`${where}: kalkış tarihi geçersiz.`);
+  }
   const pnr: Pnr = {
     recordLocator: genRecordLocator(++rlCounter + MOCK_PNRS.length + 17),
     passengers: input.passengers,
@@ -376,8 +432,8 @@ export async function createPnr(input: CreatePnrInput): Promise<Pnr> {
     status: "active",
     contact: input.contact,
     ticketNumbers: [],
-    // Standart TTL: rezervasyondan 72 saat (SSR ADTK) — süresinde kesilmezse uyarı → iptal.
-    ttl: new Date(Date.now() + 72 * 3_600_000).toISOString(),
+    // Standart TTL: rezervasyondan 72 saat (SSR ADTK), ilk kalkış − 2 saati geçmez.
+    ttl: standardTtl(input.segments, Date.now()),
     history: [],
   };
   log(pnr, input.by ?? "QuickRes", "created", "Rezervasyon oluşturuldu", "Reservation created");

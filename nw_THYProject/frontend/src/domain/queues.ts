@@ -124,7 +124,8 @@ export function buildQueueItems(src: QueueSources, now: number): QueueItem[] {
     // Q20 — geçerlilik (12.4 / 12.9.1)
     const v = ticketValidity(t, now);
     const hasUnused = t.coupons.some((c) => UNUSED.has(c.status));
-    if (hasUnused && (v.state === "expiring" || v.state === "expired")) {
+    const validityQueued = hasUnused && (v.state === "expiring" || v.state === "expired");
+    if (validityQueued) {
       out.push({
         id: `validity:${t.ticketNumber}`, queue: "validity", ref: t.ticketNumber, refKind: "ticket",
         priority: v.state === "expired" ? "medium" : v.daysLeft <= 7 ? "high" : "medium",
@@ -138,11 +139,12 @@ export function buildQueueItems(src: QueueSources, now: number): QueueItem[] {
           : `${pax} · ${route}. Unused coupons must be flown or changed before expiry; extend for illness if applicable (13.10).`,
         dueAt: v.until, createdAt: t.issuedAt,
       });
-      continue; // aynı bilet "kullanılmamış kupon" kuyruğuna ayrıca düşmesin
     }
 
-    // Q21 — kalkışı geçmiş kullanılmamış kupon (no-show ya da takip edilmemiş)
-    const missed = t.coupons.filter((c) => c.status === "O" && Date.parse(c.segment.departure) < now);
+    // Q21 — kalkışı geçmiş kullanılmamış kupon (no-show ya da takip edilmemiş).
+    // Geçerlilik kuyruğuna düşen bilet buraya ayrıca düşmez; ama kontrol
+    // kuyruğunu (Q30) atlamamalı — o yüzden `continue` değil koşul.
+    const missed = validityQueued ? [] : t.coupons.filter((c) => c.status === "O" && Date.parse(c.segment.departure) < now);
     if (missed.length) {
       const ns = missed.some((c) => c.noShow);
       out.push({

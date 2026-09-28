@@ -39,6 +39,7 @@ const EVENT_KEY: Record<string, Key> = {
   ValidityExtended: "ticket.event.ValidityExtended", RightsAssessed: "ticket.event.RightsAssessed",
   NameCorrected: "ticket.event.NameCorrected",
   ScheduleChanged: "ticket.event.ScheduleChanged", ScheduleChangeAcknowledged: "ticket.event.ScheduleChangeAcknowledged",
+  BaggageRecorded: "ticket.event.BaggageRecorded",
 };
 
 /** Olumsuz olaylar rayda kırmızı halka taşır — göz taramada önce bunları bulur. */

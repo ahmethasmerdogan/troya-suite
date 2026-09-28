@@ -25,6 +25,7 @@
 //  • Bilet kısıtı: X = iade edilemez, N = değiştirilemez, B = ikisi de.
 
 import type { Money } from "./types";
+import { convert } from "./fx";
 
 /**
  * Kural metinlerinin dili. Arayüz dilinden BAĞIMSIZ tanımlıdır: domain katmanı
@@ -207,6 +208,25 @@ export function computePenalty(rule: PenaltyRule | undefined, baseFare: number, 
   }
 
   return { amount: Math.round(value), currency: rule.currency, explain: how, explainEn: howEn };
+}
+
+/**
+ * Tarifeye TRY olarak dosyalanmış ceza kuralını biletin para birimine çevirir
+ * (sabit tutar ve minimum eşik). Yüzde zaten çıplak ücret üzerinden, yani bilet
+ * para biriminde hesaplanır. Aynı birimse ya da kur bilinmiyorsa kural olduğu
+ * gibi döner. Çevrilmeden düşülen 1.500 TRY ceza EUR bilette 1.500 EUR olurdu.
+ */
+export function penaltyInCurrency(rule: PenaltyRule | undefined, currency: string): PenaltyRule | undefined {
+  if (!rule || !currency || rule.currency === currency) return rule;
+  const cv = (n: number | undefined) => {
+    if (n == null) return n;
+    const v = convert(n, rule.currency, currency);
+    return v == null ? null : Math.round(v * 100) / 100;
+  };
+  const amount = cv(rule.amount);
+  const minimum = cv(rule.minimum);
+  if (amount === null || minimum === null) return rule;
+  return { ...rule, amount: amount ?? undefined, minimum: minimum ?? undefined, currency };
 }
 
 /** Muafiyet cezayı kaldırır mı? */

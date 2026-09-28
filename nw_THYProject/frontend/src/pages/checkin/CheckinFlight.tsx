@@ -176,12 +176,20 @@ export function CheckinFlight() {
     mutationFn: async () => {
       const list = pax ?? [];
       let n = 0;
+      let foreign = 0;
       for (const p of list) {
-        if (p.ticketNumber && p.couponSeq != null) { await takeAirportControl(p.ticketNumber, p.couponSeq); n++; }
+        if (!p.ticketNumber || p.couponSeq == null) continue;
+        const r = await takeAirportControl(p.ticketNumber, p.couponSeq);
+        if (r === "taken") n++;
+        else if (r === "foreign") foreign++;
       }
-      return n;
+      return { n, foreign };
     },
-    onSuccess: (n) => { toast.success(t("checkin.toast.control.title"), t("checkin.toast.control.body", { n })); refreshAll(); },
+    onSuccess: ({ n, foreign }) => {
+      const body = t("checkin.toast.control.body", { n }) + (foreign ? " " + t("checkin.toast.control.foreign", { n: foreign }) : "");
+      toast.success(t("checkin.toast.control.title"), body);
+      refreshAll();
+    },
     onError: (e: Error) => toast.danger(t("checkin.toast.controlFailed"), e.message),
   });
 
