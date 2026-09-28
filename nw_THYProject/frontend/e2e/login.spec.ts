@@ -25,4 +25,14 @@ test.describe("Login", () => {
     await page.getByRole("button", { name: /Giriş Yap/ }).click();
     await expect(page.getByText(/Kullanıcı bulunamadı/)).toBeVisible();
   });
+
+  test("telefonda giriş ekranı yatay taşmaz", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.setItem("troya.onboarded", "1"));
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Giriş yap" })).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+    await expect(page.getByRole("link", { name: /Sistemi tanıyın/ }).first()).toBeInViewport();
+  });
 });
