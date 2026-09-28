@@ -187,7 +187,9 @@ export const useChat = create<ChatState>((set, get) => {
       const { myId, channels } = get();
       const trimmed = name.trim();
       if (!myId || !trimmed) return null;
-      if (channels.some((c) => c.name.trim().toLocaleLowerCase("tr-TR") === trimmed.toLocaleLowerCase("tr-TR"))) return null;
+      // Ad her iki dilde de benzersiz: "Station Operations" tohum kanalın EN adı.
+      const k = (s?: string) => (s ?? "").trim().toLocaleLowerCase("tr-TR");
+      if (channels.some((c) => k(c.name) === k(trimmed) || (!!c.nameEn && k(c.nameEn) === k(trimmed)))) return null;
       const channel: ChannelDef = {
         id: channelIdFrom(trimmed, channels),
         name: trimmed,
@@ -227,6 +229,11 @@ export const useChat = create<ChatState>((set, get) => {
       const ch = channels.find((c) => c.id === channelId);
       if (!ch) return;
       const cur = ch.memberIds ?? [];
+      // Herkese açık kanalın üye listesi yoktur — bir kişiye dokunmak kanalı
+      // yalnız o kişiye özel bir kanala çevirip herkesten gizliyordu.
+      if (!cur.length) return;
+      // Özel kanal boşalamaz: son üye çıkarsa kanal kimseye görünmez olurdu.
+      if (cur.length === 1 && cur[0] === userId) return;
       const next: ChannelDef = {
         ...ch,
         memberIds: cur.includes(userId) ? cur.filter((x) => x !== userId) : [...cur, userId],

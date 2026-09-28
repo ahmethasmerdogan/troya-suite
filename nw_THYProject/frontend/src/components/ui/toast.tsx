@@ -27,9 +27,11 @@ interface ToastState {
 }
 
 let seq = 0;
+/** Aynı anda görünen en çok bildirim — fazlası en eskiden düşer. */
+const MAX_VISIBLE = 3;
 export const useToastStore = create<ToastState>((set) => ({
   items: [],
-  push: (t) => set((s) => ({ items: [...s.items, { ...t, id: ++seq }] })),
+  push: (t) => set((s) => ({ items: [...s.items, { ...t, id: ++seq }].slice(-MAX_VISIBLE) })),
   dismiss: (id) => set((s) => ({ items: s.items.filter((x) => x.id !== id) })),
 }));
 
@@ -45,28 +47,30 @@ const TONE: Record<Kind, Tone> = { success: "green", info: "blue", warning: "amb
 
 export function ToastHost() {
   const items = useToastStore((s) => s.items);
-  const dismiss = useToastStore((s) => s.dismiss);
   return (
     <div data-print-hide className="pointer-events-none fixed bottom-5 left-1/2 z-[70] flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4"
       role="status"
       aria-live="polite"
     >
       {items.map((t) => (
-        <Row key={t.id} item={t} onDone={() => dismiss(t.id)} />
+        <Row key={t.id} item={t} />
       ))}
     </div>
   );
 }
 
-function Row({ item, onDone }: { item: Item; onDone: () => void }) {
+// Zamanlayıcı bildirimin kimliğine bağlı: önceden her ekleme/silmede tüm
+// zamanlayıcılar baştan başlıyor, bildirimler birikip pencere düğmelerini
+// kapatıyordu. Bildirim tıklamayı yutmaz — altındaki düğme hep tıklanır.
+function Row({ item }: { item: Item }) {
   const Icon = ICON[item.kind];
   useEffect(() => {
-    const timer = setTimeout(onDone, 4200);
+    const timer = setTimeout(() => useToastStore.getState().dismiss(item.id), 4200);
     return () => clearTimeout(timer);
-  }, [onDone]);
+  }, [item.id]);
 
   return (
-    <div className="anim-rise pointer-events-auto flex items-start gap-2.5 rounded-lg border border-line bg-panel px-4 py-3">
+    <div className="anim-rise flex items-start gap-2.5 rounded-lg border border-line bg-panel px-4 py-3 shadow-[0_8px_30px_-12px_rgba(0,0,0,0.25)]">
       <Icon size={16} strokeWidth={2} className="mt-0.5 shrink-0" style={{ color: TONE_DOT[TONE[item.kind]] }} />
       <div className="min-w-0">
         <div className="text-[13.5px] font-semibold text-ink">{item.title}</div>

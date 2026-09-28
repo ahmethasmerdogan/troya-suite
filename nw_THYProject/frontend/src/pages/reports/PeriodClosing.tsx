@@ -100,7 +100,9 @@ export function PeriodClosing() {
                   ) : (
                     <>
                     {idx === periods.findIndex((x) => !x.closed) && <Tip id="reports.close" />}
-                    <Button size="sm" variant="danger" onClick={() => setConfirm(p)}>
+                    <Button size="sm" variant="danger" disabled={p.periodId >= today}
+                      title={p.periodId >= today ? t("report.close.notYet") : undefined}
+                      onClick={() => setConfirm(p)}>
                       <Lock size={14} strokeWidth={1.75} /> {t("report.close.action")}
                     </Button>
                     </>

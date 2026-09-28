@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "@tanstack/react-router";
 import { Command } from "cmdk";
@@ -13,6 +13,17 @@ import { useUI } from "@/store/ui";
 import { useT, translate } from "@/i18n";
 import { Kbd } from "@/components/ui/core";
 import { cn } from "@/lib/utils";
+import { usePerm } from "@/lib/usePerm";
+import { foldIncludes } from "@/domain/text";
+import type { Permission } from "@/domain/auth";
+
+type PaletteCommand = {
+  to: "/issue" | "/search" | "/queues" | "/emds" | "/report" | "/checkin" | "/";
+  icon: ReactNode;
+  label: string;
+  hint?: string;
+  perm?: Permission;
+};
 
 /**
  * ⌘K — birleşik retrieval.
@@ -25,6 +36,7 @@ export function CommandPalette() {
   const open = useUI((s) => s.commandOpen);
   const setOpen = useUI((s) => s.setCommandOpen);
   const navigate = useNavigate();
+  const { can } = usePerm();
   const t = useT();
   const [q, setQ] = useState("");
 
@@ -85,15 +97,32 @@ export function CommandPalette() {
   };
   const go = (fn: () => void) => { setOpen(false); fn(); };
 
+  // Komutlar yazılana göre süzülür; eşleşme yoksa "sonuç yok" görünür.
+  // Önceden hep listedeydiler ve eşleşmeyen aramada Enter "Bilet Kes"i açıyordu.
+  // Yetkisi olmayan ekran önerilmez.
+  const all: PaletteCommand[] = [
+    { to: "/issue", icon: <TicketPlus size={15} strokeWidth={1.75} />, label: t("nav.issue"), perm: "ticket.issue" },
+    { to: "/search", icon: <Search size={15} strokeWidth={1.75} />, label: t("nav.search") },
+    { to: "/queues", icon: <Inbox size={15} strokeWidth={1.75} />, label: t("nav.queues"), hint: "Q8 · Q7 · QT" },
+    { to: "/emds", icon: <Package size={15} strokeWidth={1.75} />, label: t("nav.emd.search") },
+    { to: "/report", icon: <ClipboardList size={15} strokeWidth={1.75} />, label: t("nav.report"), perm: "revenue.view" },
+    { to: "/checkin", icon: <PlaneTakeoff size={15} strokeWidth={1.75} />, label: t("nav.section.checkin") },
+    { to: "/", icon: <LayoutDashboard size={15} strokeWidth={1.75} />, label: t("module.panel") },
+  ];
+  const commands = all
+    .filter((c) => !c.perm || can(c.perm))
+    .filter((c) => !q.trim() || foldIncludes(`${c.label} ${c.hint ?? ""}`, q.trim()));
+
   // Seçili öğe sonuçlar gelince ilk SONUCA taşınır; aksi hâlde cmdk ilk
   // açılıştaki "Bilet Kes"i tutuyor, Enter aramayı değil kesimi açıyordu.
   const firstValue = shape?.direct ? rowValue(shape.direct.label, shape.direct.hint)
     : tickets[0] ? rowValue(tickets[0].ticketNumber, `${tickets[0].passengerName} · ${tickets[0].route}`)
       : emds[0] ? rowValue(emds[0].emdNumber, emds[0].coupons[0]?.description)
         : pnrs[0] ? rowValue(pnrs[0].recordLocator, `${pnrs[0].passengerName} · ${pnrs[0].route}`)
-          : "";
+          : commands[0] ? rowValue(commands[0].label, commands[0].hint)
+            : "";
   const [selected, setSelected] = useState("");
-  useEffect(() => { if (firstValue) setSelected(firstValue); }, [firstValue]);
+  useEffect(() => { setSelected(firstValue); }, [firstValue]);
 
   if (!open) return null;
 
@@ -183,15 +212,13 @@ export function CommandPalette() {
             </Group>
           )}
 
-          <Group heading={t("search.cmd.group.go")}>
-            <Row icon={<TicketPlus size={15} strokeWidth={1.75} />} label={t("nav.issue")} onSelect={() => go(() => navigate({ to: "/issue" }))} />
-            <Row icon={<Search size={15} strokeWidth={1.75} />} label={t("nav.search")} onSelect={() => go(() => navigate({ to: "/search" }))} />
-            <Row icon={<Inbox size={15} strokeWidth={1.75} />} label={t("nav.queues")} hint="Q8 · Q7 · QT" onSelect={() => go(() => navigate({ to: "/queues" }))} />
-            <Row icon={<Package size={15} strokeWidth={1.75} />} label={t("nav.emd.search")} onSelect={() => go(() => navigate({ to: "/emds" }))} />
-            <Row icon={<ClipboardList size={15} strokeWidth={1.75} />} label={t("nav.report")} onSelect={() => go(() => navigate({ to: "/report" }))} />
-            <Row icon={<PlaneTakeoff size={15} strokeWidth={1.75} />} label={t("nav.section.checkin")} onSelect={() => go(() => navigate({ to: "/checkin" }))} />
-            <Row icon={<LayoutDashboard size={15} strokeWidth={1.75} />} label={t("module.panel")} onSelect={() => go(() => navigate({ to: "/" }))} />
-          </Group>
+          {commands.length > 0 && (
+            <Group heading={t("search.cmd.group.go")}>
+              {commands.map((c) => (
+                <Row key={c.to} icon={c.icon} label={c.label} hint={c.hint} onSelect={() => go(() => navigate({ to: c.to }))} />
+              ))}
+            </Group>
+          )}
         </Command.List>
       </Command>
     </div>,

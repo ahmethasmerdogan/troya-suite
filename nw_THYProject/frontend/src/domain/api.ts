@@ -521,8 +521,13 @@ export async function closeReportingPeriod(periodId: string): Promise<string[]> 
   if (closedPeriods.has(periodId)) throw new DomainError(`${periodId} dönemi zaten kapatılmış.`, `Period ${periodId} is already closed.`);
   // Kapanış geri alınamaz; henüz gelmemiş bir günü kapatmak o günün tüm
   // satışlarını daha doğmadan void edilemez hâle getirirdi.
-  if (periodId > reportingPeriodId(new Date().toISOString()))
+  const current = reportingPeriodId(new Date().toISOString());
+  if (periodId > current)
     throw new DomainError(`${periodId} gelecek bir dönem — kapatılamaz.`, `${periodId} is a future period — it cannot be closed.`);
+  // İçinde bulunulan gün de kapatılamaz: kapanınca o gün yeni satış yapılamaz
+  // ve arayüzde yeniden açmanın yolu yoktur. Gün sonu geçince kapatılır.
+  if (periodId === current)
+    throw new DomainError(`${periodId} bugünün dönemi — satışlar sürüyor; gün sonu geçince kapatılır.`, `${periodId} is today's period — sales are still running; it is closed after end of day.`);
   closedPeriods.add(periodId);
   persistClosedPeriods();
   return [...closedPeriods].sort();
